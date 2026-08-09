@@ -1,9 +1,8 @@
 # PrimePower Manpower — HRIS (Core Transaction 2)
 
-Fleet & Transportation HRIS. Five modules under one dashboard; **Modules 1–4
-(Employee Information, Timekeeping & Attendance, Leave & Absence, Payroll &
-Compensation) are built**, Module 5 has its database schema migrated but no UI
-yet.
+Fleet & Transportation HRIS. **All five modules are built**: Employee
+Information, Timekeeping & Attendance, Leave & Absence, Payroll & Compensation,
+and Performance Management.
 
 ## Stack
 
@@ -164,6 +163,26 @@ Rules worth knowing before touching it:
 - The payslip page is print-styled; "Save as PDF" is the browser's own print
   dialog, so there is no PDF dependency to maintain.
 
+## Performance (Module 5)
+
+The rating scale, the 360 reviewer weights, and the performance bands live in
+`config/performance.php`. `PerformanceScorer` is database-free and unit tested;
+`PerformanceService` handles the cycle workflow.
+
+- A review's score is the **weighted mean** of its KPI ratings. Weights come
+  from the employee's scorecard, never from the submitted form — a reviewer
+  rates, they do not decide what counts.
+- An employee's score for a cycle blends the four perspectives. **Missing
+  perspectives are re-normalised, not scored as zero**, so someone with only a
+  supervisor review still scores on the same 1–5 scale.
+- Rolling out a cycle builds every scorecard from the KPI library and creates
+  the self and supervisor evaluations. It is **safe to re-run** — existing
+  scorecards and reviews are left alone.
+- Only the assigned reviewer edits, only while the cycle accepts submissions,
+  and only a draft. The employee acknowledges afterwards; a self review needs
+  no acknowledgement.
+- A KPI already on a scorecard is deactivated rather than deleted.
+
 ## Gotchas that have already cost time
 
 - **Paginator links.** `employees.links` is the `{first,last,prev,next}` *object*;
@@ -202,8 +221,11 @@ Seed accounts (password `password`): `admin@primepower.test`,
 
 ## Known gaps
 
-Module 5 (Performance Management) UI; 13th-month pay and final-pay computation;
-a BIR alphalist / remittance export; holidays management screen (2026 holidays
-are seeded, but there is no UI); leave credit accrual on a schedule (credits are
+All five modules are functional. Still outstanding: 13th-month pay and final-pay
+computation; a BIR alphalist / remittance export; peer and subordinate reviews
+are supported by the schema and scoring but have no assignment UI (only self and
+supervisor are created at rollout); holidays management screen (2026 holidays are
+seeded, but there is no UI); leave credit accrual on a schedule (credits are
 allocated in bulk per year); email notifications (the bell is in-app only);
-departments/positions CRUD; `/profile` still uses the old Breeze layout.
+departments/positions CRUD; `/profile` still uses the old Breeze layout; the
+project still runs on SQLite rather than PostgreSQL.

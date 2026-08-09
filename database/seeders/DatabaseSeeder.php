@@ -26,6 +26,7 @@ class DatabaseSeeder extends Seeder
 
         // Reads the attendance and leave the two seeders above just created.
         $this->call(PayrollSeeder::class);
+        $this->call(PerformanceSeeder::class);
     }
 
     private function seedAdminUsers(): void

@@ -4,15 +4,17 @@ use App\Http\Controllers\AttendanceReportController;
 use App\Http\Controllers\CompensationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\KpiController;
 use App\Http\Controllers\LeaveBalanceController;
 use App\Http\Controllers\LeaveCalendarController;
 use App\Http\Controllers\LeaveController;
 use App\Http\Controllers\LeaveTypeController;
-use App\Http\Controllers\ModulePlaceholderController;
 use App\Http\Controllers\OvertimeController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\PayslipController;
+use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ReviewCycleController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\TimekeepingController;
 use Illuminate\Support\Facades\Route;
@@ -113,8 +115,32 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('payroll/loans/{loan}/cancel', [CompensationController::class, 'cancelLoan'])
             ->name('payroll.loans.cancel');
 
-        // Module 5 — scaffolded route, page lands next.
-        Route::get('performance', [ModulePlaceholderController::class, 'performance'])->name('performance');
+        // Module 5 — Performance Management
+        Route::get('performance', [PerformanceController::class, 'index'])->name('performance');
+        Route::get('performance/reviews/{review}', [PerformanceController::class, 'show'])
+            ->name('performance.review');
+        Route::put('performance/reviews/{review}', [PerformanceController::class, 'update'])
+            ->name('performance.review.update');
+        Route::post('performance/reviews/{review}/submit', [PerformanceController::class, 'submit'])
+            ->name('performance.review.submit');
+        Route::post('performance/reviews/{review}/acknowledge', [PerformanceController::class, 'acknowledge'])
+            ->name('performance.review.acknowledge');
+        Route::get('performance/employees/{employee}/history', [PerformanceController::class, 'history'])
+            ->name('performance.history');
+
+        Route::get('performance/cycles', [ReviewCycleController::class, 'index'])->name('performance.cycles');
+        Route::post('performance/cycles', [ReviewCycleController::class, 'store'])->name('performance.cycles.store');
+        Route::put('performance/cycles/{cycle}', [ReviewCycleController::class, 'update'])
+            ->name('performance.cycles.update');
+        Route::post('performance/cycles/{cycle}/rollout', [ReviewCycleController::class, 'rollout'])
+            ->name('performance.cycles.rollout');
+        Route::post('performance/cycles/{cycle}/close', [ReviewCycleController::class, 'close'])
+            ->name('performance.cycles.close');
+
+        Route::get('performance/kpis', [KpiController::class, 'index'])->name('performance.kpis');
+        Route::post('performance/kpis', [KpiController::class, 'store'])->name('performance.kpis.store');
+        Route::put('performance/kpis/{kpi}', [KpiController::class, 'update'])->name('performance.kpis.update');
+        Route::delete('performance/kpis/{kpi}', [KpiController::class, 'destroy'])->name('performance.kpis.destroy');
     });
 });
 
