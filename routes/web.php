@@ -4,6 +4,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\ModulePlaceholderController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\TimekeepingController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => redirect()->route('dashboard'));
@@ -27,8 +28,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('employees/{employee}/documents/{document}', [EmployeeController::class, 'destroyDocument'])
             ->name('employees.documents.destroy');
 
-        // Modules 2–5 — scaffolded routes, pages land next.
-        Route::get('timekeeping', [ModulePlaceholderController::class, 'timekeeping'])->name('timekeeping');
+        // Module 2 — Timekeeping & Attendance
+        Route::get('timekeeping', [TimekeepingController::class, 'index'])->name('timekeeping');
+        Route::post('timekeeping', [TimekeepingController::class, 'store'])->name('timekeeping.store');
+        Route::delete('timekeeping/{attendanceLog}', [TimekeepingController::class, 'destroy'])
+            ->name('timekeeping.destroy');
+
+        // Modules 3–5 — scaffolded routes, pages land next.
         Route::get('leave', [ModulePlaceholderController::class, 'leave'])->name('leave');
         Route::get('payroll', [ModulePlaceholderController::class, 'payroll'])->name('payroll');
         Route::get('performance', [ModulePlaceholderController::class, 'performance'])->name('performance');

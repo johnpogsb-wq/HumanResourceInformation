@@ -1,8 +1,8 @@
 # PrimePower Manpower — HRIS (Core Transaction 2)
 
-Fleet & Transportation HRIS. Five modules under one dashboard; **Module 1
-(Employee Information) is built**, Modules 2–5 have their database schema
-migrated but no UI yet.
+Fleet & Transportation HRIS. Five modules under one dashboard; **Modules 1
+(Employee Information) and 2 (Timekeeping & Attendance) are built**, Modules 3–5
+have their database schema migrated but no UI yet.
 
 ## Stack
 
@@ -87,6 +87,23 @@ Light and dark both work because components reference tokens, not values.
 Replace the module's entry in `resources/js/config/navigation.js` (the route is
 already listed) and delete its `ModulePlaceholderController` method.
 
+## Timekeeping (Module 2)
+
+`AttendanceCalculator` is deliberately database-free: Payroll multiplies its
+output by money, so every rule is unit tested in isolation. It derives status,
+hours worked, late, undertime, overtime, and night differential from the punches
+plus the assigned `Shift`.
+
+- The grace period **forgives** lateness entirely; past it, lateness counts from
+  the scheduled start (not from the grace cutoff).
+- A shift whose `end_time <= start_time` wraps midnight; the calculator pushes
+  its end — and any time-out earlier than the start — to the next day.
+- Night differential is 22:00–06:00, summed over non-overlapping per-day windows
+  so a multi-night shift can't double count.
+- Overtime is stored raw. Whether it is *paid* depends on an approved
+  `OvertimeRequest` — that gate belongs to Payroll.
+- `TimekeepingService::record()` upserts one row per employee/date.
+
 ## Gotchas that have already cost time
 
 - **Paginator links.** `employees.links` is the `{first,last,prev,next}` *object*;
@@ -104,6 +121,13 @@ already listed) and delete its `ModulePlaceholderController` method.
   counts in memory instead.
 - **Lucide icon names don't fail the build.** A misspelled icon imports as
   `undefined` and only blows up at render. Vite will not warn you.
+- **`updateOrCreate` matches on exact column equality.** A `date`-cast column can
+  be stored as `Y-m-d 00:00:00`, so looking it up with a `Y-m-d` string misses
+  and inserts a duplicate. Use `whereDate` then update, as
+  `TimekeepingService::record()` does.
+- **A new page must be built before its feature test passes.** The root blade
+  `@vite`s the page component by name, so an unbuilt page throws and the test
+  reports "Not a valid Inertia response." Run `npm.cmd run build` first.
 - **Verify in a browser, not with curl.** A `200` means the server sent correct
   HTML; it says nothing about whether React mounted.
 
@@ -118,6 +142,8 @@ Seed accounts (password `password`): `admin@primepower.test`,
 
 ## Known gaps
 
-Modules 2–5 UI; payroll computation and statutory tables; notifications; PDF
+Modules 3–5 UI; payroll computation and statutory tables; overtime-request
+approval workflow and shift/schedule management screens; biometric import
+endpoint (the API `POST /attendance` is the intended target); notifications; PDF
 payslips; departments/positions CRUD; `/profile` still uses the old Breeze
-layout; the project is **not under version control**.
+layout.

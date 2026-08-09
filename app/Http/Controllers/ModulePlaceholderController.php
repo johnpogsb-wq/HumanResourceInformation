@@ -11,15 +11,6 @@ use Inertia\Response;
  */
 class ModulePlaceholderController extends Controller
 {
-    public function timekeeping(): Response
-    {
-        return $this->render(
-            'Timekeeping & Attendance',
-            'Daily time records, shift scheduling, overtime and tardiness tracking, and biometric imports.',
-            ['Daily time record (DTR)', 'Shift & schedule management', 'Overtime / undertime / tardiness', 'Attendance summary reports', 'Biometric device import'],
-        );
-    }
-
     public function leave(): Response
     {
         return $this->render(

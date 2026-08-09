@@ -19,6 +19,9 @@ class DatabaseSeeder extends Seeder
 
         $this->seedAdminUsers();
         $this->seedEmployees();
+
+        // Needs employees and shifts in place.
+        $this->call(AttendanceSeeder::class);
     }
 
     private function seedAdminUsers(): void

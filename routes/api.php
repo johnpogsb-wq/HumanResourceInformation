@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\TimekeepingController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -29,5 +30,12 @@ Route::prefix('v1')->group(function () {
         Route::get('employees/{employee}/documents', [EmployeeController::class, 'documents']);
         Route::post('employees/{employee}/documents', [EmployeeController::class, 'storeDocument']);
         Route::delete('employees/{employee}/documents/{document}', [EmployeeController::class, 'destroyDocument']);
+
+        // --- Module 2: Timekeeping & Attendance ---
+        Route::get('attendance/summary', [TimekeepingController::class, 'summary']);
+        Route::get('attendance', [TimekeepingController::class, 'index']);
+        Route::post('attendance', [TimekeepingController::class, 'store']);
+        Route::get('attendance/{attendanceLog}', [TimekeepingController::class, 'show']);
+        Route::delete('attendance/{attendanceLog}', [TimekeepingController::class, 'destroy']);
     });
 });
