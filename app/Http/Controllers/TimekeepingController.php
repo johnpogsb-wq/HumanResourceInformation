@@ -8,6 +8,7 @@ use App\Models\AttendanceLog;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\Shift;
+use App\Services\AttendanceImporter;
 use App\Services\EmployeeService;
 use App\Services\TimekeepingService;
 use Illuminate\Http\RedirectResponse;
@@ -78,6 +79,34 @@ class TimekeepingController extends Controller
             'success',
             "Time record saved for {$employee->full_name} on {$log->log_date->toFormattedDateString()}.",
         );
+    }
+
+    /** Bulk DTR import — the biometric device export lands here. */
+    public function import(Request $request, AttendanceImporter $importer): RedirectResponse
+    {
+        Gate::authorize('create', AttendanceLog::class);
+
+        $request->validate([
+            'file' => ['required', 'file', 'max:5120', 'mimes:csv,txt'],
+        ], [
+            'file.mimes' => 'Upload a CSV export.',
+        ]);
+
+        $result = $importer->import($request->file('file'), 'biometric');
+
+        if ($result['imported'] === 0 && $result['failed'] === 0 && $result['errors'] !== []) {
+            return back()->with('error', $result['errors'][0]);
+        }
+
+        $message = "Imported {$result['imported']} record(s).";
+
+        if ($result['failed'] > 0) {
+            $message .= " {$result['failed']} row(s) skipped.";
+        }
+
+        return back()
+            ->with($result['failed'] > 0 ? 'error' : 'success', $message)
+            ->with('importErrors', $result['errors']);
     }
 
     public function destroy(AttendanceLog $attendanceLog): RedirectResponse

@@ -104,6 +104,14 @@ plus the assigned `Shift`.
   `OvertimeRequest` — that gate belongs to Payroll.
 - `TimekeepingService::record()` upserts one row per employee/date.
 
+Four screens share `SectionTabs`: **Daily Records** (DTR + CSV import),
+**Overtime** (file / approve / reject), **Shifts & Schedules**, and **Reports**
+(per-employee aggregation, CSV export). Only HR records or corrects time;
+approvers are HR or the employee's own supervisor, never the requester.
+
+A shift still referenced by a schedule or a time record is **deactivated**
+instead of deleted, so attendance history keeps its shift.
+
 ## Gotchas that have already cost time
 
 - **Paginator links.** `employees.links` is the `{first,last,prev,next}` *object*;

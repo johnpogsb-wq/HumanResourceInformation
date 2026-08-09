@@ -40,6 +40,9 @@ class HandleInertiaRequests extends Middleware
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
             ],
+            // Per-row failures from a bulk import, surfaced on the page that
+            // triggered it rather than squeezed into a toast.
+            'importErrors' => fn () => $request->session()->get('importErrors', []),
         ];
     }
 }

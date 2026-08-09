@@ -30,6 +30,9 @@ const Button = forwardRef(function Button(
         loading = false,
         disabled,
         href,
+        // Renders a plain <a> instead of an Inertia Link — required for file
+        // downloads, which an XHR visit would swallow.
+        external = false,
         type = 'button',
         ...props
     },
@@ -50,6 +53,14 @@ const Button = forwardRef(function Button(
             {children}
         </>
     );
+
+    if (href && external) {
+        return (
+            <a ref={ref} href={href} className={classes} {...props}>
+                {content}
+            </a>
+        );
+    }
 
     if (href) {
         return (

@@ -10,6 +10,7 @@ use App\Models\Shift;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * Module 2 — Timekeeping & Attendance.
@@ -141,6 +142,55 @@ class TimekeepingService
             'late_minutes' => (int) $rows->sum('late_minutes'),
             'undertime_minutes' => (int) $rows->sum('undertime_minutes'),
         ];
+    }
+
+    /**
+     * Per-employee totals for the filtered range — the monthly attendance
+     * report, and the shape Payroll will read a period from.
+     *
+     * Aggregated in SQL so a full year stays a single query.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    public function employeeSummaries(Builder $query): Collection
+    {
+        $presentStatuses = [
+            AttendanceLog::STATUS_PRESENT,
+            AttendanceLog::STATUS_LATE,
+            AttendanceLog::STATUS_UNDERTIME,
+        ];
+        $presentList = "'".implode("','", $presentStatuses)."'";
+
+        return (clone $query)
+            ->reorder()
+            ->with(['employee.department:id,name'])
+            ->selectRaw('employee_id')
+            ->selectRaw("sum(case when status in ({$presentList}) then 1 else 0 end) as days_present")
+            ->selectRaw("sum(case when status = '".AttendanceLog::STATUS_ABSENT."' then 1 else 0 end) as days_absent")
+            ->selectRaw('sum(case when late_minutes > 0 then 1 else 0 end) as late_count')
+            ->selectRaw('sum(late_minutes) as total_late_minutes')
+            ->selectRaw('sum(undertime_minutes) as total_undertime_minutes')
+            ->selectRaw('sum(overtime_minutes) as total_overtime_minutes')
+            ->selectRaw('sum(night_diff_minutes) as total_night_diff_minutes')
+            ->selectRaw('sum(hours_worked) as total_hours_worked')
+            ->groupBy('employee_id')
+            ->get()
+            ->map(fn (AttendanceLog $row) => [
+                'employee_id' => $row->employee_id,
+                'employee_number' => $row->employee?->employee_number,
+                'full_name' => $row->employee?->full_name ?? '—',
+                'department' => $row->employee?->department?->name,
+                'days_present' => (int) $row->days_present,
+                'days_absent' => (int) $row->days_absent,
+                'late_count' => (int) $row->late_count,
+                'late_minutes' => (int) $row->total_late_minutes,
+                'undertime_minutes' => (int) $row->total_undertime_minutes,
+                'overtime_hours' => round($row->total_overtime_minutes / 60, 2),
+                'night_diff_hours' => round($row->total_night_diff_minutes / 60, 2),
+                'total_hours' => round((float) $row->total_hours_worked, 2),
+            ])
+            ->sortBy('full_name')
+            ->values();
     }
 
     /**

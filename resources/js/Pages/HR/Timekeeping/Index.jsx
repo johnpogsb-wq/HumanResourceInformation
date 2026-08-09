@@ -1,7 +1,8 @@
-import { router, useForm } from '@inertiajs/react';
+import { router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
-import { CalendarX, Clock, Plus, Timer, TriangleAlert, UserCheck } from 'lucide-react';
+import { CalendarX, Clock, Plus, Timer, TriangleAlert, Upload, UserCheck } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
+import SectionTabs from '@/Pages/HR/Timekeeping/Partials/SectionTabs';
 import {
     Badge,
     Button,
@@ -60,9 +61,26 @@ export default function Index({
     can,
 }) {
     const [entryOpen, setEntryOpen] = useState(false);
+    const [importOpen, setImportOpen] = useState(false);
     const [pendingDelete, setPendingDelete] = useState(null);
 
     const entry = useForm(BLANK_ENTRY);
+    const upload = useForm({ file: null });
+
+    // Per-row import problems, flashed back after the batch runs.
+    const importErrors = usePage().props.importErrors ?? [];
+
+    const submitImport = (event) => {
+        event.preventDefault();
+
+        upload.post('/hr/timekeeping/import', {
+            preserveScroll: true,
+            onSuccess: () => {
+                upload.reset();
+                setImportOpen(false);
+            },
+        });
+    };
 
     const applyFilter = (key, value) => {
         router.get(
@@ -119,13 +137,21 @@ export default function Index({
             breadcrumbs={[{ label: 'Human Resource' }, { label: 'Timekeeping & Attendance' }]}
             actions={
                 can.manage && (
-                    <Button size="sm" onClick={() => setEntryOpen(true)}>
-                        <Plus className="h-4 w-4" />
-                        <span className="hidden sm:inline">Record Time</span>
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                        <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+                            <Upload className="h-4 w-4" />
+                            <span className="hidden sm:inline">Import</span>
+                        </Button>
+                        <Button size="sm" onClick={() => setEntryOpen(true)}>
+                            <Plus className="h-4 w-4" />
+                            <span className="hidden sm:inline">Record Time</span>
+                        </Button>
+                    </div>
                 )
             }
         >
+            <SectionTabs />
+
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {stats.map((stat) => (
                     <StatCard key={stat.label} {...stat} />
@@ -464,6 +490,75 @@ export default function Index({
                     </div>
                 </form>
             </Modal>
+
+            {/* Biometric / CSV import */}
+            <Modal
+                show={importOpen}
+                onClose={() => setImportOpen(false)}
+                title="Import Time Records"
+                description="Upload a biometric device export. Each row is computed exactly like a hand-keyed entry."
+                maxWidth="lg"
+            >
+                <form onSubmit={submitImport} className="space-y-4">
+                    <div className="rounded-lg border border-border bg-secondary/40 p-4">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Expected columns
+                        </p>
+                        <code className="scrollbar-thin block overflow-x-auto whitespace-pre text-xs text-foreground">
+                            employee_number,date,time_in,time_out{'\n'}
+                            PPM-2026-0001,2026-08-01,08:00,17:00
+                        </code>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                            <span className="font-medium text-foreground">employee_number</span>{' '}
+                            and <span className="font-medium text-foreground">date</span> are
+                            required. <code>break_out</code>, <code>break_in</code>, and{' '}
+                            <code>device_id</code> are optional. A bad row is skipped and
+                            reported — the rest of the file still imports.
+                        </p>
+                    </div>
+
+                    <Field label="CSV File" required hint="Max 5 MB" error={upload.errors.file}>
+                        {({ id }) => (
+                            <input
+                                id={id}
+                                type="file"
+                                accept=".csv,text/csv"
+                                onChange={(event) =>
+                                    upload.setData('file', event.target.files[0] ?? null)
+                                }
+                                className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-xs file:font-medium file:text-secondary-foreground hover:file:bg-secondary/70"
+                            />
+                        )}
+                    </Field>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                        <Button variant="outline" onClick={() => setImportOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button type="submit" loading={upload.processing}>
+                            Import
+                        </Button>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* Rows the importer could not read */}
+            {importErrors.length > 0 && (
+                <Card className="mt-5 border-destructive/30">
+                    <div className="px-5 py-4">
+                        <p className="mb-2 text-sm font-semibold text-destructive">
+                            Skipped rows from the last import
+                        </p>
+                        <ul className="space-y-1">
+                            {importErrors.map((message, index) => (
+                                <li key={index} className="text-xs text-muted-foreground">
+                                    {message}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                </Card>
+            )}
 
             {/* Delete confirmation */}
             <Modal
