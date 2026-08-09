@@ -55,8 +55,9 @@ export const NAV_GROUPS = [
                         id: 'payroll',
                         label: 'Payroll & Compensation',
                         icon: Wallet,
+                        // Employees land on their own payslips; the controller
+                        // redirects anyone who cannot run payroll.
                         href: '/hr/payroll',
-                        roles: ['admin', 'hr_staff'],
                     },
                     {
                         id: 'performance',

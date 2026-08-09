@@ -11,15 +11,6 @@ use Inertia\Response;
  */
 class ModulePlaceholderController extends Controller
 {
-    public function payroll(): Response
-    {
-        return $this->render(
-            'Payroll & Compensation',
-            'Salary computation that consumes Timekeeping and Leave data, with statutory contributions and payslips.',
-            ['Salary computation', 'Government contributions & tax', 'Payslip generation (PDF)', 'Payroll run approval', 'Run history'],
-        );
-    }
-
     public function performance(): Response
     {
         return $this->render(

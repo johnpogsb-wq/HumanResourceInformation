@@ -23,6 +23,9 @@ class DatabaseSeeder extends Seeder
         // Both need employees; leave also reads schedules to skip rest days.
         $this->call(AttendanceSeeder::class);
         $this->call(LeaveSeeder::class);
+
+        // Reads the attendance and leave the two seeders above just created.
+        $this->call(PayrollSeeder::class);
     }
 
     private function seedAdminUsers(): void

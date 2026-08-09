@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AttendanceReportController;
+use App\Http\Controllers\CompensationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\LeaveBalanceController;
@@ -9,6 +10,8 @@ use App\Http\Controllers\LeaveController;
 use App\Http\Controllers\LeaveTypeController;
 use App\Http\Controllers\ModulePlaceholderController;
 use App\Http\Controllers\OvertimeController;
+use App\Http\Controllers\PayrollController;
+use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\TimekeepingController;
@@ -87,8 +90,30 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('leave/types/{leaveType}', [LeaveTypeController::class, 'update'])->name('leave.types.update');
         Route::delete('leave/types/{leaveType}', [LeaveTypeController::class, 'destroy'])->name('leave.types.destroy');
 
-        // Modules 4–5 — scaffolded routes, pages land next.
-        Route::get('payroll', [ModulePlaceholderController::class, 'payroll'])->name('payroll');
+        // Module 4 — Payroll & Compensation
+        Route::get('payroll', [PayrollController::class, 'index'])->name('payroll');
+        Route::post('payroll/periods', [PayrollController::class, 'storePeriod'])->name('payroll.periods.store');
+        Route::post('payroll/periods/{payrollPeriod}/generate', [PayrollController::class, 'generate'])
+            ->name('payroll.generate');
+
+        Route::get('payroll/runs/{payrollRun}', [PayrollController::class, 'show'])->name('payroll.run');
+        Route::post('payroll/runs/{payrollRun}/submit', [PayrollController::class, 'submit'])->name('payroll.submit');
+        Route::post('payroll/runs/{payrollRun}/approve', [PayrollController::class, 'approve'])->name('payroll.approve');
+        Route::post('payroll/runs/{payrollRun}/paid', [PayrollController::class, 'markPaid'])->name('payroll.paid');
+        Route::post('payroll/runs/{payrollRun}/cancel', [PayrollController::class, 'cancel'])->name('payroll.cancel');
+
+        Route::get('payroll/payslips', [PayslipController::class, 'index'])->name('payroll.payslips');
+        Route::get('payroll/payslips/{payslip}', [PayslipController::class, 'show'])->name('payroll.payslip');
+
+        Route::get('payroll/compensation', [CompensationController::class, 'index'])->name('payroll.compensation');
+        Route::post('payroll/allowances', [CompensationController::class, 'storeAllowance'])->name('payroll.allowances.store');
+        Route::delete('payroll/allowances/{allowance}', [CompensationController::class, 'destroyAllowance'])
+            ->name('payroll.allowances.destroy');
+        Route::post('payroll/loans', [CompensationController::class, 'storeLoan'])->name('payroll.loans.store');
+        Route::post('payroll/loans/{loan}/cancel', [CompensationController::class, 'cancelLoan'])
+            ->name('payroll.loans.cancel');
+
+        // Module 5 — scaffolded route, page lands next.
         Route::get('performance', [ModulePlaceholderController::class, 'performance'])->name('performance');
     });
 });

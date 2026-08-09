@@ -1,8 +1,9 @@
 # PrimePower Manpower — HRIS (Core Transaction 2)
 
-Fleet & Transportation HRIS. Five modules under one dashboard; **Modules 1–3
-(Employee Information, Timekeeping & Attendance, Leave & Absence) are built**,
-Modules 4–5 have their database schema migrated but no UI yet.
+Fleet & Transportation HRIS. Five modules under one dashboard; **Modules 1–4
+(Employee Information, Timekeeping & Attendance, Leave & Absence, Payroll &
+Compensation) are built**, Module 5 has its database schema migrated but no UI
+yet.
 
 ## Stack
 
@@ -132,6 +133,37 @@ leave, HR included.
   supervisor's own reports, endorsed requests for HR. Shared lazily from
   `HandleInertiaRequests`, so guests never run the query.
 
+## Payroll (Module 4)
+
+**Statutory rates live in `config/payroll.php`, not in code.** SSS, PhilHealth,
+Pag-IBIG, and the TRAIN withholding tables are all config values, so a new
+circular is a config edit. `StatutoryContributionsTest` asserts every bracket
+against the published tables — change the config and the expectations together.
+
+Two database-free, unit-tested classes do the arithmetic; `PayrollService` only
+gathers inputs and stores results:
+
+- `StatutoryContributions` — contributions and withholding tax.
+- `PayrollCalculator` — earnings, deductions, net pay, and the payslip lines.
+  Daily rate is `monthly × 12 ÷ 261`; hourly is daily ÷ 8.
+
+Rules worth knowing before touching it:
+
+- **Only *approved* overtime is paid.** Attendance records raw time past the
+  shift; the `OvertimeRequest` decides what is payable.
+- **Only *unpaid* leave is deducted.** Paid leave is already inside the salary.
+- Taxable income is gross less non-taxable allowances, less time not worked,
+  less the employee's statutory contributions.
+- Contributions are assessed monthly, so a semi-monthly run withholds half.
+- **Loans only move at approval.** A draft can be recomputed freely; approving
+  is the point of no return.
+- **Separation of duties:** HR staff compute and submit, an *admin* approves,
+  and never the same person who processed the run.
+- Employees see their own payslips only once the run is approved or paid — a
+  draft is still being corrected.
+- The payslip page is print-styled; "Save as PDF" is the browser's own print
+  dialog, so there is no PDF dependency to maintain.
+
 ## Gotchas that have already cost time
 
 - **Paginator links.** `employees.links` is the `{first,last,prev,next}` *object*;
@@ -170,8 +202,8 @@ Seed accounts (password `password`): `admin@primepower.test`,
 
 ## Known gaps
 
-Modules 4–5 UI; payroll computation and statutory tables; PDF payslips; holidays
-management screen (2026 holidays are seeded, but there is no UI); leave credit
-accrual on a schedule (credits are allocated in bulk per year); email
-notifications (the bell is in-app only); departments/positions CRUD; `/profile`
-still uses the old Breeze layout.
+Module 5 (Performance Management) UI; 13th-month pay and final-pay computation;
+a BIR alphalist / remittance export; holidays management screen (2026 holidays
+are seeded, but there is no UI); leave credit accrual on a schedule (credits are
+allocated in bulk per year); email notifications (the bell is in-app only);
+departments/positions CRUD; `/profile` still uses the old Breeze layout.

@@ -134,6 +134,32 @@
     }
 }
 
+/* Printing a payslip should produce the payslip, not the whole application. */
+@media print {
+    aside,
+    header {
+        display: none !important;
+    }
+
+    body {
+        background: #fff !important;
+        color: #000 !important;
+    }
+
+    main {
+        padding: 0 !important;
+    }
+
+    /* The shell offsets content for the sidebar; on paper there isn't one. */
+    body > div > div {
+        padding-left: 0 !important;
+    }
+
+    @page {
+        margin: 14mm;
+    }
+}
+
 @layer components {
     .scrollbar-thin {
         scrollbar-width: thin;
