@@ -1,0 +1,174 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Employee;
+use App\Models\EmployeeDocument;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+
+/**
+ * Business logic for Module 1 — shared by the Inertia controller and the REST API
+ * so both entry points behave identically.
+ */
+class EmployeeService
+{
+    /** Documents live on a private disk; photos stay public so avatars can be
+     *  rendered by <img> without a PHP request per row. */
+    public const DOCUMENT_DISK = 'local';
+
+    public const PHOTO_DISK = 'public';
+
+    /** Temp password handed to HR when a self-service login is provisioned. */
+    public ?string $generatedPassword = null;
+
+    /**
+     * Restrict the directory to what the viewer is allowed to see.
+     */
+    public function scopedQuery(User $user): Builder
+    {
+        $query = Employee::query()->with(['department:id,name', 'position:id,title']);
+
+        if ($user->isHrAdmin()) {
+            return $query;
+        }
+
+        if ($user->isSupervisor() && $user->employee) {
+            // Own record plus direct reports.
+            return $query->where(function (Builder $inner) use ($user) {
+                $inner->where('supervisor_id', $user->employee->id)
+                    ->orWhere('id', $user->employee->id);
+            });
+        }
+
+        return $query->where('user_id', $user->id);
+    }
+
+    public function create(array $data, ?UploadedFile $photo = null): Employee
+    {
+        return DB::transaction(function () use ($data, $photo) {
+            $createAccount = (bool) ($data['create_user_account'] ?? false);
+            $role = $data['user_role'] ?? User::ROLE_EMPLOYEE;
+
+            unset($data['create_user_account'], $data['user_role'], $data['photo']);
+
+            $data['employee_number'] = Employee::nextEmployeeNumber();
+
+            if ($photo) {
+                $data['photo_path'] = $photo->store('employee-photos', self::PHOTO_DISK);
+            }
+
+            if ($createAccount) {
+                $data['user_id'] = $this->provisionUserAccount($data, $role)->id;
+            }
+
+            return Employee::create($data);
+        });
+    }
+
+    public function update(Employee $employee, array $data, ?UploadedFile $photo = null): Employee
+    {
+        return DB::transaction(function () use ($employee, $data, $photo) {
+            unset($data['create_user_account'], $data['user_role'], $data['photo'], $data['employee_number']);
+
+            if ($photo) {
+                $this->deletePhoto($employee);
+                $data['photo_path'] = $photo->store('employee-photos', self::PHOTO_DISK);
+            }
+
+            $employee->update($data);
+
+            // Keep the linked login's contact details aligned.
+            if ($employee->user) {
+                $employee->user->update([
+                    'name' => $employee->full_name,
+                    'email' => $employee->email ?? $employee->user->email,
+                ]);
+            }
+
+            return $employee->refresh();
+        });
+    }
+
+    public function delete(Employee $employee): void
+    {
+        DB::transaction(function () use ($employee) {
+            // Soft delete — the 201 file is retained for audit and payroll history.
+            $employee->update(['status' => 'inactive']);
+            $employee->delete();
+
+            $employee->user?->update(['is_active' => false]);
+        });
+    }
+
+    public function restore(Employee $employee): void
+    {
+        DB::transaction(function () use ($employee) {
+            $employee->restore();
+            $employee->update(['status' => 'active']);
+            $employee->user?->update(['is_active' => true]);
+        });
+    }
+
+    public function storeDocument(Employee $employee, array $data, UploadedFile $file): EmployeeDocument
+    {
+        // Private disk: 201-file documents hold contracts and government IDs, so
+        // they are never web-served directly — downloads go through an
+        // authorized controller route.
+        $path = $file->store("employee-documents/{$employee->id}", self::DOCUMENT_DISK);
+
+        return $employee->documents()->create([
+            'type' => $data['type'],
+            'title' => $data['title'],
+            'description' => $data['description'] ?? null,
+            'issued_at' => $data['issued_at'] ?? null,
+            'expires_at' => $data['expires_at'] ?? null,
+            'file_path' => $path,
+            'file_name' => $file->getClientOriginalName(),
+            'mime_type' => $file->getClientMimeType(),
+            'file_size' => $file->getSize(),
+            'uploaded_by' => auth()->id(),
+        ]);
+    }
+
+    public function deleteDocument(EmployeeDocument $document): void
+    {
+        Storage::disk(self::DOCUMENT_DISK)->delete($document->file_path);
+        $document->delete();
+    }
+
+    /** Headline counts for the module dashboard. */
+    public function statistics(Builder $query): array
+    {
+        return [
+            'total' => (clone $query)->count(),
+            'active' => (clone $query)->where('status', 'active')->count(),
+            'on_leave' => (clone $query)->where('status', 'on_leave')->count(),
+            'probationary' => (clone $query)->where('employment_status', 'probationary')->count(),
+        ];
+    }
+
+    private function provisionUserAccount(array $data, string $role): User
+    {
+        $this->generatedPassword = Str::password(12);
+
+        return User::create([
+            'name' => trim("{$data['first_name']} {$data['last_name']}"),
+            'email' => $data['email'],
+            'password' => $this->generatedPassword,
+            'role' => $role,
+            'is_active' => true,
+        ]);
+    }
+
+    private function deletePhoto(Employee $employee): void
+    {
+        if ($employee->photo_path) {
+            Storage::disk(self::PHOTO_DISK)->delete($employee->photo_path);
+        }
+    }
+}

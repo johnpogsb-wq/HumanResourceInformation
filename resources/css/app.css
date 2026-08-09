@@ -1,0 +1,156 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --background: 210 62.5% 96.9%;
+        --foreground: 212 64.3% 11%;
+
+        --card: 206 63.6% 95.7%;
+        --card-foreground: 212 64.3% 11%;
+
+        --popover: 206 63.6% 95.7%;
+        --popover-foreground: 212 64.3% 11%;
+
+        --primary: 203 100% 40%;
+        --primary-foreground: 45 28.6% 97.3%;
+
+        --secondary: 204 58.8% 93.3%;
+        --secondary-foreground: 212 64.3% 11%;
+
+        --muted: 204 58.8% 93.3%;
+        --muted-foreground: 208 33.6% 42.5%;
+
+        --accent: 203 100% 40%;
+        --accent-foreground: 45 28.6% 97.3%;
+
+        --destructive: 0 65.1% 50.6%;
+        --destructive-foreground: 45 28.6% 97.3%;
+
+        --success: 152 69% 31%;
+        --warning: 32 95% 44%;
+        --info: 203 100% 40%;
+
+        /* Border is rgba(0,125,204,0.15) — hue + fixed alpha. */
+        --border: 203 100% 40%;
+        --border-opacity: 0.15;
+        --input: 203 100% 40%;
+        --input-opacity: 0.22;
+        --ring: 203 100% 40%;
+        --switch: 204 52.4% 71.2%;
+
+        --sidebar: 206 63.6% 95.7%;
+        --sidebar-foreground: 212 64.3% 11%;
+        --sidebar-primary: 203 100% 40%;
+        --sidebar-primary-foreground: 45 28.6% 97.3%;
+        --sidebar-accent: 204 58.8% 93.3%;
+        --sidebar-accent-foreground: 203 100% 40%;
+        --sidebar-muted: 208 33.6% 42.5%;
+        --sidebar-border: 203 100% 40%;
+
+        --logo-primary: 0 68.8% 54.7%;
+        --logo-subtitle: 0 9.1% 4.3%;
+
+        /* Chart marks. Held apart from --primary because chart fills must sit
+           inside the OKLCH lightness band for the surface they are drawn on. */
+        --chart-1: 203 100% 40%;
+
+        --radius: 0.625rem;
+    }
+
+    .dark {
+        --background: 209 43.4% 10.4%;
+        --foreground: 207 47.4% 92.5%;
+
+        --card: 210 35.3% 13.3%;
+        --card-foreground: 207 47.4% 92.5%;
+
+        --popover: 210 35.3% 13.3%;
+        --popover-foreground: 207 47.4% 92.5%;
+
+        --primary: 203 78.2% 55.1%;
+        --primary-foreground: 209 43.4% 10.4%;
+
+        --secondary: 210 31% 16.5%;
+        --secondary-foreground: 207 47.4% 92.5%;
+
+        --muted: 210 31% 16.5%;
+        --muted-foreground: 206 22.7% 64.5%;
+
+        --accent: 203 78.2% 55.1%;
+        --accent-foreground: 209 43.4% 10.4%;
+
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 207 47.4% 92.5%;
+
+        --success: 152 55% 48%;
+        --warning: 38 92% 55%;
+        --info: 203 78.2% 55.1%;
+
+        /* Border is rgba(144,167,185,0.12) — hue + fixed alpha. */
+        --border: 206 22.7% 64.5%;
+        --border-opacity: 0.12;
+        --input: 206 22.7% 64.5%;
+        --input-opacity: 0.2;
+        --ring: 203 78.2% 55.1%;
+        --switch: 210 31% 16.5%;
+
+        --sidebar: 210 36.7% 11.8%;
+        --sidebar-foreground: 207 47.4% 92.5%;
+        --sidebar-primary: 203 78.2% 55.1%;
+        --sidebar-primary-foreground: 209 43.4% 10.4%;
+        --sidebar-accent: 210 31% 16.5%;
+        --sidebar-accent-foreground: 203 78.2% 55.1%;
+        --sidebar-muted: 206 22.7% 64.5%;
+        --sidebar-border: 206 22.7% 64.5%;
+
+        --logo-primary: 0 68.8% 54.7%;
+        /* Spec lists #0c0a0a here too, but near-black is unreadable on the dark
+           sidebar (#131E29) — lightened to keep the subtitle legible. */
+        --logo-subtitle: 207 47.4% 92.5%;
+
+        /* #2E96DA — the brand blue stepped down until it lands inside the dark
+           lightness band (L 0.48–0.67); --primary itself sits just outside it. */
+        --chart-1: 204 69.9% 51.8%;
+    }
+
+    * {
+        @apply border-border;
+    }
+
+    html {
+        -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+        @apply bg-background text-foreground antialiased;
+        font-feature-settings: 'cv11', 'ss01';
+    }
+
+    /* Keyboard focus only — avoids the ring on mouse clicks. */
+    :focus-visible {
+        @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+    }
+}
+
+@layer components {
+    .scrollbar-thin {
+        scrollbar-width: thin;
+        scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar-thumb {
+        background-color: hsl(var(--muted-foreground) / 0.35);
+        border-radius: 9999px;
+    }
+}
