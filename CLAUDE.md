@@ -1,8 +1,8 @@
 # PrimePower Manpower — HRIS (Core Transaction 2)
 
-Fleet & Transportation HRIS. Five modules under one dashboard; **Modules 1
-(Employee Information) and 2 (Timekeeping & Attendance) are built**, Modules 3–5
-have their database schema migrated but no UI yet.
+Fleet & Transportation HRIS. Five modules under one dashboard; **Modules 1–3
+(Employee Information, Timekeeping & Attendance, Leave & Absence) are built**,
+Modules 4–5 have their database schema migrated but no UI yet.
 
 ## Stack
 
@@ -112,6 +112,26 @@ approvers are HR or the employee's own supervisor, never the requester.
 A shift still referenced by a schedule or a time record is **deactivated**
 instead of deleted, so attendance history keeps its shift.
 
+## Leave (Module 3)
+
+Two-step approval: the employee files, their **supervisor endorses**, then **HR
+confirms** — and only that last step moves credits. Nobody signs off on their own
+leave, HR included.
+
+- `LeaveService::workingDays()` skips holidays and the employee's rest days, so a
+  Friday-to-Monday request over a weekend costs two days, not four. It reads the
+  schedule through `TimekeepingService` — Module 2 and 3 share one calendar.
+- **Open requests reserve credits.** `availableCredits()` subtracts days on
+  pending and endorsed requests, so the same credit cannot be filed against twice
+  before either is approved.
+- Cancelling or rejecting an already-approved request hands the credits back.
+- Unpaid types (`is_paid = false`) never touch the ledger.
+- Attachments live on the private disk and download through
+  `hr.leave.attachment` after a policy check, same as 201-file documents.
+- The topbar bell counts what **this** user must act on: pending requests from a
+  supervisor's own reports, endorsed requests for HR. Shared lazily from
+  `HandleInertiaRequests`, so guests never run the query.
+
 ## Gotchas that have already cost time
 
 - **Paginator links.** `employees.links` is the `{first,last,prev,next}` *object*;
@@ -150,8 +170,8 @@ Seed accounts (password `password`): `admin@primepower.test`,
 
 ## Known gaps
 
-Modules 3–5 UI; payroll computation and statutory tables; overtime-request
-approval workflow and shift/schedule management screens; biometric import
-endpoint (the API `POST /attendance` is the intended target); notifications; PDF
-payslips; departments/positions CRUD; `/profile` still uses the old Breeze
-layout.
+Modules 4–5 UI; payroll computation and statutory tables; PDF payslips; holidays
+management screen (2026 holidays are seeded, but there is no UI); leave credit
+accrual on a schedule (credits are allocated in bulk per year); email
+notifications (the bell is in-app only); departments/positions CRUD; `/profile`
+still uses the old Breeze layout.

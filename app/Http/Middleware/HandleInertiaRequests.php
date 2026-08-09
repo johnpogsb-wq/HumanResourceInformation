@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\LeaveService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -43,6 +44,11 @@ class HandleInertiaRequests extends Middleware
             // Per-row failures from a bulk import, surfaced on the page that
             // triggered it rather than squeezed into a toast.
             'importErrors' => fn () => $request->session()->get('importErrors', []),
+            // Leave requests waiting on *this* user, for the topbar badge.
+            // Lazily evaluated, so guests and API calls never run the query.
+            'pendingApprovals' => fn () => $request->user()
+                ? app(LeaveService::class)->pendingApprovalsFor($request->user())
+                : 0,
         ];
     }
 }

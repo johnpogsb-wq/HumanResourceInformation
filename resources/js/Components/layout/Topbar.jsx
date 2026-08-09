@@ -12,7 +12,8 @@ const ROLE_LABELS = {
 };
 
 export default function Topbar({ title, breadcrumbs = [], actions, onOpenMobile }) {
-    const user = usePage().props.auth?.user;
+    const { auth, pendingApprovals = 0 } = usePage().props;
+    const user = auth?.user;
 
     return (
         <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
@@ -71,13 +72,28 @@ export default function Topbar({ title, breadcrumbs = [], actions, onOpenMobile 
 
                     <ThemeToggle />
 
-                    <button
-                        type="button"
-                        aria-label="Notifications"
+                    <Link
+                        href="/hr/leave?status=pending"
+                        aria-label={
+                            pendingApprovals > 0
+                                ? `${pendingApprovals} leave request(s) awaiting your approval`
+                                : 'Notifications'
+                        }
+                        title={
+                            pendingApprovals > 0
+                                ? `${pendingApprovals} awaiting your approval`
+                                : 'No pending approvals'
+                        }
                         className="relative grid h-9 w-9 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                     >
                         <Bell className="h-4.5 w-4.5" aria-hidden="true" />
-                    </button>
+
+                        {pendingApprovals > 0 && (
+                            <span className="absolute -right-0.5 -top-0.5 grid min-w-4 place-items-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-4 text-destructive-foreground">
+                                {pendingApprovals > 9 ? '9+' : pendingApprovals}
+                            </span>
+                        )}
+                    </Link>
 
                     <div className="ml-1 hidden sm:block">
                         <Dropdown>

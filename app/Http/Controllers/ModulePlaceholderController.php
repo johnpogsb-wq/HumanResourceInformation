@@ -11,15 +11,6 @@ use Inertia\Response;
  */
 class ModulePlaceholderController extends Controller
 {
-    public function leave(): Response
-    {
-        return $this->render(
-            'Leave & Absence',
-            'Leave filing with a supervisor-then-HR approval workflow, credit tracking, and a team calendar.',
-            ['Leave types & credits', 'Request / approval workflow', 'Leave balance tracking', 'Leave calendar', 'Pending-approval notifications'],
-        );
-    }
-
     public function payroll(): Response
     {
         return $this->render(

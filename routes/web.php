@@ -3,6 +3,10 @@
 use App\Http\Controllers\AttendanceReportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\LeaveBalanceController;
+use App\Http\Controllers\LeaveCalendarController;
+use App\Http\Controllers\LeaveController;
+use App\Http\Controllers\LeaveTypeController;
 use App\Http\Controllers\ModulePlaceholderController;
 use App\Http\Controllers\OvertimeController;
 use App\Http\Controllers\ProfileController;
@@ -62,8 +66,28 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('timekeeping/reports', [AttendanceReportController::class, 'index'])->name('reports');
         Route::get('timekeeping/reports/export', [AttendanceReportController::class, 'export'])->name('reports.export');
 
-        // Modules 3–5 — scaffolded routes, pages land next.
-        Route::get('leave', [ModulePlaceholderController::class, 'leave'])->name('leave');
+        // Module 3 — Leave & Absence
+        Route::get('leave', [LeaveController::class, 'index'])->name('leave');
+        Route::post('leave', [LeaveController::class, 'store'])->name('leave.store');
+        Route::post('leave/{leaveRequest}/approve', [LeaveController::class, 'approve'])->name('leave.approve');
+        Route::post('leave/{leaveRequest}/reject', [LeaveController::class, 'reject'])->name('leave.reject');
+        Route::post('leave/{leaveRequest}/cancel', [LeaveController::class, 'cancel'])->name('leave.cancel');
+        Route::get('leave/{leaveRequest}/attachment', [LeaveController::class, 'attachment'])
+            ->name('leave.attachment');
+
+        Route::get('leave/balances', [LeaveBalanceController::class, 'index'])->name('leave.balances');
+        Route::post('leave/balances', [LeaveBalanceController::class, 'update'])->name('leave.balances.update');
+        Route::post('leave/balances/allocate', [LeaveBalanceController::class, 'allocate'])
+            ->name('leave.balances.allocate');
+
+        Route::get('leave/calendar', LeaveCalendarController::class)->name('leave.calendar');
+
+        Route::get('leave/types', [LeaveTypeController::class, 'index'])->name('leave.types');
+        Route::post('leave/types', [LeaveTypeController::class, 'store'])->name('leave.types.store');
+        Route::put('leave/types/{leaveType}', [LeaveTypeController::class, 'update'])->name('leave.types.update');
+        Route::delete('leave/types/{leaveType}', [LeaveTypeController::class, 'destroy'])->name('leave.types.destroy');
+
+        // Modules 4–5 — scaffolded routes, pages land next.
         Route::get('payroll', [ModulePlaceholderController::class, 'payroll'])->name('payroll');
         Route::get('performance', [ModulePlaceholderController::class, 'performance'])->name('performance');
     });

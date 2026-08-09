@@ -20,8 +20,9 @@ class DatabaseSeeder extends Seeder
         $this->seedAdminUsers();
         $this->seedEmployees();
 
-        // Needs employees and shifts in place.
+        // Both need employees; leave also reads schedules to skip rest days.
         $this->call(AttendanceSeeder::class);
+        $this->call(LeaveSeeder::class);
     }
 
     private function seedAdminUsers(): void
