@@ -183,6 +183,24 @@ The rating scale, the 360 reviewer weights, and the performance bands live in
   no acknowledgement.
 - A KPI already on a scorecard is deactivated rather than deleted.
 
+## Settings
+
+Eight sections under `/settings`, sharing `SettingsLayout` (section list on the
+left). Company-wide sections are **admin-only**; Organization is HR too;
+Appearance and Security belong to every signed-in user.
+
+- Values live in a **key/value `settings` table**, namespaced (`company.name`),
+  JSON-valued, read through one cached map. A new preference is a new key in
+  `Setting::DEFAULTS`, not a migration.
+- **Organization** is the departments/positions CRUD. **Users & Access** is the
+  only place besides the employee form where a login is created — an admin
+  cannot demote or deactivate themselves, and deactivating revokes API tokens.
+- **Security** replaced the starter kit's `/profile`, which now redirects there.
+  `email_verified_at` is guarded, so clearing it on an email change has to
+  happen outside the mass-assignment payload.
+- **Appearance** (theme, sidebar default) is per-device and lives in
+  `localStorage`, not the database.
+
 ## Gotchas that have already cost time
 
 - **Paginator links.** `employees.links` is the `{first,last,prev,next}` *object*;

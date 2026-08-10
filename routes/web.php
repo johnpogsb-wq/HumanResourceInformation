@@ -13,9 +13,14 @@ use App\Http\Controllers\OvertimeController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\PerformanceController;
-use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReviewCycleController;
 use App\Http\Controllers\ScheduleController;
+use App\Http\Controllers\Settings\DataExportController;
+use App\Http\Controllers\Settings\IntegrationController;
+use App\Http\Controllers\Settings\OrganizationController;
+use App\Http\Controllers\Settings\SecurityController;
+use App\Http\Controllers\Settings\SettingsController;
+use App\Http\Controllers\Settings\UserAccessController;
 use App\Http\Controllers\TimekeepingController;
 use Illuminate\Support\Facades\Route;
 
@@ -144,10 +149,55 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 });
 
-Route::middleware('auth')->group(function () {
-    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+/*
+|--------------------------------------------------------------------------
+| Settings
+|--------------------------------------------------------------------------
+| Replaces the starter kit's profile page. Company-wide sections are
+| administrator-only; Appearance and Security belong to every signed-in user.
+*/
+Route::middleware(['auth', 'verified'])->prefix('settings')->name('settings.')->group(function () {
+    Route::get('/', fn () => redirect()->route('settings.general'));
+
+    Route::get('general', [SettingsController::class, 'general'])->name('general');
+    Route::put('general', [SettingsController::class, 'updateGeneral'])->name('general.update');
+
+    Route::get('appearance', [SettingsController::class, 'appearance'])->name('appearance');
+
+    Route::get('organization', [OrganizationController::class, 'index'])->name('organization');
+    Route::post('organization/departments', [OrganizationController::class, 'storeDepartment'])->name('departments.store');
+    Route::put('organization/departments/{department}', [OrganizationController::class, 'updateDepartment'])->name('departments.update');
+    Route::delete('organization/departments/{department}', [OrganizationController::class, 'destroyDepartment'])->name('departments.destroy');
+    Route::post('organization/positions', [OrganizationController::class, 'storePosition'])->name('positions.store');
+    Route::put('organization/positions/{position}', [OrganizationController::class, 'updatePosition'])->name('positions.update');
+    Route::delete('organization/positions/{position}', [OrganizationController::class, 'destroyPosition'])->name('positions.destroy');
+
+    Route::get('notifications', [SettingsController::class, 'notifications'])->name('notifications');
+    Route::put('notifications', [SettingsController::class, 'updateNotifications'])->name('notifications.update');
+
+    Route::get('users', [UserAccessController::class, 'index'])->name('users');
+    Route::post('users', [UserAccessController::class, 'store'])->name('users.store');
+    Route::put('users/{user}/role', [UserAccessController::class, 'updateRole'])->name('users.role');
+    Route::post('users/{user}/toggle', [UserAccessController::class, 'toggleActive'])->name('users.toggle');
+    Route::post('users/{user}/reset-password', [UserAccessController::class, 'resetPassword'])->name('users.reset');
+
+    Route::get('security', [SecurityController::class, 'index'])->name('security');
+    Route::put('security/profile', [SecurityController::class, 'updateProfile'])->name('security.profile');
+    Route::put('security/password', [SecurityController::class, 'updatePassword'])->name('security.password');
+    Route::post('security/tokens/revoke-all', [SecurityController::class, 'revokeTokens'])->name('security.tokens.revokeAll');
+    Route::delete('security/tokens/{token}', [SecurityController::class, 'revokeToken'])->name('security.tokens.revoke');
+    Route::delete('security/account', [SecurityController::class, 'destroyAccount'])->name('security.account');
+
+    Route::get('data', [SettingsController::class, 'data'])->name('data');
+    Route::put('data', [SettingsController::class, 'updateData'])->name('data.update');
+    Route::get('data/export/employees', [DataExportController::class, 'employees'])->name('data.export.employees');
+
+    Route::get('integrations', [IntegrationController::class, 'index'])->name('integrations');
+    Route::post('integrations/tokens', [IntegrationController::class, 'storeToken'])->name('integrations.tokens.store');
+    Route::delete('integrations/tokens/{token}', [IntegrationController::class, 'destroyToken'])->name('integrations.tokens.destroy');
 });
+
+// The starter kit's profile page now lives under Settings > Security.
+Route::middleware('auth')->get('/profile', fn () => redirect()->route('settings.security'));
 
 require __DIR__.'/auth.php';
