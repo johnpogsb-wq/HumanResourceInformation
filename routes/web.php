@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\AttendanceExceptionController;
+use App\Http\Controllers\AttendanceHistoryController;
 use App\Http\Controllers\AttendanceReportController;
 use App\Http\Controllers\CompensationController;
 use App\Http\Controllers\DashboardController;
@@ -75,6 +77,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Attendance summary reports
         Route::get('timekeeping/reports', [AttendanceReportController::class, 'index'])->name('reports');
         Route::get('timekeeping/reports/export', [AttendanceReportController::class, 'export'])->name('reports.export');
+
+        // Automated exception checker — flags DTR records worth a second look.
+        Route::get('timekeeping/exceptions', [AttendanceExceptionController::class, 'index'])->name('exceptions');
+
+        // Who edited a DTR record, when, and what changed.
+        Route::get('timekeeping/history', [AttendanceHistoryController::class, 'index'])->name('timekeeping.history');
 
         // Module 3 — Leave & Absence
         Route::get('leave', [LeaveController::class, 'index'])->name('leave');

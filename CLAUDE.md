@@ -104,13 +104,31 @@ plus the assigned `Shift`.
   `OvertimeRequest` — that gate belongs to Payroll.
 - `TimekeepingService::record()` upserts one row per employee/date.
 
-Four screens share `SectionTabs`: **Daily Records** (DTR + CSV import),
-**Overtime** (file / approve / reject), **Shifts & Schedules**, and **Reports**
-(per-employee aggregation, CSV export). Only HR records or corrects time;
-approvers are HR or the employee's own supervisor, never the requester.
+Six screens share `SectionTabs`: **Daily Records** (DTR + CSV import),
+**Overtime** (file / approve / reject), **Shifts & Schedules**, **Reports**
+(per-employee aggregation, CSV export), **Exceptions**, and **History**. Only HR
+records or corrects time; approvers are HR or the employee's own supervisor,
+never the requester.
 
 A shift still referenced by a schedule or a time record is **deactivated**
 instead of deleted, so attendance history keeps its shift.
+
+**Exceptions** is the automated DTR checker: `AttendanceExceptionScanner` is a
+database-free, config-driven rule engine (same pattern as
+`AttendanceCalculator`) that flags two kinds of anomaly over the filtered
+range — record-level (a missing time-out, a day's lateness or overtime past a
+threshold) and pattern-level (an employee trending toward chronic lateness or
+absence, even when no single day crosses a threshold). Thresholds live in
+`config/timekeeping.php`, not code, so tightening a rule is a config edit. A
+missing time-out is never flagged for *today* — only for a day already in the
+past, per `stale_open_punch_days`.
+
+**History** is the audit trail for DTR edits — who changed a record, when, and
+what changed — reusing the same `viewAuditLog` gate as Settings > Security
+rather than a new permission, so it's HR/admin only. It filters by event type
+(`created`/`updated`/`deleted`) only: `employee_id` lives inside the audit's
+JSON diff, not a real column, so filtering on it after `paginate()` would
+silently corrupt the pagination totals.
 
 ## Leave (Module 3)
 
