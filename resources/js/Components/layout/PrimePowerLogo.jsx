@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
 /** Drop the company logo here and it is picked up automatically. */
-const LOGO_SRC = '/images/logo.png';
+const LOGO_SRC = '/images/logo.jpg';
 
 /**
  * The logo mark.

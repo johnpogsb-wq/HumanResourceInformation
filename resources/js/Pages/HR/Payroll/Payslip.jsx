@@ -1,5 +1,6 @@
 import { usePage } from '@inertiajs/react';
 import { ArrowLeft, Printer } from 'lucide-react';
+import { LogoMark } from '@/Components/layout/PrimePowerLogo';
 import AppLayout from '@/Layouts/AppLayout';
 import { Badge, Button, Card } from '@/Components/ui';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -90,11 +91,14 @@ export default function PayslipPage({ payslip }) {
                 <div className="p-6 print:p-0">
                     {/* Header */}
                     <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-5">
-                        <div>
-                            <p className="text-sm font-bold tracking-tight text-logo-primary">
-                                {(brand.name ?? 'PrimePower').toUpperCase()}
-                            </p>
-                            <p className="text-xs text-muted-foreground">{brand.tagline}</p>
+                        <div className="flex items-center gap-2.5">
+                            <LogoMark className="h-10 w-10" />
+                            <div>
+                                <p className="text-sm font-bold tracking-tight text-logo-primary">
+                                    {(brand.name ?? 'PrimePower').toUpperCase()}
+                                </p>
+                                <p className="text-xs text-muted-foreground">{brand.tagline}</p>
+                            </div>
                         </div>
 
                         <div className="text-right">
