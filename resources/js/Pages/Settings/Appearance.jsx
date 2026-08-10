@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Check, Monitor, Moon, Sun } from 'lucide-react';
+import { LogoMark } from '@/Components/layout/PrimePowerLogo';
 import SettingsLayout from '@/Layouts/SettingsLayout';
 import { Card, CardBody, CardHeader } from '@/Components/ui';
 import { useTheme } from '@/context/ThemeContext';
@@ -150,9 +151,7 @@ export default function Appearance({ brand }) {
                 />
                 <CardBody>
                     <div className="flex items-center gap-3 rounded-lg border border-border bg-sidebar p-4">
-                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-logo-primary text-sm font-bold text-primary-foreground">
-                            P
-                        </span>
+                        <LogoMark />
                         <div className="min-w-0">
                             <p className="truncate text-[13px] font-bold tracking-tight text-logo-primary">
                                 {brand.name?.toUpperCase()}

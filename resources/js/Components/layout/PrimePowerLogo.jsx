@@ -21,7 +21,7 @@ export function LogoMark({ className }) {
                 src={LOGO_SRC}
                 alt=""
                 onError={() => setFailed(true)}
-                className={cn('h-9 w-9 shrink-0 object-contain', className)}
+                className={cn('h-7 w-7 shrink-0 object-contain', className)}
             />
         );
     }
@@ -29,7 +29,7 @@ export function LogoMark({ className }) {
     return (
         <svg
             viewBox="0 0 32 32"
-            className={cn('h-9 w-9 shrink-0', className)}
+            className={cn('h-7 w-7 shrink-0', className)}
             role="img"
             aria-label="PrimePower"
         >
