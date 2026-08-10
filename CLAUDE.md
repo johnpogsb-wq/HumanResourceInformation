@@ -237,9 +237,13 @@ Appearance and Security belong to every signed-in user.
 
 ## Database
 
-Currently **SQLite** (`database/database.sqlite`), though the project targets
-PostgreSQL — swap `DB_*` in `.env` and re-run `php artisan migrate:fresh --seed`.
-Tests always use in-memory SQLite.
+**PostgreSQL** (`primepower_hris`, local server on port `5433` — not the 5432
+default; check `DB_PORT` in `.env` before assuming). Tests always use
+in-memory SQLite regardless of the app's own connection (see `phpunit.xml`),
+so a Postgres-only bug (like the `ilike` operator) won't show up in a normal
+`php artisan test` run — it only surfaces against a real Postgres database.
+The old `database/database.sqlite` is kept only as a pre-migration backup
+under `storage/app/backups/` (gitignored, not the live source of truth).
 
 Seed accounts (password `password`): `admin@primepower.test`,
 `hr@primepower.test`.
