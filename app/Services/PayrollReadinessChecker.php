@@ -1,0 +1,203 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\AttendanceLog;
+use App\Models\Employee;
+use App\Models\OvertimeRequest;
+use App\Models\PayrollPeriod;
+use Illuminate\Support\Collection;
+
+/**
+ * Module 2 → Module 4 — is the DTR clean enough to pay from?
+ *
+ * PayrollService::gatherInputs() reads attendance without judging it, so a
+ * forgotten time-out quietly understates an employee's hours and a pending
+ * overtime request quietly pays nothing. Both are silent: the run computes,
+ * the totals look plausible, and the error only surfaces when someone opens
+ * their payslip. This runs the same checks *before* the money is computed.
+ *
+ * Severity is a workflow decision, not a data one:
+ *
+ *  - blocker — paying from this would be wrong (a day with no time-out has
+ *    no hours behind it). HR should fix the DTR first.
+ *  - warning — payable, but someone should have decided already (a pending
+ *    overtime request pays zero unless approved before the run).
+ *
+ * Nothing here hard-stops a run. HR may have a reason, and a payroll that
+ * cannot be run is worse than one that warns loudly — but the decision is
+ * recorded on screen instead of being invisible.
+ */
+class PayrollReadinessChecker
+{
+    public const SEVERITY_BLOCKER = 'blocker';
+
+    public const SEVERITY_WARNING = 'warning';
+
+    public function __construct(
+        private readonly AttendanceExceptionScanner $scanner,
+    ) {}
+
+    /**
+     * @return array{
+     *     ready: bool,
+     *     blockers: int,
+     *     warnings: int,
+     *     checks: array<int, array<string, mixed>>
+     * }
+     */
+    public function check(PayrollPeriod $period): array
+    {
+        $checks = collect([
+            $this->missingTimeOuts($period),
+            $this->pendingOvertime($period),
+            $this->employeesWithoutAttendance($period),
+        ])->filter()->values();
+
+        $blockers = $checks->where('severity', self::SEVERITY_BLOCKER)->count();
+
+        return [
+            'ready' => $checks->isEmpty(),
+            'blockers' => $blockers,
+            'warnings' => $checks->where('severity', self::SEVERITY_WARNING)->count(),
+            'checks' => $checks->all(),
+        ];
+    }
+
+    /**
+     * Days clocked in but never out. The calculator has no end time to work
+     * from, so the hours behind that day's pay are missing, not merely low.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function missingTimeOuts(PayrollPeriod $period): ?array
+    {
+        $exceptions = $this->scanner
+            ->scan(AttendanceLog::query()->filter([
+                'from' => $period->start_date->toDateString(),
+                'to' => $period->end_date->toDateString(),
+            ]))
+            ->where('type', AttendanceExceptionScanner::TYPE_MISSING_PUNCH);
+
+        if ($exceptions->isEmpty()) {
+            return null;
+        }
+
+        return $this->entry(
+            'missing_time_outs',
+            self::SEVERITY_BLOCKER,
+            'Incomplete time records',
+            "{$exceptions->count()} day(s) have a time-in with no time-out. Hours worked for those days are understated.",
+            'Review in Timekeeping → Exceptions',
+            '/hr/timekeeping/exceptions?type='.AttendanceExceptionScanner::TYPE_MISSING_PUNCH
+                .'&from='.$period->start_date->toDateString()
+                .'&to='.$period->end_date->toDateString(),
+            $this->names($exceptions->pluck('employee_name')),
+        );
+    }
+
+    /**
+     * Overtime filed but not yet decided. Only approved overtime is paid, so
+     * these pay nothing — which is correct only if that was deliberate.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function pendingOvertime(PayrollPeriod $period): ?array
+    {
+        $pending = OvertimeRequest::with('employee:id,first_name,middle_name,last_name,suffix')
+            ->where('status', OvertimeRequest::STATUS_PENDING)
+            ->whereBetween('date', [
+                $period->start_date->toDateString(),
+                $period->end_date->toDateString(),
+            ])
+            ->get();
+
+        if ($pending->isEmpty()) {
+            return null;
+        }
+
+        $hours = round((float) $pending->sum('hours'), 2);
+
+        return $this->entry(
+            'pending_overtime',
+            self::SEVERITY_WARNING,
+            'Undecided overtime',
+            "{$pending->count()} overtime request(s) totalling {$hours}h are still pending. Only approved overtime is paid, so these will compute as zero.",
+            'Decide in Timekeeping → Overtime',
+            '/hr/timekeeping/overtime?status='.OvertimeRequest::STATUS_PENDING,
+            $this->names($pending->map(fn (OvertimeRequest $request) => $request->employee?->full_name)),
+        );
+    }
+
+    /**
+     * Active, salaried employees with no DTR at all for the period. They are
+     * still paid their basic salary, so this is silent by design — the person
+     * may have been hired mid-period, or their biometrics may never have
+     * imported.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function employeesWithoutAttendance(PayrollPeriod $period): ?array
+    {
+        $missing = Employee::query()
+            ->where('status', '!=', 'inactive')
+            ->where('basic_salary', '>', 0)
+            ->whereNotExists(function ($query) use ($period) {
+                $query->selectRaw(1)
+                    ->from('attendance_logs')
+                    ->whereColumn('attendance_logs.employee_id', 'employees.id')
+                    ->whereBetween('attendance_logs.log_date', [
+                        $period->start_date->toDateString(),
+                        $period->end_date->toDateString(),
+                    ]);
+            })
+            ->get(['id', 'first_name', 'middle_name', 'last_name', 'suffix']);
+
+        if ($missing->isEmpty()) {
+            return null;
+        }
+
+        return $this->entry(
+            'no_attendance',
+            self::SEVERITY_WARNING,
+            'No time records for the period',
+            "{$missing->count()} employee(s) have no DTR in this period. They will be paid their basic salary with no attendance behind it.",
+            'Review in Timekeeping → Daily Records',
+            '/hr/timekeeping?from='.$period->start_date->toDateString()
+                .'&to='.$period->end_date->toDateString(),
+            $this->names($missing->map(fn (Employee $employee) => $employee->full_name)),
+        );
+    }
+
+    /**
+     * A handful of names, so the panel says who without becoming a report.
+     *
+     * @param  Collection<int, string|null>  $names
+     * @return array<int, string>
+     */
+    private function names(Collection $names): array
+    {
+        return $names->filter()->unique()->sort()->take(5)->values()->all();
+    }
+
+    /** @return array<string, mixed> */
+    private function entry(
+        string $key,
+        string $severity,
+        string $title,
+        string $detail,
+        string $actionLabel,
+        string $actionHref,
+        array $employees,
+    ): array {
+        return [
+            'key' => $key,
+            'severity' => $severity,
+            'title' => $title,
+            'detail' => $detail,
+            'action_label' => $actionLabel,
+            'action_href' => $actionHref,
+            'employees' => $employees,
+        ];
+    }
+}

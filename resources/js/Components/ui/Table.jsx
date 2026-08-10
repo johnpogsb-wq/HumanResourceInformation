@@ -27,6 +27,15 @@ export function TBody({ className, children, ...props }) {
     );
 }
 
+/** Control totals — a summary row that reads as part of the table, not of the data. */
+export function TFoot({ className, children, ...props }) {
+    return (
+        <tfoot className={cn('border-t-2 border-border bg-secondary/50', className)} {...props}>
+            {children}
+        </tfoot>
+    );
+}
+
 export function TR({ className, clickable = false, children, ...props }) {
     return (
         <tr

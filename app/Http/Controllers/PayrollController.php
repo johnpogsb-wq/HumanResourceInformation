@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PayrollPeriod;
 use App\Models\PayrollRun;
+use App\Services\PayrollReadinessChecker;
 use App\Services\PayrollService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,7 +19,10 @@ use Inertia\Response;
  */
 class PayrollController extends Controller
 {
-    public function __construct(private readonly PayrollService $payroll) {}
+    public function __construct(
+        private readonly PayrollService $payroll,
+        private readonly PayrollReadinessChecker $readiness,
+    ) {}
 
     public function index(Request $request): Response|RedirectResponse
     {
@@ -151,6 +155,16 @@ class PayrollController extends Controller
                     'links' => $payslips->linkCollection()->toArray(),
                 ],
             ],
+            // What the DTR looked like when this run was computed. Only worth
+            // showing while the run can still be recomputed — once it is
+            // approved the figures are history, and the panel would be
+            // advising a fix that can no longer be applied.
+            'readiness' => in_array($payrollRun->status, [
+                PayrollRun::STATUS_DRAFT,
+                PayrollRun::STATUS_FOR_APPROVAL,
+            ], true)
+                ? $this->readiness->check($payrollRun->period)
+                : null,
             'can' => [
                 'recompute' => $request->user()->can('update', $payrollRun),
                 'submit' => $request->user()->can('submit', $payrollRun),

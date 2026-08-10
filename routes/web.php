@@ -4,6 +4,7 @@ use App\Http\Controllers\AttendanceExceptionController;
 use App\Http\Controllers\AttendanceHistoryController;
 use App\Http\Controllers\AttendanceReportController;
 use App\Http\Controllers\CompensationController;
+use App\Http\Controllers\ComplianceController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\KpiController;
@@ -119,6 +120,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('payroll/payslips', [PayslipController::class, 'index'])->name('payroll.payslips');
         Route::get('payroll/payslips/{payslip}', [PayslipController::class, 'show'])->name('payroll.payslip');
+
+        // Statutory remittance and BIR reporting, read back from issued payslips.
+        // Export sits above the index so /compliance/export is not swallowed.
+        Route::get('payroll/compliance/export', [ComplianceController::class, 'export'])
+            ->name('payroll.compliance.export');
+        Route::get('payroll/compliance', [ComplianceController::class, 'index'])
+            ->name('payroll.compliance');
 
         Route::get('payroll/compensation', [CompensationController::class, 'index'])->name('payroll.compensation');
         Route::post('payroll/allowances', [CompensationController::class, 'storeAllowance'])->name('payroll.allowances.store');

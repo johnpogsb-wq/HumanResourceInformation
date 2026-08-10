@@ -11,5 +11,5 @@ export {
     MeterCard,
     SplitStatCard,
 } from './Card';
-export { Table, THead, TBody, TR, TH, TD, TableEmpty } from './Table';
+export { Table, THead, TBody, TFoot, TR, TH, TD, TableEmpty } from './Table';
 export { Field, Input, InputError, Label, SearchInput, Select, Textarea } from './Form';

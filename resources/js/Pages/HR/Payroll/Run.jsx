@@ -29,13 +29,14 @@ import {
     Textarea,
 } from '@/Components/ui';
 import { formatCurrency, formatDate, initials } from '@/lib/utils';
+import ReadinessPanel from './Partials/ReadinessPanel';
 
 const titleCase = (value) =>
     String(value ?? '')
         .replace(/[_-]/g, ' ')
         .replace(/\b\w/g, (character) => character.toUpperCase());
 
-export default function Run({ run, payslips, can }) {
+export default function Run({ run, payslips, readiness, can }) {
     const [action, setAction] = useState(null); // 'approve' | 'cancel'
 
     const form = useForm({ remarks: '' });
@@ -159,6 +160,8 @@ export default function Run({ run, payslips, can }) {
                     <StatCard key={stat.label} {...stat} />
                 ))}
             </div>
+
+            <ReadinessPanel readiness={readiness} />
 
             <Card className="mb-5">
                 <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">

@@ -181,6 +181,26 @@ Rules worth knowing before touching it:
 - The payslip page is print-styled; "Save as PDF" is the browser's own print
   dialog, so there is no PDF dependency to maintain.
 
+**Readiness — the Module 2 → Module 4 gate.** `gatherInputs()` reads attendance
+without judging it, so a forgotten time-out quietly understates hours and a
+pending `OvertimeRequest` quietly pays nothing. `PayrollReadinessChecker` runs
+those checks *before* the money is computed and shows them on the run screen:
+`blocker` (paying from this would be wrong) versus `warning` (payable, but
+someone should have decided). It reuses `AttendanceExceptionScanner` rather
+than re-deriving what a bad record looks like. **Nothing here hard-stops a
+run** — a payroll that cannot be run is worse than one that warns loudly — and
+the panel is hidden once a run is approved, since the figures are then history
+and the advice can no longer be applied.
+
+**Compliance** is the remittance and BIR reporting screen: SSS (R-3),
+PhilHealth (RF-1), Pag-IBIG (MCRF), and the BIR alphalist, each with a CSV
+export carrying a control total. `ComplianceReportBuilder` is database-free and
+**reads figures back from stored payslips, never recomputes them** — otherwise
+a new SSS circular in `config/payroll.php` would silently rewrite what was
+already remitted. Only *approved* and *paid* runs are reportable; a draft is
+still being corrected. An employee missing the relevant government number is
+flagged, because the filing cannot include them until it is on their 201 file.
+
 ## Performance (Module 5)
 
 The rating scale, the 360 reviewer weights, and the performance bands live in
@@ -269,10 +289,9 @@ Seed accounts (password `password`): `admin@primepower.test`,
 ## Known gaps
 
 All five modules are functional. Still outstanding: 13th-month pay and final-pay
-computation; a BIR alphalist / remittance export; peer and subordinate reviews
-are supported by the schema and scoring but have no assignment UI (only self and
-supervisor are created at rollout); holidays management screen (2026 holidays are
-seeded, but there is no UI); leave credit accrual on a schedule (credits are
-allocated in bulk per year); email notifications (the bell is in-app only);
-departments/positions CRUD; `/profile` still uses the old Breeze layout; the
-project still runs on SQLite rather than PostgreSQL.
+computation; peer and subordinate reviews are supported by the schema and
+scoring but have no assignment UI (only self and supervisor are created at
+rollout); holidays management screen (2026 holidays are seeded, but there is no
+UI); leave credit accrual on a schedule (credits are allocated in bulk per
+year); email notifications (the bell is in-app only); `/profile` still uses the
+old Breeze layout.
