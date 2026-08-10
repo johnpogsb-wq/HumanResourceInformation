@@ -7,12 +7,11 @@
         --background: 210 62.5% 96.9%;
         --foreground: 212 64.3% 11%;
 
-        /* Cards and the sidebar sit white on the tinted canvas, so the surface
-           hierarchy reads at a glance. */
-        --card: 0 0% 100%;
+        /* #EDF5FB — per the brand spec. */
+        --card: 206 63.6% 95.7%;
         --card-foreground: 212 64.3% 11%;
 
-        --popover: 0 0% 100%;
+        --popover: 206 63.6% 95.7%;
         --popover-foreground: 212 64.3% 11%;
 
         --primary: 203 100% 40%;
@@ -42,13 +41,16 @@
         --ring: 203 100% 40%;
         --switch: 204 52.4% 71.2%;
 
-        --sidebar: 0 0% 100%;
+        /* #EDF5FB — per the brand spec. */
+        --sidebar: 206 63.6% 95.7%;
         --sidebar-foreground: 212 64.3% 11%;
         --sidebar-primary: 203 100% 40%;
         --sidebar-primary-foreground: 45 28.6% 97.3%;
-        --sidebar-accent: 205 90% 94.5%;
+        /* Slightly deeper than the sidebar so the active row still separates
+           from it now that both are tinted. */
+        --sidebar-accent: 204 62% 89%;
         --sidebar-accent-foreground: 203 100% 40%;
-        --sidebar-muted: 208 25% 55%;
+        --sidebar-muted: 208 33.6% 42.5%;
         --sidebar-border: 203 100% 40%;
 
         --logo-primary: 0 68.8% 54.7%;
@@ -59,7 +61,7 @@
            Assign these in fixed order, never cycled — the set is validated for
            colour-vision separation and is only proven for four slots. */
         --chart-1: 203 100% 40%;
-        --chart-2: 32 94.6% 43.7%;
+        --chart-2: 31 90.2% 40%;
         --chart-3: 262 83.3% 57.8%;
         --chart-4: 174 83.4% 33.1%;
 
@@ -113,9 +115,10 @@
         --sidebar-border: 206 22.7% 64.5%;
 
         --logo-primary: 0 68.8% 54.7%;
-        /* Spec lists #0c0a0a here too, but near-black is unreadable on the dark
-           sidebar (#131E29) — lightened to keep the subtitle legible. */
-        --logo-subtitle: 207 47.4% 92.5%;
+        /* #0c0a0a in both modes, per the brand spec. Note this is near-black on
+           the dark sidebar (#131E29) — about 1.1:1, effectively invisible.
+           Raising the lightness here is the one-line fix if that is unwanted. */
+        --logo-subtitle: 0 9.1% 4.3%;
 
         /* #2E96DA — the brand blue stepped down until it lands inside the dark
            lightness band (L 0.48–0.67); --primary itself sits just outside it.

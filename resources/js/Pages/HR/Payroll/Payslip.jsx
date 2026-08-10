@@ -1,3 +1,4 @@
+import { usePage } from '@inertiajs/react';
 import { ArrowLeft, Printer } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Badge, Button, Card } from '@/Components/ui';
@@ -50,6 +51,7 @@ function Detail({ label, value }) {
 
 export default function PayslipPage({ payslip }) {
     const { employee, period, attendance } = payslip;
+    const brand = usePage().props.brand ?? {};
 
     return (
         <AppLayout
@@ -90,11 +92,9 @@ export default function PayslipPage({ payslip }) {
                     <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-5">
                         <div>
                             <p className="text-sm font-bold tracking-tight text-logo-primary">
-                                PRIMEPOWER MANPOWER
+                                {(brand.name ?? 'PrimePower').toUpperCase()}
                             </p>
-                            <p className="text-xs text-muted-foreground">
-                                Fleet &amp; Transportation Mgmt.
-                            </p>
+                            <p className="text-xs text-muted-foreground">{brand.tagline}</p>
                         </div>
 
                         <div className="text-right">

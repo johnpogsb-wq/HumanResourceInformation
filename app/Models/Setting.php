@@ -16,8 +16,8 @@ class Setting extends Model
     /** Defaults for every key the application understands. */
     public const DEFAULTS = [
         // --- Company profile ---
-        'company.name' => 'PrimePower Manpower',
-        'company.tagline' => 'Fleet & Transportation Mgmt.',
+        'company.name' => 'PrimePower',
+        'company.tagline' => 'Human Resource Information System',
         'company.address' => '',
         'company.email' => '',
         'company.phone' => '',

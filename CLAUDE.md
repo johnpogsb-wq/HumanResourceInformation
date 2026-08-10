@@ -203,6 +203,13 @@ Appearance and Security belong to every signed-in user.
 
 ## Gotchas that have already cost time
 
+- **Settings are cached forever.** `Setting::all()` uses `rememberForever`, and
+  `setMany()` clears it — but editing `Setting::DEFAULTS` in code does not. After
+  changing a default, run `php artisan cache:clear` or you will read the old one.
+- **The logo subtitle is `#0c0a0a` in both modes, per the brand spec.** On the
+  dark sidebar (`#131E29`) that is roughly 1.1:1 — effectively invisible.
+  Raising `--logo-subtitle` in the `.dark` block is the one-line fix.
+
 - **Paginator links.** `employees.links` is the `{first,last,prev,next}` *object*;
   the numbered page buttons are `employees.meta.links` (an *array*). Passing the
   object to `<Pagination>` crashes React and blanks the page. Guarded by a test.

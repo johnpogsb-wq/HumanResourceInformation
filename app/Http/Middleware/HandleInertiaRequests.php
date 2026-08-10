@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Setting;
 use App\Services\LeaveService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -44,6 +45,12 @@ class HandleInertiaRequests extends Middleware
             // Per-row failures from a bulk import, surfaced on the page that
             // triggered it rather than squeezed into a toast.
             'importErrors' => fn () => $request->session()->get('importErrors', []),
+            // Brand text, so the logo and payslip header follow whatever
+            // Settings > General holds rather than a hardcoded string.
+            'brand' => fn () => [
+                'name' => Setting::get('company.name'),
+                'tagline' => Setting::get('company.tagline'),
+            ],
             // Leave requests waiting on *this* user, for the topbar badge.
             // Lazily evaluated, so guests and API calls never run the query.
             'pendingApprovals' => fn () => $request->user()
