@@ -2,7 +2,6 @@ import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import { Banknote, HandCoins, Plus, Trash2 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import SectionTabs from '@/Pages/HR/Payroll/Partials/SectionTabs';
 import {
     Badge,
     Button,
@@ -88,8 +87,6 @@ export default function Compensation({ allowances, loans, employees, frequencies
                 { label: 'Allowances & Loans' },
             ]}
         >
-            <SectionTabs />
-
             {/* Allowances */}
             <Card className="mb-5">
                 <CardHeader

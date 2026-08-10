@@ -52,7 +52,9 @@ class AttendanceSeeder extends Seeder
                 ],
             );
 
-            for ($back = self::DAYS_OF_HISTORY; $back >= 1; $back--) {
+            // Runs through today (>= 0), so the dashboard's "today" figures are
+            // populated the moment the seeder finishes.
+            for ($back = self::DAYS_OF_HISTORY; $back >= 0; $back--) {
                 $date = Carbon::today()->subDays($back);
                 $isWeekend = $date->dayOfWeekIso >= 6;
                 $isHoliday = in_array($date->toDateString(), $holidays, true);

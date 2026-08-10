@@ -2,7 +2,6 @@ import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import { CalendarRange, Play, Plus } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import SectionTabs from '@/Pages/HR/Payroll/Partials/SectionTabs';
 import {
     Badge,
     Button,
@@ -57,8 +56,6 @@ export default function Index({ periods, suggestion, can }) {
                 )
             }
         >
-            <SectionTabs />
-
             <Card>
                 <Table>
                     <THead>

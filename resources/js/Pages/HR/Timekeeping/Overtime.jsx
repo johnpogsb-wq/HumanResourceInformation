@@ -2,7 +2,6 @@ import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import { CheckCircle2, Clock3, Hourglass, Plus, Timer, XCircle } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import SectionTabs from '@/Pages/HR/Timekeeping/Partials/SectionTabs';
 import {
     Badge,
     Button,
@@ -118,8 +117,6 @@ export default function Overtime({
                 )
             }
         >
-            <SectionTabs />
-
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {stats.map((stat) => (
                     <StatCard key={stat.label} {...stat} />

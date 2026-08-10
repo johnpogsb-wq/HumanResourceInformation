@@ -1,6 +1,5 @@
 import { Receipt } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import SectionTabs from '@/Pages/HR/Payroll/Partials/SectionTabs';
 import {
     Badge,
     Button,
@@ -33,8 +32,6 @@ export default function Payslips({ payslips, isHr }) {
                 { label: 'Payslips' },
             ]}
         >
-            <SectionTabs show={isHr} />
-
             <Card>
                 <Table>
                     <THead>

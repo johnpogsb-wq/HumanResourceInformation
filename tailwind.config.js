@@ -82,6 +82,9 @@ export default {
 
                 chart: {
                     1: token('chart-1'),
+                    2: token('chart-2'),
+                    3: token('chart-3'),
+                    4: token('chart-4'),
                 },
             },
 

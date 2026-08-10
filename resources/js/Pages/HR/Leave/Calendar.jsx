@@ -1,7 +1,6 @@
 import { router } from '@inertiajs/react';
 import { CalendarOff, ChevronLeft, ChevronRight } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import SectionTabs from '@/Pages/HR/Leave/Partials/SectionTabs';
 import { Card, CardBody, Select } from '@/Components/ui';
 import { cn } from '@/lib/utils';
 
@@ -45,8 +44,6 @@ export default function Calendar({
                 { label: 'Calendar' },
             ]}
         >
-            <SectionTabs />
-
             <Card>
                 <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
                     <div className="flex items-center gap-1">

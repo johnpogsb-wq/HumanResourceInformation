@@ -2,7 +2,6 @@ import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import { Sparkles, Users, Wallet } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import SectionTabs from '@/Pages/HR/Leave/Partials/SectionTabs';
 import {
     Button,
     Card,
@@ -83,8 +82,6 @@ export default function Balances({ year, years, types, rows, can }) {
                 )
             }
         >
-            <SectionTabs />
-
             <Card>
                 <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
                     <div className="sm:w-40">

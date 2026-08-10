@@ -2,7 +2,6 @@ import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import { CalendarClock, Lock, Pencil, Plus, Rocket } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import SectionTabs from '@/Pages/HR/Performance/Partials/SectionTabs';
 import {
     Badge,
     Button,
@@ -79,8 +78,6 @@ export default function Cycles({ cycles, types, can }) {
                 { label: 'Review Cycles' },
             ]}
         >
-            <SectionTabs />
-
             <Card>
                 <CardHeader
                     title="Review Cycles"

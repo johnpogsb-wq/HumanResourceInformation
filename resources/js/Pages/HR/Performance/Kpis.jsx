@@ -2,7 +2,6 @@ import { router, useForm } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 import { Pencil, Plus, Target, Trash2 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import SectionTabs from '@/Pages/HR/Performance/Partials/SectionTabs';
 import {
     Badge,
     Button,
@@ -90,8 +89,6 @@ export default function Kpis({ kpis, departments, positions, can }) {
                 { label: 'KPI Library' },
             ]}
         >
-            <SectionTabs />
-
             <Card>
                 <CardHeader
                     title="KPI Library"

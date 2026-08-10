@@ -2,7 +2,6 @@ import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import { FileText, Paperclip, Pencil, Plus, Trash2 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import SectionTabs from '@/Pages/HR/Leave/Partials/SectionTabs';
 import {
     Badge,
     Button,
@@ -88,8 +87,6 @@ export default function Types({ types, can }) {
                 { label: 'Leave Types' },
             ]}
         >
-            <SectionTabs />
-
             <Card>
                 <CardHeader
                     title="Leave Types"

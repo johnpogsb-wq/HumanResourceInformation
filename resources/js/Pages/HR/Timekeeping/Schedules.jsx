@@ -2,7 +2,6 @@ import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import { CalendarRange, Clock, Moon, Pencil, Plus, Trash2 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import SectionTabs from '@/Pages/HR/Timekeeping/Partials/SectionTabs';
 import {
     Badge,
     Button,
@@ -111,8 +110,6 @@ export default function Schedules({ shifts, schedules, employees, can }) {
                 { label: 'Shifts & Schedules' },
             ]}
         >
-            <SectionTabs />
-
             {/* Shifts */}
             <Card className="mb-5">
                 <CardHeader

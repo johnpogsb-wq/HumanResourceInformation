@@ -2,21 +2,8 @@ import { Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import PrimePowerLogo from '@/Components/layout/PrimePowerLogo';
-import { NAV_GROUPS, isHrefActive, visibleGroups } from '@/config/navigation';
+import { NAV_GROUPS, isHrefActive, isItemActive, visibleGroups } from '@/config/navigation';
 import { cn, initials } from '@/lib/utils';
-
-/** Right-side accent bar marking the active module or child. */
-function ActiveBar({ show }) {
-    return (
-        <span
-            aria-hidden="true"
-            className={cn(
-                'absolute right-0 top-1/2 h-6 w-0.75 -translate-y-1/2 rounded-l-full bg-sidebar-primary transition-opacity duration-200',
-                show ? 'opacity-100' : 'opacity-0',
-            )}
-        />
-    );
-}
 
 export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCloseMobile }) {
     const { props, url: currentUrl } = usePage();
@@ -25,7 +12,7 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
 
     const groups = useMemo(() => visibleGroups(NAV_GROUPS, role), [role]);
 
-    // Accordion: at most one parent module open at a time.
+    // Accordion: at most one module open at a time.
     const [expandedModule, setExpandedModule] = useState(null);
 
     // Keep the accordion in sync with whichever module owns the current URL.
@@ -40,16 +27,16 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
     }, [currentUrl, groups]);
 
     const handleParentClick = (item) => {
-        if (!item.children?.length) return;
-
         const alreadyOpen = expandedModule === item.id;
+
         setExpandedModule(alreadyOpen ? null : item.id);
 
-        // Opening a parent lands the user on its first child.
+        // Opening a module lands the user on its first page.
         if (!alreadyOpen) {
-            const firstChild = item.children[0];
-            if (firstChild?.href && !isHrefActive(firstChild.href, currentUrl)) {
-                router.visit(firstChild.href);
+            const first = item.children?.[0];
+
+            if (first?.href && !isHrefActive(first.href, currentUrl)) {
+                router.visit(first.href);
             }
         }
     };
@@ -87,17 +74,17 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                 </div>
 
                 {/* Nav */}
-                <nav className="scrollbar-thin flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-2 py-4">
+                <nav className="scrollbar-thin flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-3 py-4">
                     {groups.map((group, groupIndex) => (
                         <div key={group.label ?? `group-${groupIndex}`}>
                             {group.label && !collapsed && (
-                                <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">
+                                <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-sidebar-muted">
                                     {group.label}
                                 </p>
                             )}
                             {group.label && collapsed && (
                                 <div
-                                    className="mx-3 mb-2 h-px bg-sidebar-border"
+                                    className="mx-2 mb-2 h-px bg-sidebar-border"
                                     aria-hidden="true"
                                 />
                             )}
@@ -106,20 +93,16 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                 {group.items.map((item) => {
                                     const Icon = item.icon;
                                     const hasChildren = Boolean(item.children?.length);
-                                    const childActive = item.children?.some((child) =>
-                                        isHrefActive(child.href, currentUrl),
-                                    );
-                                    const selfActive = isHrefActive(item.href, currentUrl);
-                                    const active = selfActive || childActive;
+                                    const active = isItemActive(item, currentUrl);
                                     const isOpen = expandedModule === item.id && !collapsed;
 
                                     const rowClasses = cn(
-                                        'group relative flex w-full items-center gap-3 rounded-md py-2 text-sm font-medium',
+                                        'group flex w-full items-center gap-2.5 rounded-lg py-2 text-[13px] font-medium',
                                         'transition-colors duration-150',
-                                        collapsed ? 'justify-center px-0' : 'px-3',
+                                        collapsed ? 'justify-center px-0' : 'px-2.5',
                                         active
                                             ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                                            : 'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+                                            : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
                                     );
 
                                     return (
@@ -133,12 +116,15 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                                     aria-expanded={isOpen}
                                                 >
                                                     <Icon
-                                                        className="h-4.5 w-4.5 shrink-0"
+                                                        className={cn(
+                                                            'h-4.5 w-4.5 shrink-0',
+                                                            active && 'text-sidebar-primary',
+                                                        )}
                                                         aria-hidden="true"
                                                     />
                                                     {!collapsed && (
                                                         <>
-                                                            <span className="flex-1 truncate text-left">
+                                                            <span className="flex-1 truncate text-left leading-tight">
                                                                 {item.label}
                                                             </span>
                                                             <ChevronDown
@@ -150,7 +136,6 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                                             />
                                                         </>
                                                     )}
-                                                    <ActiveBar show={active} />
                                                 </button>
                                             ) : (
                                                 <Link
@@ -158,9 +143,13 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                                     onClick={onCloseMobile}
                                                     className={rowClasses}
                                                     title={collapsed ? item.label : undefined}
+                                                    aria-current={active ? 'page' : undefined}
                                                 >
                                                     <Icon
-                                                        className="h-4.5 w-4.5 shrink-0"
+                                                        className={cn(
+                                                            'h-4.5 w-4.5 shrink-0',
+                                                            active && 'text-sidebar-primary',
+                                                        )}
                                                         aria-hidden="true"
                                                     />
                                                     {!collapsed && (
@@ -168,11 +157,10 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                                             {item.label}
                                                         </span>
                                                     )}
-                                                    <ActiveBar show={active} />
                                                 </Link>
                                             )}
 
-                                            {/* Children accordion */}
+                                            {/* Dropdown of sub-pages */}
                                             {hasChildren && (
                                                 <div
                                                     className={cn(
@@ -182,10 +170,10 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                                             : 'grid-rows-[0fr] opacity-0',
                                                     )}
                                                 >
-                                                    <ul className="ml-5 mt-0.5 space-y-0.5 overflow-hidden border-l border-sidebar-border pl-3">
+                                                    <ul className="ml-[1.4rem] mt-0.5 space-y-0.5 overflow-hidden border-l border-sidebar-border pl-2.5">
                                                         {item.children.map((child) => {
                                                             const ChildIcon = child.icon;
-                                                            const childIsActive = isHrefActive(
+                                                            const childActive = isHrefActive(
                                                                 child.href,
                                                                 currentUrl,
                                                             );
@@ -199,16 +187,16 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                                                             isOpen ? 0 : -1
                                                                         }
                                                                         aria-current={
-                                                                            childIsActive
+                                                                            childActive
                                                                                 ? 'page'
                                                                                 : undefined
                                                                         }
                                                                         className={cn(
-                                                                            'relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px]',
+                                                                            'flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[12.5px]',
                                                                             'transition-colors duration-150',
-                                                                            childIsActive
+                                                                            childActive
                                                                                 ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
-                                                                                : 'text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+                                                                                : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
                                                                         )}
                                                                     >
                                                                         <ChildIcon
@@ -223,9 +211,6 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                                                                 {child.badge}
                                                                             </span>
                                                                         )}
-                                                                        <ActiveBar
-                                                                            show={childIsActive}
-                                                                        />
                                                                     </Link>
                                                                 </li>
                                                             );
@@ -242,15 +227,15 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                 </nav>
 
                 {/* Collapse toggle — desktop only */}
-                <div className="hidden shrink-0 px-2 pb-2 lg:block">
+                <div className="hidden shrink-0 px-3 pb-2 lg:block">
                     <button
                         type="button"
                         onClick={onToggleCollapsed}
                         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                         className={cn(
-                            'flex w-full items-center gap-3 rounded-md py-2 text-sm font-medium text-sidebar-muted',
-                            'transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
-                            collapsed ? 'justify-center px-0' : 'px-3',
+                            'flex w-full items-center gap-2.5 rounded-lg py-2 text-[13px] font-medium text-sidebar-muted',
+                            'transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
+                            collapsed ? 'justify-center px-0' : 'px-2.5',
                         )}
                     >
                         {collapsed ? (
@@ -265,11 +250,11 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                 </div>
 
                 {/* User card */}
-                <div className="shrink-0 border-t border-sidebar-border p-2">
+                <div className="shrink-0 border-t border-sidebar-border p-3">
                     <div
                         className={cn(
-                            'flex items-center gap-2.5 rounded-md p-2',
-                            collapsed && 'justify-center p-0 py-2',
+                            'flex items-center gap-2.5',
+                            collapsed && 'justify-center',
                         )}
                     >
                         <span
@@ -282,7 +267,7 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                         {!collapsed && (
                             <>
                                 <div className="min-w-0 flex-1">
-                                    <p className="truncate text-[13px] font-medium text-sidebar-foreground">
+                                    <p className="truncate text-[12.5px] font-semibold uppercase tracking-wide text-sidebar-foreground">
                                         {user?.name}
                                     </p>
                                     <p className="truncate text-[11px] text-sidebar-muted">

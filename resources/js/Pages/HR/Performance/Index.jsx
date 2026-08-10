@@ -1,7 +1,6 @@
 import { router } from '@inertiajs/react';
 import { ClipboardList, Star } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import SectionTabs from '@/Pages/HR/Performance/Partials/SectionTabs';
 import {
     Badge,
     Button,
@@ -46,8 +45,6 @@ export default function Index({
             title="Performance Management"
             breadcrumbs={[{ label: 'Human Resource' }, { label: 'Performance Management' }]}
         >
-            <SectionTabs />
-
             {pendingForMe > 0 && (
                 <div className="mb-5 flex items-start gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
                     <ClipboardList
