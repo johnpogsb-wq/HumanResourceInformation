@@ -5,6 +5,7 @@ use App\Http\Controllers\AttendanceHistoryController;
 use App\Http\Controllers\AttendanceReportController;
 use App\Http\Controllers\CompensationController;
 use App\Http\Controllers\ComplianceController;
+use App\Http\Controllers\CredentialController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\KpiController;
@@ -40,6 +41,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('hr')->name('hr.')->group(function () {
         // Module 1 — Employee Information Management
         Route::resource('employees', EmployeeController::class);
+
+        // 201-file documents inside their renewal window, or already lapsed.
+        Route::get('credentials', [CredentialController::class, 'index'])->name('credentials');
 
         Route::post('employees/{employee}/documents', [EmployeeController::class, 'storeDocument'])
             ->name('employees.documents.store');

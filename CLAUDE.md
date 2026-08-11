@@ -87,6 +87,29 @@ Light and dark both work because components reference tokens, not values.
 Replace the module's entry in `resources/js/config/navigation.js` (the route is
 already listed) and delete its `ModulePlaceholderController` method.
 
+## Credential expiry (Module 1)
+
+**Credentials** watches the `expires_at` already stored on every 201-file
+document. `EmployeeDocument::isExpired()` answers one document at a time and
+only once it is too late; `CredentialExpiryScanner` looks *forward* instead —
+config-driven and database-free, the same shape as `AttendanceExceptionScanner`.
+
+- **The warning window is per document type**, in `config/credentials.php`, and
+  it is not cosmetic: an LTO licence renewal wants weeks of lead time (60 days),
+  a certificate does not (30). Widening a window is a config edit.
+- `blocking_types` marks documents whose expiry legally stops the employee
+  working — a driver with a lapsed licence may not drive, and the liability is
+  the company's. That is a harder flag than an expired certificate.
+- Scoped through `EmployeeService::scopedQuery()`, so it doubles as
+  self-service: an employee sees their own licence running out, no second
+  screen needed.
+- It gets **its own topbar indicator, not the bell.** A link has one
+  destination, and the bell already means "leave waiting on you". The indicator
+  hides at zero — an always-lit icon stops being read.
+- `--warning-foreground` was added for its badge and **flips between modes**:
+  near-white on light mode's darker orange, near-black on dark mode's brighter
+  amber, which would otherwise sit near 2.5:1.
+
 ## Timekeeping (Module 2)
 
 `AttendanceCalculator` is deliberately database-free: Payroll multiplies its

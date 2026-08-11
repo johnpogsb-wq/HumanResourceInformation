@@ -2,7 +2,10 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\EmployeeDocument;
 use App\Models\Setting;
+use App\Services\CredentialExpiryScanner;
+use App\Services\EmployeeService;
 use App\Services\LeaveService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -55,6 +58,19 @@ class HandleInertiaRequests extends Middleware
             // Lazily evaluated, so guests and API calls never run the query.
             'pendingApprovals' => fn () => $request->user()
                 ? app(LeaveService::class)->pendingApprovalsFor($request->user())
+                : 0,
+            // Lapsed or soon-to-lapse 201 documents, scoped to what this user
+            // may see — so an employee's own licence warns them directly.
+            // Lazy for the same reason as the badge above.
+            'expiringCredentials' => fn () => $request->user()
+                ? app(CredentialExpiryScanner::class)->countFor(
+                    EmployeeDocument::query()->whereIn(
+                        'employee_id',
+                        app(EmployeeService::class)
+                            ->scopedQuery($request->user())
+                            ->select('employees.id'),
+                    ),
+                )
                 : 0,
         ];
     }

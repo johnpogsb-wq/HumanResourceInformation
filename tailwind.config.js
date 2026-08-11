@@ -55,7 +55,10 @@ export default {
                 },
 
                 success: token('success'),
-                warning: token('warning'),
+                warning: {
+                    DEFAULT: token('warning'),
+                    foreground: token('warning-foreground'),
+                },
                 info: token('info'),
 
                 // Fixed-alpha per the spec's rgba() border values.
