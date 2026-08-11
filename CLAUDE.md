@@ -299,12 +299,30 @@ Appearance and Security belong to every signed-in user.
 ## Database
 
 **PostgreSQL** (`primepower_hris`, local server on port `5433` — not the 5432
-default; check `DB_PORT` in `.env` before assuming). Tests always use
+default; check `DB_PORT` in `.env` before assuming). Tests default to
 in-memory SQLite regardless of the app's own connection (see `phpunit.xml`),
 so a Postgres-only bug (like the `ilike` operator) won't show up in a normal
-`php artisan test` run — it only surfaces against a real Postgres database.
+`php artisan test` run.
+
+**`composer test:pgsql` runs the same suite against real Postgres**, in the
+`primepower_hris_test` database. It only overrides `DB_CONNECTION` and
+`DB_DATABASE` — host, port, and credentials come from `.env`, so no secret is
+committed. PHPUnit's `<env>` entries do not override a variable already set in
+the environment, which is what lets the override work at all. Run it before
+trusting anything that touches raw SQL; the whole suite passes on both drivers
+today, and that is worth keeping true.
+
 The old `database/database.sqlite` is kept only as a pre-migration backup
 under `storage/app/backups/` (gitignored, not the live source of truth).
+
+**Foreign keys are indexed deliberately, not automatically.** Postgres indexes
+the primary key side of a relationship and leaves the foreign key column bare,
+so `2026_08_11_000001_index_foreign_keys` adds the ones the app actually joins
+and filters on — supervisor scoping, payslips by employee, audit logs by user.
+Four are left un-indexed on purpose (`departments.head_employee_id`,
+`positions.department_id`, `kpis.department_id`, `kpis.position_id`): small
+lookup tables where the index costs writes for a scan the planner would choose
+anyway. Adding a foreign key means deciding which of those two cases it is.
 
 Seed accounts (password `password`): `admin@primepower.test`,
 `hr@primepower.test`.

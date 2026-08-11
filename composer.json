@@ -52,6 +52,12 @@
             "@php artisan config:clear --ansi",
             "@php artisan test"
         ],
+        "test:pgsql": [
+            "@php artisan config:clear --ansi",
+            "@putenv DB_CONNECTION=pgsql",
+            "@putenv DB_DATABASE=primepower_hris_test",
+            "@php artisan test"
+        ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"
