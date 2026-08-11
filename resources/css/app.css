@@ -121,10 +121,11 @@
         --sidebar-border: 206 22.7% 64.5%;
 
         --logo-primary: 0 68.8% 54.7%;
-        /* #0c0a0a in both modes, per the brand spec. Note this is near-black on
-           the dark sidebar (#131E29) — about 1.1:1, effectively invisible.
-           Raising the lightness here is the one-line fix if that is unwanted. */
-        --logo-subtitle: 0 9.1% 4.3%;
+        /* #0c0a0a reads fine in light mode (18:1) but was ~1.1:1 on the dark
+           sidebar (#131E29) — effectively invisible. Same hue/saturation as
+           the brand spec, lightness raised to 65% (~6.5:1), matching the
+           lightness --sidebar-muted already uses for secondary text here. */
+        --logo-subtitle: 0 9.1% 65%;
 
         /* #2E96DA — the brand blue stepped down until it lands inside the dark
            lightness band (L 0.48–0.67); --primary itself sits just outside it.
