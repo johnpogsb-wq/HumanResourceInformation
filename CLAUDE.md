@@ -127,14 +127,26 @@ plus the assigned `Shift`.
   `OvertimeRequest` — that gate belongs to Payroll.
 - `TimekeepingService::record()` upserts one row per employee/date.
 
-Six screens share `SectionTabs`: **Daily Records** (DTR + CSV import),
-**Overtime** (file / approve / reject), **Shifts & Schedules**, **Reports**
-(per-employee aggregation, CSV export), **Exceptions**, and **History**. Only HR
-records or corrects time; approvers are HR or the employee's own supervisor,
-never the requester.
+Seven screens share `SectionTabs`: **Daily Records** (DTR + CSV import),
+**Overtime** (file / approve / reject), **Shifts & Schedules**, **Holidays**,
+**Reports** (per-employee aggregation, CSV export), **Exceptions**, and
+**History**. Only HR records or corrects time; approvers are HR or the
+employee's own supervisor, never the requester.
 
 A shift still referenced by a schedule or a time record is **deactivated**
 instead of deleted, so attendance history keeps its shift.
+
+**Holidays** is small but load-bearing, and it is shared across three modules:
+`LeaveService::workingDays()` skips holidays when costing a request,
+`AttendanceCalculator` marks the day's status from them, and `PayrollCalculator`
+pays the Labor Code premium (regular ×2.0, special non-working ×1.3). A year
+with nothing recorded is therefore not an empty screen — it silently charges
+employees leave credits for days they should not be charged for, so the screen
+warns when the *next* year has no holidays yet. A holiday with attendance
+already recorded against it cannot be deleted, only edited: removing it would
+leave those records classified against a rule that no longer exists. Validating
+the (date, name) key needs `whereDate`, not `Rule::unique` — see the
+date-cast-column gotcha below.
 
 **Exceptions** is the automated DTR checker: `AttendanceExceptionScanner` is a
 database-free, config-driven rule engine (same pattern as
@@ -332,7 +344,12 @@ Seed accounts (password `password`): `admin@primepower.test`,
 All five modules are functional. Still outstanding: 13th-month pay and final-pay
 computation; peer and subordinate reviews are supported by the schema and
 scoring but have no assignment UI (only self and supervisor are created at
-rollout); holidays management screen (2026 holidays are seeded, but there is no
-UI); leave credit accrual on a schedule (credits are allocated in bulk per
-year); email notifications (the bell is in-app only); `/profile` still uses the
-old Breeze layout.
+rollout); leave credit accrual on a schedule (credits are allocated in bulk per
+year); email notifications (the bell and the credential indicator are in-app
+only).
+
+Movable holidays — Maundy Thursday, Good Friday, and the two Eids — are
+deliberately *not* seeded: they follow the liturgical and lunar calendars and
+are fixed by annual proclamation, so HR adds them from Timekeeping → Holidays
+once Malacañang publishes them. Only the fixed-date holidays under RA 9492 are
+seeded, currently through 2027.

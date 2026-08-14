@@ -6,7 +6,9 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Baseline shifts and 2026 regular holidays (Module 2).
+ * Baseline shifts and the fixed-date Philippine holidays for 2026–2027
+ * (Module 2). Idempotent: safe to re-run, since each row is matched on
+ * (date, name) — the table's own unique key.
  */
 class ShiftSeeder extends Seeder
 {
@@ -30,6 +32,28 @@ class ShiftSeeder extends Seeder
         ['All Saints\' Day', '2026-11-01', 'special_non_working'],
         ['Feast of the Immaculate Conception', '2026-12-08', 'special_non_working'],
         ['Last Day of the Year', '2026-12-31', 'special_non_working'],
+
+        // 2027 — the fixed-date holidays under RA 9492, so the calendar does
+        // not lapse at year end. Leave costing and attendance read this table
+        // directly, and a year with nothing in it charges employees leave
+        // credits for days they should not be charged for.
+        //
+        // Movable holidays (Maundy Thursday, Good Friday, and the two Eids)
+        // are deliberately absent: they follow the liturgical and lunar
+        // calendars and are fixed by annual proclamation, so HR adds them from
+        // Timekeeping → Holidays once Malacañang publishes them.
+        ['New Year\'s Day', '2027-01-01', 'regular'],
+        ['Araw ng Kagitingan', '2027-04-09', 'regular'],
+        ['Labor Day', '2027-05-01', 'regular'],
+        ['Independence Day', '2027-06-12', 'regular'],
+        ['National Heroes Day', '2027-08-30', 'regular'],   // last Monday of August
+        ['Bonifacio Day', '2027-11-30', 'regular'],
+        ['Christmas Day', '2027-12-25', 'regular'],
+        ['Rizal Day', '2027-12-30', 'regular'],
+        ['Ninoy Aquino Day', '2027-08-21', 'special_non_working'],
+        ['All Saints\' Day', '2027-11-01', 'special_non_working'],
+        ['Feast of the Immaculate Conception', '2027-12-08', 'special_non_working'],
+        ['Last Day of the Year', '2027-12-31', 'special_non_working'],
     ];
 
     public function run(): void

@@ -8,6 +8,7 @@ use App\Http\Controllers\ComplianceController;
 use App\Http\Controllers\CredentialController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\HolidayController;
 use App\Http\Controllers\KpiController;
 use App\Http\Controllers\LeaveBalanceController;
 use App\Http\Controllers\LeaveCalendarController;
@@ -75,6 +76,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('timekeeping/shifts', [ScheduleController::class, 'storeShift'])->name('shifts.store');
         Route::put('timekeeping/shifts/{shift}', [ScheduleController::class, 'updateShift'])->name('shifts.update');
         Route::delete('timekeeping/shifts/{shift}', [ScheduleController::class, 'destroyShift'])->name('shifts.destroy');
+        // The work calendar's holiday list — read by leave costing, attendance
+        // status, and holiday pay, so it is not merely a reference table.
+        Route::get('timekeeping/holidays', [HolidayController::class, 'index'])->name('holidays');
+        Route::post('timekeeping/holidays', [HolidayController::class, 'store'])->name('holidays.store');
+        Route::put('timekeeping/holidays/{holiday}', [HolidayController::class, 'update'])->name('holidays.update');
+        Route::delete('timekeeping/holidays/{holiday}', [HolidayController::class, 'destroy'])->name('holidays.destroy');
+
         Route::post('timekeeping/schedules', [ScheduleController::class, 'storeSchedule'])->name('schedules.store');
         Route::delete('timekeeping/schedules/{schedule}', [ScheduleController::class, 'destroySchedule'])
             ->name('schedules.destroy');

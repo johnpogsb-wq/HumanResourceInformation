@@ -103,6 +103,12 @@ export const NAV_GROUPS = [
                         href: '/hr/timekeeping/schedules',
                     },
                     {
+                        id: 'tk-holidays',
+                        label: 'Holidays',
+                        icon: CalendarDays,
+                        href: '/hr/timekeeping/holidays',
+                    },
+                    {
                         id: 'tk-reports',
                         label: 'Reports',
                         icon: Gauge,
