@@ -2,6 +2,7 @@ import { Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { Bell, ChevronRight, Menu, Search, ShieldAlert } from 'lucide-react';
 import Dropdown from '@/Components/Dropdown';
+import AssistantPanel from '@/Components/layout/AssistantPanel';
 import ThemeToggle from '@/Components/layout/ThemeToggle';
 import { cn, initials } from '@/lib/utils';
 
@@ -104,6 +105,8 @@ export default function Topbar({ title, breadcrumbs = [], actions, onOpenMobile 
 
                 <div className="flex shrink-0 items-center gap-1.5">
                     {actions}
+
+                    <AssistantPanel />
 
                     <ThemeToggle />
 

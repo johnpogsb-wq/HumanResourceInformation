@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AiController;
 use App\Http\Controllers\AttendanceExceptionController;
 use App\Http\Controllers\AttendanceHistoryController;
 use App\Http\Controllers\AttendanceReportController;
@@ -45,6 +46,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // 201-file documents inside their renewal window, or already lapsed.
         Route::get('credentials', [CredentialController::class, 'index'])->name('credentials');
+
+        // AI: reads a photographed credential; suggests, never saves.
+        Route::post('employees/{employee}/documents/scan', [AiController::class, 'scanCredential'])
+            ->name('employees.documents.scan');
+
+        // AI: answers one question against data the asker may already see.
+        Route::post('assistant', [AiController::class, 'ask'])->name('assistant.ask');
 
         Route::post('employees/{employee}/documents', [EmployeeController::class, 'storeDocument'])
             ->name('employees.documents.store');
