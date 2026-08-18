@@ -30,7 +30,9 @@ import {
     Table,
     TableEmpty,
     Textarea,
+    SectionTabs,
 } from '@/Components/ui';
+import { PAYROLL_SECTIONS } from '@/config/navigation';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 /** A raise, a cut, or neither — the arrow carries the sign, not colour alone. */
@@ -147,6 +149,8 @@ export default function Salaries({ adjustments, filters, reasons, summary, emplo
                 )
             }
         >
+            <SectionTabs items={PAYROLL_SECTIONS} />
+
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
                 <StatCard
                     label="Monthly Payroll"

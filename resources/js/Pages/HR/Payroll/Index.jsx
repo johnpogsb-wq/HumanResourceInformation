@@ -18,7 +18,9 @@ import {
     TR,
     Table,
     TableEmpty,
+    SectionTabs,
 } from '@/Components/ui';
+import { PAYROLL_SECTIONS } from '@/config/navigation';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 const titleCase = (value) =>
@@ -56,6 +58,8 @@ export default function Index({ periods, suggestion, can }) {
                 )
             }
         >
+            <SectionTabs items={PAYROLL_SECTIONS} />
+
             <Card>
                 <Table>
                     <THead>

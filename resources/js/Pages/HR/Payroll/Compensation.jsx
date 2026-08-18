@@ -18,7 +18,9 @@ import {
     TR,
     Table,
     TableEmpty,
+    SectionTabs,
 } from '@/Components/ui';
+import { PAYROLL_SECTIONS } from '@/config/navigation';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 const titleCase = (value) =>
@@ -87,6 +89,8 @@ export default function Compensation({ allowances, loans, employees, frequencies
                 { label: 'Allowances & Loans' },
             ]}
         >
+            <SectionTabs items={PAYROLL_SECTIONS} />
+
             {/* Allowances */}
             <Card className="mb-5">
                 <CardHeader

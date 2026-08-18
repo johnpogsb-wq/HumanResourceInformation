@@ -1,6 +1,5 @@
 import {
     BadgeCheck,
-    Banknote,
     Bell,
     Building2,
     CalendarDays,
@@ -8,23 +7,18 @@ import {
     ClipboardList,
     Clock,
     Database,
-    DoorOpen,
     FileText,
     FileWarning,
     Gauge,
-    Gift,
-    HandCoins,
     History,
     IdCard,
     LayoutDashboard,
     ListChecks,
     Palette,
     Plug,
-    Receipt,
     Settings,
     Shield,
     ShieldAlert,
-    ShieldCheck,
     Target,
     TrendingUp,
     TriangleAlert,
@@ -174,56 +168,12 @@ export const NAV_GROUPS = [
                 id: 'payroll',
                 label: 'Payroll & Compensation',
                 icon: Wallet,
-                children: [
-                    {
-                        id: 'payroll-runs',
-                        label: 'Payroll Runs',
-                        icon: Receipt,
-                        href: '/hr/payroll',
-                        roles: ['admin', 'hr_staff'],
-                    },
-                    {
-                        id: 'payroll-payslips',
-                        label: 'Payslips',
-                        icon: FileText,
-                        href: '/hr/payroll/payslips',
-                    },
-                    {
-                        id: 'payroll-salaries',
-                        label: 'Salaries & Adjustments',
-                        icon: Banknote,
-                        href: '/hr/payroll/salaries',
-                        roles: ['admin', 'hr_staff'],
-                    },
-                    {
-                        id: 'payroll-compensation',
-                        label: 'Allowances & Loans',
-                        icon: HandCoins,
-                        href: '/hr/payroll/compensation',
-                        roles: ['admin', 'hr_staff'],
-                    },
-                    {
-                        id: 'payroll-13th',
-                        label: '13th-Month Pay',
-                        icon: Gift,
-                        href: '/hr/payroll/13th-month',
-                        roles: ['admin', 'hr_staff'],
-                    },
-                    {
-                        id: 'payroll-separations',
-                        label: 'Separation & Final Pay',
-                        icon: DoorOpen,
-                        href: '/hr/payroll/separations',
-                        roles: ['admin', 'hr_staff'],
-                    },
-                    {
-                        id: 'payroll-compliance',
-                        label: 'Compliance',
-                        icon: ShieldCheck,
-                        href: '/hr/payroll/compliance',
-                        roles: ['admin', 'hr_staff'],
-                    },
-                ],
+                // One entry, not seven. The screens below it are all the same
+                // place in the system, so they move between themselves with
+                // SectionTabs — see PAYROLL_SECTIONS. `/hr/payroll` bounces
+                // anyone who cannot see the runs screen to their own payslips,
+                // so this link is safe to show to every role.
+                href: '/hr/payroll',
             },
             {
                 id: 'performance',
@@ -326,17 +276,53 @@ function pathOf(url) {
 }
 
 /**
+ * Payroll's screens.
+ *
+ * They share a single sidebar entry and move between themselves with
+ * SectionTabs. Listed here rather than in the component so the sidebar and the
+ * tabs read the same source — and so these hrefs reach ALL_HREFS below, which
+ * is what lets a tab know it is the active one.
+ *
+ * `roles` mirrors what each screen's policy already enforces; it decides what
+ * is *shown*, never what is allowed.
+ */
+export const PAYROLL_SECTIONS = [
+    { label: 'Payroll Runs', href: '/hr/payroll', roles: ['admin', 'hr_staff'] },
+    { label: 'Payslips', href: '/hr/payroll/payslips' },
+    { label: 'Salaries', href: '/hr/payroll/salaries', roles: ['admin', 'hr_staff'] },
+    {
+        label: 'Allowances & Loans',
+        href: '/hr/payroll/compensation',
+        roles: ['admin', 'hr_staff'],
+    },
+    { label: '13th-Month Pay', href: '/hr/payroll/13th-month', roles: ['admin', 'hr_staff'] },
+    {
+        label: 'Separation & Final Pay',
+        href: '/hr/payroll/separations',
+        roles: ['admin', 'hr_staff'],
+    },
+    { label: 'Compliance', href: '/hr/payroll/compliance', roles: ['admin', 'hr_staff'] },
+];
+
+/**
  * Every navigable href, longest first.
  *
  * Matching by longest prefix is what lets `/hr/employees/create` win over
  * `/hr/employees`, while `/hr/employees/42` still resolves to the directory.
+ * Section hrefs belong here too: they are navigable even though they are no
+ * longer sidebar entries, and without them a tab could never be active.
  */
-const ALL_HREFS = NAV_GROUPS.flatMap((group) =>
-    group.items.flatMap((item) => [
-        ...(item.href ? [item.href] : []),
-        ...(item.children ?? []).map((child) => child.href),
+const ALL_HREFS = [
+    ...new Set([
+        ...NAV_GROUPS.flatMap((group) =>
+            group.items.flatMap((item) => [
+                ...(item.href ? [item.href] : []),
+                ...(item.children ?? []).map((child) => child.href),
+            ]),
+        ),
+        ...PAYROLL_SECTIONS.map((section) => section.href),
     ]),
-).sort((a, b) => b.length - a.length);
+].sort((a, b) => b.length - a.length);
 
 /** The single nav href that best describes the current URL. */
 export function bestMatch(currentUrl) {

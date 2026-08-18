@@ -68,6 +68,15 @@ Light and dark both work because components reference tokens, not values.
   `@/Components/ui` barrel.
 - Every authenticated page wraps in `@/Layouts/AppLayout` and passes `title` +
   `breadcrumbs`.
+- **A module with many screens gets one sidebar entry and `SectionTabs`**, not
+  one entry per screen — the sidebar says *where you are in the system*, and
+  those screens are all one place. Payroll does this; its seven sections live in
+  `PAYROLL_SECTIONS` in `navigation.js` rather than in the component, so the
+  sidebar and the tabs read one source **and the hrefs reach `ALL_HREFS`** —
+  without that a tab can never know it is the active one, because `bestMatch()`
+  only considers hrefs it has been told about. Tabs filter by role like the
+  sidebar does, and **hide entirely below two entries**: a lone tab is not a
+  choice, it just shows someone where they cannot go.
 - Chart marks use `--chart-1`, held apart from `--primary` because chart fills
   have to sit inside an OKLCH lightness band that `--primary` misses in dark mode.
 - **Dashboard tiles take a `tone`.** `StatCard` and `SplitStatCard` colour the
@@ -166,11 +175,12 @@ plus the assigned `Shift`.
   `OvertimeRequest` — that gate belongs to Payroll.
 - `TimekeepingService::record()` upserts one row per employee/date.
 
-Seven screens share `SectionTabs`: **Daily Records** (DTR + CSV import),
-**Overtime** (file / approve / reject), **Shifts & Schedules**, **Holidays**,
-**Reports** (per-employee aggregation, CSV export), **Exceptions**, and
-**History**. Only HR records or corrects time; approvers are HR or the
-employee's own supervisor, never the requester.
+Seven screens: **Daily Records** (DTR + CSV import), **Overtime** (file /
+approve / reject), **Shifts & Schedules**, **Holidays**, **Reports**
+(per-employee aggregation, CSV export), **Exceptions**, and **History**. They
+are still seven sidebar children — unlike Payroll, they have not been moved
+onto `SectionTabs` yet. Only HR records or corrects time; approvers are HR or
+the employee's own supervisor, never the requester.
 
 A shift still referenced by a schedule or a time record is **deactivated**
 instead of deleted, so attendance history keeps its shift.
