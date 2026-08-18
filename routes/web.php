@@ -47,10 +47,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // 201-file documents inside their renewal window, or already lapsed.
         Route::get('credentials', [CredentialController::class, 'index'])->name('credentials');
 
-        // AI: reads a photographed credential; suggests, never saves.
-        Route::post('employees/{employee}/documents/scan', [AiController::class, 'scanCredential'])
-            ->name('employees.documents.scan');
-
         // AI: answers one question against data the asker may already see.
         Route::post('assistant', [AiController::class, 'ask'])->name('assistant.ask');
 

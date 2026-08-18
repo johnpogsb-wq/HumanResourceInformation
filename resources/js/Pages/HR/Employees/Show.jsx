@@ -1,4 +1,4 @@
-import { Link, router, useForm, usePage } from '@inertiajs/react';
+import { Link, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import {
     ArrowLeft,
@@ -7,7 +7,6 @@ import {
     History,
     Pencil,
     Plus,
-    Sparkles,
     Trash2,
     TriangleAlert,
 } from 'lucide-react';
@@ -72,22 +71,13 @@ function formatBytes(bytes) {
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** Mirrors config/ai.php — only documents that carry a printed expiry. */
-const SCANNABLE = ['drivers_license', 'medical', 'clearance', 'government_id', 'certificate'];
-
-/** Scanning reads photos; a PDF or DOCX goes through the ordinary path. */
-const isImage = (file) => Boolean(file) && /^image\//.test(file.type ?? '');
-
 export default function Show({ employee, subordinates, audits, can }) {
     const record = employee.data ?? employee;
-    const { aiEnabled } = usePage().props;
 
     const [tab, setTab] = useState('overview');
     const [uploadOpen, setUploadOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [pendingDocument, setPendingDocument] = useState(null);
-    const [scanning, setScanning] = useState(false);
-    const [scan, setScan] = useState(null);
 
     const upload = useForm({
         type: 'contract',
@@ -97,48 +87,6 @@ export default function Show({ employee, subordinates, audits, can }) {
         expires_at: '',
         file: null,
     });
-
-    const scanDocument = async () => {
-        if (!isImage(upload.data.file)) return;
-
-        setScanning(true);
-        setScan(null);
-
-        const body = new FormData();
-        body.append('file', upload.data.file);
-        body.append('type', upload.data.type);
-
-        try {
-            const response = await fetch(`/hr/employees/${record.id}/documents/scan`, {
-                method: 'POST',
-                headers: {
-                    Accept: 'application/json',
-                    'X-XSRF-TOKEN': decodeURIComponent(
-                        document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1] ?? '',
-                    ),
-                },
-                body,
-            });
-
-            const data = await response.json();
-
-            if (!response.ok || !data.ok) {
-                setScan({ error: data.message ?? 'The document could not be read.' });
-                return;
-            }
-
-            // Only fill blanks — never overwrite something already typed.
-            Object.entries(data.fields).forEach(([field, value]) => {
-                if (value && !upload.data[field]) upload.setData(field, value);
-            });
-
-            setScan(data);
-        } catch {
-            setScan({ error: 'The document could not be scanned.' });
-        } finally {
-            setScanning(false);
-        }
-    };
 
     const submitDocument = (event) => {
         event.preventDefault();
@@ -758,72 +706,13 @@ export default function Show({ employee, subordinates, audits, can }) {
                                 id={id}
                                 type="file"
                                 accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                                onChange={(event) => {
-                                    const file = event.target.files[0] ?? null;
-                                    upload.setData('file', file);
-                                    setScan(null);
-                                }}
+                                onChange={(event) =>
+                                    upload.setData('file', event.target.files[0] ?? null)
+                                }
                                 className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-xs file:font-medium file:text-secondary-foreground hover:file:bg-secondary/70"
                             />
                         )}
                     </Field>
-
-                    {/* Reading the dates off the photo removes the keystroke that
-                        can be wrong — a licence keyed in with the wrong year stays
-                        green on the Credentials screen after it has lapsed. It
-                        fills the form; the person still checks and submits it. */}
-                    {aiEnabled && SCANNABLE.includes(upload.data.type) && (
-                        <div className="rounded-md border border-border bg-secondary/40 p-3">
-                            <div className="flex items-center gap-2">
-                                <Sparkles className="h-4 w-4 shrink-0 text-primary" />
-                                <p className="text-xs text-muted-foreground">
-                                    Scan the image to fill in the dates automatically.
-                                </p>
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    className="ml-auto"
-                                    loading={scanning}
-                                    disabled={!isImage(upload.data.file) || scanning}
-                                    onClick={scanDocument}
-                                >
-                                    Scan
-                                </Button>
-                            </div>
-
-                            {upload.data.file && !isImage(upload.data.file) && (
-                                <p className="mt-2 text-xs text-muted-foreground">
-                                    Scanning reads photos — pick a JPG or PNG to use it.
-                                </p>
-                            )}
-
-                            {scan?.error && (
-                                <p className="mt-2 text-xs text-destructive">{scan.error}</p>
-                            )}
-
-                            {scan?.ok && (
-                                <div className="mt-2 space-y-1">
-                                    <p
-                                        className={`text-xs ${
-                                            scan.needs_review
-                                                ? 'font-medium text-warning'
-                                                : 'text-success'
-                                        }`}
-                                    >
-                                        {scan.needs_review
-                                            ? 'Read with low confidence — check every field before saving.'
-                                            : 'Fields filled in. Check them before saving.'}
-                                    </p>
-                                    {scan.notes && (
-                                        <p className="text-xs text-muted-foreground">
-                                            {scan.notes}
-                                        </p>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    )}
 
                     <div className="flex justify-end gap-2 pt-2">
                         <Button variant="outline" onClick={() => setUploadOpen(false)}>

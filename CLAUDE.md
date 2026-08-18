@@ -256,33 +256,27 @@ The rating scale, the 360 reviewer weights, and the performance bands live in
   no acknowledgement.
 - A KPI already on a scorecard is deactivated rather than deleted.
 
-## AI features (optional)
+## HR assistant (optional)
 
-Two features call the Anthropic API through `Services/Ai/AnthropicGateway` —
-the single place the app talks to a model, which is what lets tests fake it and
-run with no key and no network. Both read `config/ai.php`, and **both hide
-themselves when `ANTHROPIC_API_KEY` is unset**: a deployment without a key is a
-supported state, not a broken one, so `aiEnabled` is shared from
-`HandleInertiaRequests` and the UI checks it.
+Answers one question at a time against live data, from the ✨ button in the
+topbar. It calls the Anthropic API through `Services/Ai/AnthropicGateway` —
+the single place the app talks to a model, which is what lets the tests fake
+it and run with no key and no network.
 
-**Credential scanning** reads the expiry date and reference number off a
-photographed licence or medical certificate and fills the upload form. The
-point is not convenience: `CredentialExpiryScanner` is only as good as what HR
-typed, and a licence keyed in with the wrong year stays green on the
-Credentials screen after it has lapsed. It **suggests, never saves** — it fills
-blank fields only, never overwrites, and a person still submits the form. A
-low-confidence read is labelled as such rather than silently accepted, and a
-date that won't parse is dropped instead of guessed.
+It **hides itself when `ANTHROPIC_API_KEY` is unset**: a deployment without a
+key is a supported state, not a broken one, so `aiEnabled` is shared from
+`HandleInertiaRequests` and the UI checks it before rendering the button.
 
-**The HR assistant** answers one question at a time against live data. Its
-security rests on one property: **the model never chooses whose data it reads.**
-Every tool runs against `scopedQuery($user)` — the same narrowing the screens
-use — and no tool takes an employee or a scope parameter, so an employee asking
-about everyone's salary doesn't get a refusal to argue with; the query returns
-their own row because that is all it can return. Payroll totals are gated on
-the same `PayrollRun` policy as the screens and report that they *declined*,
-since an empty result would read as "payroll is zero". Both endpoints are rate
-limited per user — each call costs money at the provider.
+Its security rests on one property: **the model never chooses whose data it
+reads.** Every tool in `HrAssistant` runs against `scopedQuery($user)` — the
+same narrowing the screens use — and no tool takes an employee or a scope
+parameter, so an employee asking about everyone's salary doesn't get a refusal
+to argue with; the query returns their own row because that is all it can
+return. Role scoping is enforced by the data layer, not by the prompt. Payroll
+totals are additionally gated on the same `PayrollRun` policy as the screens
+and report that they *declined*, since an empty result would read as "payroll
+is zero". The endpoint is rate limited per user — each call costs money at the
+provider.
 
 ## Settings
 

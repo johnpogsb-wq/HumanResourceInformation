@@ -8,10 +8,8 @@ use App\Models\Employee;
 use App\Models\EmployeeDocument;
 use App\Models\User;
 use App\Services\Ai\AnthropicGateway;
-use App\Services\Ai\CredentialExtractor;
 use App\Services\Ai\HrAssistant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
 
 /**
@@ -42,149 +40,6 @@ class AiFeatureTest extends TestCase
         $this->actingAs($this->hr())
             ->get('/dashboard')
             ->assertInertia(fn ($page) => $page->where('aiEnabled', true));
-    }
-
-    public function test_scanning_reports_unavailable_rather_than_failing(): void
-    {
-        config(['ai.key' => null]);
-
-        $employee = Employee::factory()->create();
-
-        $this->actingAs($this->hr())
-            ->post("/hr/employees/{$employee->id}/documents/scan", [
-                'file' => UploadedFile::fake()->image('licence.jpg'),
-                'type' => 'drivers_license',
-            ])
-            ->assertStatus(503);
-    }
-
-    // ── Credential scanning ──────────────────────────────────────────────
-
-    public function test_a_scan_returns_the_fields_it_read(): void
-    {
-        $this->fakeReply(json_encode([
-            'title' => "Professional Driver's Licence",
-            'reference_no' => 'N01-23-456789',
-            'issued_at' => '2024-03-15',
-            'expires_at' => '2029-03-15',
-            'confidence' => 0.94,
-            'notes' => null,
-        ]));
-
-        $employee = Employee::factory()->create();
-
-        $response = $this->actingAs($this->hr())
-            ->post("/hr/employees/{$employee->id}/documents/scan", [
-                'file' => UploadedFile::fake()->image('licence.jpg'),
-                'type' => 'drivers_license',
-            ])
-            ->assertOk();
-
-        $response->assertJsonPath('ok', true);
-        $response->assertJsonPath('fields.expires_at', '2029-03-15');
-        $response->assertJsonPath('fields.reference_no', 'N01-23-456789');
-        $response->assertJsonPath('needs_review', false);
-    }
-
-    public function test_a_low_confidence_read_is_marked_for_review(): void
-    {
-        $this->fakeReply(json_encode([
-            'expires_at' => '2027-01-01',
-            'confidence' => 0.4,
-            'notes' => 'Glare across the expiry line.',
-        ]));
-
-        $employee = Employee::factory()->create();
-
-        $this->actingAs($this->hr())
-            ->post("/hr/employees/{$employee->id}/documents/scan", [
-                'file' => UploadedFile::fake()->image('licence.jpg'),
-                'type' => 'drivers_license',
-            ])
-            ->assertOk()
-            ->assertJsonPath('needs_review', true)
-            ->assertJsonPath('notes', 'Glare across the expiry line.');
-    }
-
-    public function test_an_unreadable_date_is_dropped_rather_than_guessed(): void
-    {
-        // A date the form cannot use is worse than no date at all.
-        $this->fakeReply(json_encode([
-            'expires_at' => '15/03/2029',
-            'confidence' => 0.9,
-        ]));
-
-        $employee = Employee::factory()->create();
-
-        $this->actingAs($this->hr())
-            ->post("/hr/employees/{$employee->id}/documents/scan", [
-                'file' => UploadedFile::fake()->image('licence.jpg'),
-                'type' => 'drivers_license',
-            ])
-            ->assertOk()
-            ->assertJsonPath('fields.expires_at', null);
-    }
-
-    public function test_a_reply_that_is_not_json_fails_cleanly(): void
-    {
-        $this->fakeReply('I cannot read this image.');
-
-        $employee = Employee::factory()->create();
-
-        $this->actingAs($this->hr())
-            ->post("/hr/employees/{$employee->id}/documents/scan", [
-                'file' => UploadedFile::fake()->image('licence.jpg'),
-                'type' => 'drivers_license',
-            ])
-            ->assertOk()
-            ->assertJsonPath('ok', false);
-    }
-
-    public function test_a_json_reply_wrapped_in_a_fence_is_still_read(): void
-    {
-        $this->fakeReply("```json\n".json_encode([
-            'expires_at' => '2028-06-30',
-            'confidence' => 0.88,
-        ])."\n```");
-
-        $employee = Employee::factory()->create();
-
-        $this->actingAs($this->hr())
-            ->post("/hr/employees/{$employee->id}/documents/scan", [
-                'file' => UploadedFile::fake()->image('licence.jpg'),
-                'type' => 'drivers_license',
-            ])
-            ->assertOk()
-            ->assertJsonPath('fields.expires_at', '2028-06-30');
-    }
-
-    public function test_an_unscannable_document_type_is_refused(): void
-    {
-        config(['ai.key' => 'sk-ant-test']);
-
-        $employee = Employee::factory()->create();
-
-        $this->actingAs($this->hr())
-            ->post("/hr/employees/{$employee->id}/documents/scan", [
-                'file' => UploadedFile::fake()->image('cv.jpg'),
-                'type' => 'resume',
-            ])
-            ->assertStatus(422);
-    }
-
-    public function test_an_employee_cannot_scan_documents(): void
-    {
-        config(['ai.key' => 'sk-ant-test']);
-
-        $user = User::factory()->create();
-        $employee = Employee::factory()->create(['user_id' => $user->id]);
-
-        $this->actingAs($user)
-            ->post("/hr/employees/{$employee->id}/documents/scan", [
-                'file' => UploadedFile::fake()->image('licence.jpg'),
-                'type' => 'drivers_license',
-            ])
-            ->assertForbidden();
     }
 
     // ── Assistant ────────────────────────────────────────────────────────
@@ -332,11 +187,5 @@ class AiFeatureTest extends TestCase
     private function hr(): User
     {
         return User::factory()->hrStaff()->create();
-    }
-
-    /** Guards against an unused-import warning while keeping the type reachable. */
-    private function extractorClass(): string
-    {
-        return CredentialExtractor::class;
     }
 }
