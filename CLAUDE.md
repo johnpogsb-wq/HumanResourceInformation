@@ -279,6 +279,36 @@ Rules worth knowing before touching it:
 - The payslip page is print-styled; "Save as PDF" is the browser's own print
   dialog, so there is no PDF dependency to maintain.
 
+**Salaries & Adjustments — where the rate is set.** `basic_salary` used to be a
+bare field on the employee form: HR typed over it, and the old rate, the date
+it changed, and the reason were gone. The `salary_adjustments` history is now
+the record, and `basic_salary` is a **cache of today's rate**. The two answer
+different questions and must not be swapped:
+
+- `basic_salary` — "what does this employee earn now?" (forms, directory)
+- `SalaryAdjustmentService::rateAsOf()` — "what were they on over this
+  period?" **Money reads this one.** `PayrollService::gatherInputs()` and
+  `SeparationService` both call it, so a raise keyed in late cannot rewrite a
+  period that closed before it took effect.
+- `previous_salary` is **stored, not derived** from the preceding row: the row
+  records a decision, and an audit needs the two figures that were on the paper
+  that was signed.
+- Back-dating takes its "from" figure from the rate in force *on the effective
+  date*, not from the employee's current field.
+- A **future-dated** adjustment does not move `basic_salary` until its date.
+  `php artisan salaries:apply-due` recomputes the cache (safe to re-run, same
+  shape as leave accrual). Money never depends on it — a missed run costs a
+  stale figure on a form, never a wrong payslip.
+- Deleting reads `previous_salary` **before** the delete and applies it
+  directly when no history is left: with an empty history `rateAsOf()` falls
+  back to `basic_salary`, which still holds the rate that adjustment set, so
+  removing an employee's only adjustment would otherwise keep the raise.
+- Position salary bands are shown and flagged, never enforced — HR pays outside
+  a band deliberately often enough that refusing the entry would be wrong.
+- Admin-only to delete: re-pointing someone's rate is a change to what they are
+  paid, not a tidy-up. Supervisors are shut out entirely, matching
+  `EmployeePolicy::viewSensitive`.
+
 **Readiness — the Module 2 → Module 4 gate.** `gatherInputs()` reads attendance
 without judging it, so a forgotten time-out quietly understates hours and a
 pending `OvertimeRequest` quietly pays nothing. `PayrollReadinessChecker` runs

@@ -20,6 +20,7 @@ use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\ReviewCycleController;
+use App\Http\Controllers\SalaryController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\SeparationController;
 use App\Http\Controllers\Settings\DataExportController;
@@ -153,6 +154,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('payroll.thirteenth.export');
         Route::get('payroll/13th-month', [ThirteenthMonthController::class, 'index'])
             ->name('payroll.thirteenth');
+
+        // Where an employee's rate is set, and the history behind it.
+        Route::get('payroll/salaries', [SalaryController::class, 'index'])
+            ->name('payroll.salaries');
+        Route::post('payroll/salaries', [SalaryController::class, 'store'])
+            ->name('payroll.salaries.store');
+        Route::delete('payroll/salaries/{salaryAdjustment}', [SalaryController::class, 'destroy'])
+            ->name('payroll.salaries.destroy');
 
         // Separation and final pay — the exit half of the lifecycle.
         Route::get('payroll/separations', [SeparationController::class, 'index'])

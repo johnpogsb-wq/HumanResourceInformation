@@ -25,7 +25,10 @@ use Illuminate\Support\Facades\DB;
  */
 class SeparationService
 {
-    public function __construct(private readonly FinalPayCalculator $calculator) {}
+    public function __construct(
+        private readonly FinalPayCalculator $calculator,
+        private readonly SalaryAdjustmentService $salaries,
+    ) {}
 
     /** Opens a separation and computes the settlement from live figures. */
     public function open(Employee $employee, array $data, User $processor): Separation
@@ -136,7 +139,10 @@ class SeparationService
     public function gatherInputs(Employee $employee, Carbon $lastDay, array $data = []): array
     {
         return [
-            'monthly_salary' => (float) $employee->basic_salary,
+            // The rate they were on at separation, which is not necessarily
+            // the rate on file today — a scheduled raise they never worked to
+            // see must not inflate the settlement.
+            'monthly_salary' => $this->salaries->rateAsOf($employee, $lastDay),
             'days_unpaid' => (float) ($data['days_unpaid'] ?? 0),
             'basic_earned_this_year' => $this->basicEarnedThisYear($employee, $lastDay),
             'convertible_leave_days' => $this->convertibleLeaveDays($employee, $lastDay->year),

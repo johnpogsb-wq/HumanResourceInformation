@@ -114,4 +114,19 @@ return [
             [21918, 6034.30, 0.35],
         ],
     ],
+
+    /*
+    | Why a salary changed. Config-driven like the rest: a company that tracks
+    | a reason this list does not carry adds it here, not in a migration.
+    | 'correction' is deliberately its own reason — it means the previous
+    | figure was wrong, not that the employee earned more.
+    */
+    'salary_adjustment_reasons' => [
+        'hiring' => 'Hiring rate',
+        'regularization' => 'Regularization',
+        'merit' => 'Merit increase',
+        'promotion' => 'Promotion',
+        'market' => 'Market adjustment',
+        'correction' => 'Correction',
+    ],
 ];

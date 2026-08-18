@@ -1,5 +1,6 @@
 import {
     BadgeCheck,
+    Banknote,
     Bell,
     Building2,
     CalendarDays,
@@ -186,6 +187,13 @@ export const NAV_GROUPS = [
                         label: 'Payslips',
                         icon: FileText,
                         href: '/hr/payroll/payslips',
+                    },
+                    {
+                        id: 'payroll-salaries',
+                        label: 'Salaries & Adjustments',
+                        icon: Banknote,
+                        href: '/hr/payroll/salaries',
+                        roles: ['admin', 'hr_staff'],
                     },
                     {
                         id: 'payroll-compensation',

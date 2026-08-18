@@ -28,6 +28,7 @@ class PayrollService
     public function __construct(
         private readonly PayrollCalculator $calculator,
         private readonly EmployeeService $employees,
+        private readonly SalaryAdjustmentService $salaries,
     ) {}
 
     /** Payslips the viewer may see — employees see only their own. */
@@ -161,7 +162,10 @@ class PayrollService
             ->first();
 
         return [
-            'monthly_salary' => (float) $employee->basic_salary,
+            // The rate in force over the period being paid, not the rate the
+            // employee is on today: a raise keyed in after the fact must not
+            // rewrite a period that closed before it took effect.
+            'monthly_salary' => $this->salaries->rateAsOf($employee, $to),
             'pay_frequency' => $period->frequency,
 
             'days_worked' => (float) $attendance->days_worked,
