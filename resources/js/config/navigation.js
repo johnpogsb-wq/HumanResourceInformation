@@ -7,6 +7,7 @@ import {
     ClipboardList,
     Clock,
     Database,
+    DoorOpen,
     FileText,
     FileWarning,
     Gauge,
@@ -198,6 +199,13 @@ export const NAV_GROUPS = [
                         label: '13th-Month Pay',
                         icon: Gift,
                         href: '/hr/payroll/13th-month',
+                        roles: ['admin', 'hr_staff'],
+                    },
+                    {
+                        id: 'payroll-separations',
+                        label: 'Separation & Final Pay',
+                        icon: DoorOpen,
+                        href: '/hr/payroll/separations',
                         roles: ['admin', 'hr_staff'],
                     },
                     {

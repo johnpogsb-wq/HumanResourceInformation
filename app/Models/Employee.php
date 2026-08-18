@@ -61,6 +61,11 @@ class Employee extends Model
         return $this->hasMany(EmployeeDocument::class);
     }
 
+    public function separations(): HasMany
+    {
+        return $this->hasMany(Separation::class);
+    }
+
     // --- Accessors ---------------------------------------------------------
 
     public function getFullNameAttribute(): string

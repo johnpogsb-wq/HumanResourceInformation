@@ -21,6 +21,7 @@ use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\ReviewCycleController;
 use App\Http\Controllers\ScheduleController;
+use App\Http\Controllers\SeparationController;
 use App\Http\Controllers\Settings\DataExportController;
 use App\Http\Controllers\Settings\IntegrationController;
 use App\Http\Controllers\Settings\OrganizationController;
@@ -152,6 +153,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('payroll.thirteenth.export');
         Route::get('payroll/13th-month', [ThirteenthMonthController::class, 'index'])
             ->name('payroll.thirteenth');
+
+        // Separation and final pay — the exit half of the lifecycle.
+        Route::get('payroll/separations', [SeparationController::class, 'index'])
+            ->name('payroll.separations');
+        Route::post('payroll/separations', [SeparationController::class, 'store'])
+            ->name('payroll.separations.store');
+        Route::get('payroll/separations/{separation}', [SeparationController::class, 'show'])
+            ->name('payroll.separation');
+        Route::post('payroll/separations/{separation}/recompute', [SeparationController::class, 'recompute'])
+            ->name('payroll.separations.recompute');
+        Route::post('payroll/separations/{separation}/clearance', [SeparationController::class, 'clearance'])
+            ->name('payroll.separations.clearance');
+        Route::post('payroll/separations/{separation}/release', [SeparationController::class, 'release'])
+            ->name('payroll.separations.release');
 
         Route::get('payroll/compensation', [CompensationController::class, 'index'])->name('payroll.compensation');
         Route::post('payroll/allowances', [CompensationController::class, 'storeAllowance'])->name('payroll.allowances.store');

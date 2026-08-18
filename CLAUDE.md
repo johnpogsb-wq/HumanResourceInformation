@@ -286,6 +286,33 @@ already remitted. Only *approved* and *paid* runs are reportable; a draft is
 still being corrected. An employee missing the relevant government number is
 flagged, because the filing cannot include them until it is on their 201 file.
 
+**Separation & Final Pay** closes the lifecycle the rest of the system opens.
+`FinalPayCalculator` is database-free like the rest: unpaid salary + pro-rated
+13th month + convertible leave, less outstanding loans. `SeparationService`
+gathers those inputs from the modules that already know them — payroll for what
+was paid, leave for what was not taken, compensation for what is still borrowed.
+
+- **Figures are snapshotted on the row, not recomputed on read**, the same
+  reason payslips are: a later change to salary, leave credits, or a loan
+  balance must not rewrite a settlement already handed over.
+- **Separation pay is deliberately excluded.** It is owed only for authorised
+  causes at rates that depend on which cause applies, and getting that wrong in
+  either direction is a labour case — that is a decision HR records, not
+  arithmetic the system performs silently.
+- The **loan deduction is capped at what the settlement holds.** Anything left
+  is a debt to collect, not a negative cheque to hand someone; the breakdown
+  says how much still stands.
+- Status **follows the clearance checklist** rather than being set by hand, so
+  the two cannot disagree. Blocking items (`config/separation.php`) hold up
+  release; the rest are recorded only — withholding a final pay over an
+  unreturned lanyard is not a defensible reason to miss a statutory deadline.
+- Release is the point of no return, and follows payroll's **separation of
+  duties**: HR staff prepare, an *admin* releases. It freezes the figures,
+  settles the loans against the deduction, and marks the employee separated and
+  inactive.
+- The list counts down against DOLE Labor Advisory 06-20's 30 days, which is
+  what turns it from a table into a work queue.
+
 ## Performance (Module 5)
 
 The rating scale, the 360 reviewer weights, and the performance bands live in
@@ -391,11 +418,11 @@ Seed accounts (password `password`): `admin@primepower.test`,
 
 ## Known gaps
 
-All five modules are functional. Still outstanding: final-pay
-computation; peer and subordinate reviews are supported by the schema and
-scoring but have no assignment UI (only self and supervisor are created at
-rollout); email notifications (the bell and the credential indicator are in-app
-only).
+All five modules are functional. Still outstanding: separation pay for
+authorised causes (deliberately left to HR, see Payroll above); peer and
+subordinate reviews are supported by the schema and scoring but have no
+assignment UI (only self and supervisor are created at rollout); email
+notifications (the bell and the credential indicator are in-app only).
 
 Movable holidays — Maundy Thursday, Good Friday, and the two Eids — are
 deliberately *not* seeded: they follow the liturgical and lunar calendars and
