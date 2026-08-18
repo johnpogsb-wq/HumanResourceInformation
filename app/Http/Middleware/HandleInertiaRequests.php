@@ -59,9 +59,6 @@ class HandleInertiaRequests extends Middleware
             'pendingApprovals' => fn () => $request->user()
                 ? app(LeaveService::class)->pendingApprovalsFor($request->user())
                 : 0,
-            // Whether the AI features are switched on at all. Without a key the
-            // scan button and the assistant hide rather than failing on click.
-            'aiEnabled' => fn () => filled(config('ai.key')),
             // Lapsed or soon-to-lapse 201 documents, scoped to what this user
             // may see — so an employee's own licence warns them directly.
             // Lazy for the same reason as the badge above.
