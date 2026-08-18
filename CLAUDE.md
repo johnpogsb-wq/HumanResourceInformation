@@ -110,6 +110,26 @@ config-driven and database-free, the same shape as `AttendanceExceptionScanner`.
   near-white on light mode's darker orange, near-black on dark mode's brighter
   amber, which would otherwise sit near 2.5:1.
 
+## 201 file completeness (Module 1)
+
+**201 File Status** answers what Credentials doesn't: not "what is about to
+lapse" but "what was never filed". `OnboardingChecker` is config-driven and
+database-free, the same shape as the other scanners — `config/onboarding.php`
+holds what a complete file needs, so a new client audit demanding another
+document is a config edit.
+
+- **Requirements are per position.** A dispatcher does not need a driver's
+  licence; a driver may not legally work without one, matched on a fragment of
+  the position title.
+- The same **blocking** distinction as Credentials: a missing contract or
+  licence stops deployment, a missing résumé is untidy.
+- Missing **government numbers** are reported too, and deliberately as
+  non-blocking — they don't stop the person working, they stop the company
+  filing for them. Compliance already catches this at remittance time, when
+  the filing is due; this catches it while it is still cheap to fix.
+- A complete file is not a finding. Listing every compliant employee would
+  bury the ones that aren't.
+
 ## Timekeeping (Module 2)
 
 `AttendanceCalculator` is deliberately database-free: Payroll multiplies its

@@ -14,6 +14,7 @@ use App\Http\Controllers\LeaveBalanceController;
 use App\Http\Controllers\LeaveCalendarController;
 use App\Http\Controllers\LeaveController;
 use App\Http\Controllers\LeaveTypeController;
+use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\OvertimeController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\PayslipController;
@@ -46,6 +47,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // 201-file documents inside their renewal window, or already lapsed.
         Route::get('credentials', [CredentialController::class, 'index'])->name('credentials');
+
+        // Which 201 files are still missing a requirement.
+        Route::get('onboarding', [OnboardingController::class, 'index'])->name('onboarding');
 
         Route::post('employees/{employee}/documents', [EmployeeController::class, 'storeDocument'])
             ->name('employees.documents.store');
