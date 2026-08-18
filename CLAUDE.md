@@ -227,6 +227,19 @@ run** — a payroll that cannot be run is worse than one that warns loudly — a
 the panel is hidden once a run is approved, since the figures are then history
 and the advice can no longer be applied.
 
+**13th-month pay** (PD 851) is `ThirteenthMonthCalculator` — database-free and
+unit tested, like the other calculators. The rule is one line, *total basic
+salary earned ÷ 12*, and the whole difficulty is in **earned**: a payslip's
+`basic_pay` is the nominal period salary, because `PayrollCalculator` takes
+lateness, undertime, absences, and unpaid leave off *separately* as deductions.
+Using `basic_pay` alone would pay a full 13th month to someone absent a month
+unpaid, so those four deductions are subtracted back out. Allowances, overtime,
+night differential, and holiday premium are excluded — it is computed on basic
+salary, not gross. Pro-rating needs no special case: a mid-year hire simply has
+fewer payslips. Like Compliance, only *approved* and *paid* runs count, and the
+screen states the 24 December deadline rather than leaving it as a date the
+reader has to know.
+
 **Compliance** is the remittance and BIR reporting screen: SSS (R-3),
 PhilHealth (RF-1), Pag-IBIG (MCRF), and the BIR alphalist, each with a CSV
 export carrying a control total. `ComplianceReportBuilder` is database-free and
@@ -341,7 +354,7 @@ Seed accounts (password `password`): `admin@primepower.test`,
 
 ## Known gaps
 
-All five modules are functional. Still outstanding: 13th-month pay and final-pay
+All five modules are functional. Still outstanding: final-pay
 computation; peer and subordinate reviews are supported by the schema and
 scoring but have no assignment UI (only self and supervisor are created at
 rollout); leave credit accrual on a schedule (credits are allocated in bulk per

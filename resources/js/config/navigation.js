@@ -9,6 +9,7 @@ import {
     Database,
     FileText,
     Gauge,
+    Gift,
     HandCoins,
     History,
     IdCard,
@@ -183,6 +184,13 @@ export const NAV_GROUPS = [
                         label: 'Allowances & Loans',
                         icon: HandCoins,
                         href: '/hr/payroll/compensation',
+                        roles: ['admin', 'hr_staff'],
+                    },
+                    {
+                        id: 'payroll-13th',
+                        label: '13th-Month Pay',
+                        icon: Gift,
+                        href: '/hr/payroll/13th-month',
                         roles: ['admin', 'hr_staff'],
                     },
                     {

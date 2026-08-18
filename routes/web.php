@@ -26,6 +26,7 @@ use App\Http\Controllers\Settings\OrganizationController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\UserAccessController;
+use App\Http\Controllers\ThirteenthMonthController;
 use App\Http\Controllers\TimekeepingController;
 use Illuminate\Support\Facades\Route;
 
@@ -139,6 +140,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('payroll.compliance.export');
         Route::get('payroll/compliance', [ComplianceController::class, 'index'])
             ->name('payroll.compliance');
+
+        // 13th-month pay under PD 851, read back from finalised payslips.
+        Route::get('payroll/13th-month/export', [ThirteenthMonthController::class, 'export'])
+            ->name('payroll.thirteenth.export');
+        Route::get('payroll/13th-month', [ThirteenthMonthController::class, 'index'])
+            ->name('payroll.thirteenth');
 
         Route::get('payroll/compensation', [CompensationController::class, 'index'])->name('payroll.compensation');
         Route::post('payroll/allowances', [CompensationController::class, 'storeAllowance'])->name('payroll.allowances.store');
