@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\Auditable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -30,6 +31,9 @@ class PayrollRun extends Model
         self::STATUS_PAID,
         self::STATUS_CANCELLED,
     ];
+
+    /** Statuses whose payslips are finished enough to report or pay against. */
+    public const REPORTABLE = [self::STATUS_APPROVED, self::STATUS_PAID];
 
     protected $guarded = ['id'];
 
@@ -62,7 +66,20 @@ class PayrollRun extends Model
     /** Once approved, the figures are final and loans have been amortised. */
     public function isFinal(): bool
     {
-        return in_array($this->status, [self::STATUS_APPROVED, self::STATUS_PAID], true);
+        return in_array($this->status, self::REPORTABLE, true);
+    }
+
+    /**
+     * Runs whose figures may be reported on or paid against.
+     *
+     * Kept here rather than copied into each screen: 13th-month pay,
+     * compliance remittances, and final pay all have to agree on what
+     * "already earned" means, and three private copies of the list will
+     * eventually disagree. A draft is still being corrected.
+     */
+    public function scopeReportable(Builder $query): Builder
+    {
+        return $query->whereIn('status', self::REPORTABLE);
     }
 
     protected function casts(): array

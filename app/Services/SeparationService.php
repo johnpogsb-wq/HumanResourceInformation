@@ -148,11 +148,18 @@ class SeparationService
     /**
      * Basic salary actually earned this year — the same definition the
      * 13th-month screen uses, so the two figures agree.
+     *
+     * `reportable()` is what makes that true: without it a settlement would
+     * pay 13th month on payslips from a draft run that is still being
+     * corrected, and quote a figure the 13th-month screen does not show.
      */
     private function basicEarnedThisYear(Employee $employee, Carbon $lastDay): float
     {
         $earned = Payslip::where('employee_id', $employee->id)
-            ->whereHas('run.period', fn ($query) => $query->whereYear('end_date', $lastDay->year))
+            ->whereHas('run', fn ($query) => $query
+                ->reportable()
+                ->whereHas('period', fn ($inner) => $inner->whereYear('end_date', $lastDay->year)),
+            )
             ->get()
             ->sum(fn (Payslip $slip) => (float) $slip->basic_pay
                 - (float) $slip->late_deduction

@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
 
         $this->seedAdminUsers();
         $this->seedEmployees();
+        $this->seedSelfServiceUser();
 
         // Both need employees; leave also reads schedules to skip rest days.
         $this->call(AttendanceSeeder::class);
@@ -49,6 +50,50 @@ class DatabaseSeeder extends Seeder
                 ],
             );
         }
+    }
+
+    /**
+     * A rank-and-file login.
+     *
+     * The `employee` role is enforced in every policy in the system, but the
+     * seeder only ever produced admin, HR, and supervisor accounts — so the
+     * self-service half (own payslip, own leave, own 201 file) could not be
+     * opened at all without hand-making a user first.
+     *
+     * Deliberately someone with a supervisor above them, so filing a leave
+     * request has an approver to route to.
+     */
+    private function seedSelfServiceUser(): void
+    {
+        $existing = User::where('email', 'employee@primepower.test')->first();
+
+        // Already linked. Re-running must not hand the same login a second
+        // employee record — one user, one 201 file.
+        if ($existing && Employee::where('user_id', $existing->id)->exists()) {
+            return;
+        }
+
+        $employee = Employee::whereNull('user_id')
+            ->whereNotNull('supervisor_id')
+            ->orderBy('id')
+            ->first();
+
+        if (! $employee) {
+            return;
+        }
+
+        $user = User::updateOrCreate(
+            ['email' => 'employee@primepower.test'],
+            [
+                'name' => $employee->full_name,
+                'role' => User::ROLE_EMPLOYEE,
+                'password' => 'password',
+                'is_active' => true,
+                'email_verified_at' => now(),
+            ],
+        );
+
+        $employee->update(['user_id' => $user->id]);
     }
 
     private function seedEmployees(): void

@@ -108,6 +108,22 @@ class SeparationTest extends TestCase
         $this->assertSame('0.00', $separation->leave_conversion);
     }
 
+    /**
+     * A draft run is still being corrected. Paying 13th month against it would
+     * quote a figure the 13th-month screen does not even show, and hand over
+     * money computed from payslips nobody has approved.
+     */
+    public function test_payslips_from_an_unapproved_run_are_not_counted(): void
+    {
+        $employee = Employee::factory()->create(['basic_salary' => self::SALARY]);
+        $this->payslip($employee, basic: 13050, status: PayrollRun::STATUS_APPROVED);
+        $this->payslip($employee, basic: 13050, status: PayrollRun::STATUS_DRAFT);
+        $this->payslip($employee, basic: 13050, status: PayrollRun::STATUS_FOR_APPROVAL);
+
+        // Only the approved 13,050 counts: 13,050 ÷ 12.
+        $this->assertSame('1087.50', $this->open($employee)->thirteenth_month);
+    }
+
     public function test_a_draft_can_be_recomputed(): void
     {
         $separation = $this->separation();
@@ -358,12 +374,12 @@ class SeparationTest extends TestCase
         ]);
     }
 
-    private function payslip(Employee $employee, float $basic): Payslip
+    private function payslip(Employee $employee, float $basic, string $status = PayrollRun::STATUS_APPROVED): Payslip
     {
         $run = PayrollRun::create([
             'payroll_period_id' => $this->period()->id,
             'run_number' => 'PR-'.now()->year.'-'.str_pad((string) (PayrollRun::count() + 1), 4, '0', STR_PAD_LEFT),
-            'status' => PayrollRun::STATUS_APPROVED,
+            'status' => $status,
         ]);
 
         return Payslip::create([

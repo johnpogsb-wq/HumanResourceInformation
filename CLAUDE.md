@@ -13,6 +13,11 @@ Laravel 12 + Inertia 2 + React 18 + Tailwind 3, served by Herd at
 lives at `/api/v1`. Both entry points call the same Service class, so behaviour
 can't drift between them. Controllers stay thin: authorize, delegate, respond.
 
+**The API covers Modules 1 and 2 only** — employees (plus documents) and
+attendance. Leave, payroll, and performance are Inertia-only today; the pattern
+for extending it is in `Http/Controllers/Api/`, and the Service layer each one
+would call already exists.
+
 ```
 Request ─┬─ Http/Controllers/EmployeeController      (Inertia -> Pages/…)
          └─ Http/Controllers/Api/EmployeeController  (JSON  -> Resources)
@@ -224,6 +229,13 @@ a month, and rates and any waiting period live in `config/leave.php`.
 
 ## Payroll (Module 4)
 
+**What counts as "already earned" is defined once**, on
+`PayrollRun::REPORTABLE` / `scopeReportable()`: approved and paid, never a
+draft. 13th-month pay, compliance remittances, and final pay all have to agree
+on it, and they used to each keep a private copy of the list — which is how
+final pay came to quote 13th month against payslips the 13th-month screen did
+not even show. Read it from the model; do not re-write the condition.
+
 **Statutory rates live in `config/payroll.php`, not in code.** SSS, PhilHealth,
 Pag-IBIG, and the TRAIN withholding tables are all config values, so a new
 circular is a config edit. `StatutoryContributionsTest` asserts every bracket
@@ -408,13 +420,25 @@ under `storage/app/backups/` (gitignored, not the live source of truth).
 the primary key side of a relationship and leaves the foreign key column bare,
 so `2026_08_11_000001_index_foreign_keys` adds the ones the app actually joins
 and filters on — supervisor scoping, payslips by employee, audit logs by user.
-Four are left un-indexed on purpose (`departments.head_employee_id`,
-`positions.department_id`, `kpis.department_id`, `kpis.position_id`): small
-lookup tables where the index costs writes for a scan the planner would choose
-anyway. Adding a foreign key means deciding which of those two cases it is.
+Five are left un-indexed on purpose (`departments.head_employee_id`,
+`positions.department_id`, `kpis.department_id`, `kpis.position_id`,
+`separations.processed_by`): small tables where the index costs writes for a
+scan the planner would choose anyway, and nothing filters on the column —
+`separations.processed_by` is only ever eager-loaded, which reads `users` by
+its primary key. Adding a foreign key means deciding which of those two cases
+it is.
 
 Seed accounts (password `password`): `admin@primepower.test`,
-`hr@primepower.test`.
+`hr@primepower.test`, and `employee@primepower.test` — a rank-and-file login
+with a supervisor above it, so the self-service half (own payslip, own leave,
+own 201 file) and the approval routing can both be exercised. The supervisor
+accounts are the seeded department heads; their emails are Faker-generated, so
+read one out of the `users` table.
+
+**The seeded payroll run is carried through to *paid*.** Everything downstream
+of payroll reads finalised runs only, so a run left at `for_approval` leaves
+13th-month pay, compliance, final pay, and every employee's payslip screen
+empty on a fresh install — which looks broken rather than pending.
 
 ## Known gaps
 

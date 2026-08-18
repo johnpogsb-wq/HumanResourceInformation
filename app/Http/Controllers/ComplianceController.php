@@ -21,9 +21,6 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ComplianceController extends Controller
 {
-    /** Runs whose figures are final enough to remit against. */
-    private const REPORTABLE = [PayrollRun::STATUS_APPROVED, PayrollRun::STATUS_PAID];
-
     public function __construct(private readonly ComplianceReportBuilder $builder) {}
 
     public function index(Request $request): Response
@@ -31,7 +28,7 @@ class ComplianceController extends Controller
         Gate::authorize('viewAny', PayrollRun::class);
 
         $runs = PayrollRun::with('period:id,name,start_date,end_date')
-            ->whereIn('status', self::REPORTABLE)
+            ->reportable()
             ->latest('id')
             ->get();
 
@@ -73,7 +70,7 @@ class ComplianceController extends Controller
         $report = $this->resolveReport($request);
 
         $run = PayrollRun::with('period')
-            ->whereIn('status', self::REPORTABLE)
+            ->reportable()
             ->findOrFail($request->query('run'));
 
         $built = $this->builder->build($report, $this->payslips($run));

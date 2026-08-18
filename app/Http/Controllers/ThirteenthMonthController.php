@@ -22,8 +22,6 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ThirteenthMonthController extends Controller
 {
-    private const REPORTABLE = [PayrollRun::STATUS_APPROVED, PayrollRun::STATUS_PAID];
-
     public function __construct(private readonly ThirteenthMonthCalculator $calculator) {}
 
     public function index(Request $request): Response
@@ -96,7 +94,7 @@ class ThirteenthMonthController extends Controller
         return Payslip::query()
             ->with(['employee:id,employee_number,first_name,middle_name,last_name,suffix,department_id', 'employee.department:id,name'])
             ->whereHas('run', fn ($query) => $query
-                ->whereIn('status', self::REPORTABLE)
+                ->reportable()
                 ->whereHas('period', fn ($inner) => $inner->whereYear('end_date', $year)),
             )
             ->get();
@@ -113,7 +111,7 @@ class ThirteenthMonthController extends Controller
         // collect() first: mapping an Eloquent collection to scalars leaves an
         // Eloquent collection, and its unique() calls getKey() on each item.
         $years = collect(
-            PayrollRun::whereIn('status', self::REPORTABLE)
+            PayrollRun::reportable()
                 ->with('period:id,end_date')
                 ->get()
                 ->all(),

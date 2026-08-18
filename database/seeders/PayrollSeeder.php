@@ -48,9 +48,29 @@ class PayrollSeeder extends Seeder
         $run = $payroll->generate($period, $processor);
         $payroll->submitForApproval($run);
 
+        /*
+         * Carried through to paid, not left waiting for approval.
+         *
+         * Everything downstream of payroll reads *finalised* runs only — a
+         * draft is still being corrected — so a run parked at for_approval
+         * leaves 13th-month pay, compliance remittances, final pay, and every
+         * employee's own payslip screen empty on a fresh install. Those look
+         * broken rather than pending.
+         *
+         * The approver is deliberately an admin, not the HR processor: the
+         * seeded data should model the separation of duties the policy
+         * enforces, not work around it.
+         */
+        $approver = User::where('role', User::ROLE_ADMIN)->first();
+
+        if ($approver && $approver->isNot($processor)) {
+            $payroll->approve($run, $approver, 'Seeded run — approved for demonstration data.');
+            $payroll->markPaid($run);
+        }
+
         $this->command?->info(
             "Seeded payroll run {$run->run_number}: {$run->employee_count} payslip(s), "
-            .'net '.number_format((float) $run->total_net, 2).'.',
+            .'net '.number_format((float) $run->total_net, 2).", status {$run->refresh()->status}.",
         );
     }
 
