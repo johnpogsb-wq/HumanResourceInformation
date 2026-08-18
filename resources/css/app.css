@@ -68,6 +68,21 @@
         --chart-3: 262 83.3% 57.8%;
         --chart-4: 174 83.4% 33.1%;
 
+        /* Graded good -> bad ramp, six stops, dark green through red. Unlike
+           --success / --warning / --destructive, which each mean one thing,
+           these mean *a position on a scale* and are only meaningful in order.
+           Never pick one on its own; never reorder them.
+
+           Light-mode stops, in hex: #15803D #22C55E #84CC16 #EAB308 #F97316
+           #DC2626. Used at /10 for a fill and full strength for the text on
+           it, the way Badge already handles success and warning. */
+        --grade-1: 142 72% 29%;
+        --grade-2: 142 71% 45%;
+        --grade-3: 84 81% 44%;
+        --grade-4: 45 93% 47%;
+        --grade-5: 25 95% 53%;
+        --grade-6: 0 72% 51%;
+
         --radius: 0.625rem;
     }
 
@@ -134,6 +149,19 @@
         --chart-2: 34 62.4% 45.9%;
         --chart-3: 254 63.1% 67.1%;
         --chart-4: 175 72.4% 35.5%;
+
+        /* The same six stops, lifted. #15803D is L 29% — on this background
+           that is the logo-subtitle mistake again, a colour dark enough to
+           vanish. Each stop is raised until it clears the surface, keeping the
+           hues and the order so the ramp still reads as one scale. The house
+           steps are the precedent: --success 31% -> 48%, --warning 44% -> 55%,
+           --destructive 51% -> 60%. */
+        --grade-1: 142 52% 46%;
+        --grade-2: 142 58% 58%;
+        --grade-3: 84 60% 55%;
+        --grade-4: 45 88% 58%;
+        --grade-5: 25 92% 62%;
+        --grade-6: 0 84% 63%;
     }
 
     * {

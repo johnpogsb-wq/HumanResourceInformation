@@ -7,6 +7,16 @@ const VARIANTS = {
     warning: 'bg-warning/10 text-warning border-warning/20',
     destructive: 'bg-destructive/10 text-destructive border-destructive/20',
     muted: 'bg-muted text-muted-foreground border-border',
+
+    /* Positions on the good -> bad ramp, not standalone colours. Written out
+       in full because Tailwind scans for literal class names — a template
+       string like `bg-grade-${n}` compiles to nothing. */
+    'grade-1': 'bg-grade-1/10 text-grade-1 border-grade-1/20',
+    'grade-2': 'bg-grade-2/10 text-grade-2 border-grade-2/20',
+    'grade-3': 'bg-grade-3/10 text-grade-3 border-grade-3/20',
+    'grade-4': 'bg-grade-4/10 text-grade-4 border-grade-4/20',
+    'grade-5': 'bg-grade-5/10 text-grade-5 border-grade-5/20',
+    'grade-6': 'bg-grade-6/10 text-grade-6 border-grade-6/20',
 };
 
 /** Employment / request statuses mapped to a consistent colour language. */

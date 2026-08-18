@@ -70,6 +70,13 @@ Light and dark both work because components reference tokens, not values.
   `breadcrumbs`.
 - Chart marks use `--chart-1`, held apart from `--primary` because chart fills
   have to sit inside an OKLCH lightness band that `--primary` misses in dark mode.
+- **`--grade-1` … `--grade-6` are a ramp, not six colours.** Dark green →
+  green → yellow-green → yellow → orange → red, meaningful only in order.
+  Reach for them when something is *a position on a scale*; keep
+  `success` / `warning` / `destructive` for states that mean one thing
+  (approved, pending, rejected). `Badge` exposes them as `variant="grade-3"`.
+  The dark block lifts every stop — `#15803D` is L 29%, dark enough to
+  disappear on the dark surface, which is the logo-subtitle mistake again.
 
 ## Adding a module (the Module 1 recipe)
 

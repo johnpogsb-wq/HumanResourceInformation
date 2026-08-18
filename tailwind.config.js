@@ -89,6 +89,16 @@ export default {
                     3: token('chart-3'),
                     4: token('chart-4'),
                 },
+
+                /* Good -> bad ramp. Meaningful only in order; see app.css. */
+                grade: {
+                    1: token('grade-1'),
+                    2: token('grade-2'),
+                    3: token('grade-3'),
+                    4: token('grade-4'),
+                    5: token('grade-5'),
+                    6: token('grade-6'),
+                },
             },
 
             borderRadius: {

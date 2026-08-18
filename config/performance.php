@@ -45,12 +45,24 @@ return [
     | Bands the final score is reported against, highest first. Used for the
     | badge on performance history.
     */
+    /*
+    | The variants are stops on the shared good -> bad ramp (`--grade-1`
+    | through `--grade-6` in app.css), so the badges read as one scale. They
+    | used to be success / primary / default / warning / destructive — green,
+    | *blue*, *grey*, orange, red — which is five separate meanings, not a
+    | descent, and left the middle of the scale looking like an absence of
+    | information rather than a middling result.
+    |
+    | Five bands over a six-stop ramp: grade-4 (yellow) is skipped so each
+    | adjacent pair stays clearly apart. Adding a sixth band is an HR policy
+    | decision, not a colour one — the rating scale above is 1–5.
+    */
     'performance_bands' => [
-        ['floor' => 4.50, 'label' => 'Outstanding', 'variant' => 'success'],
-        ['floor' => 3.50, 'label' => 'Exceeds Expectations', 'variant' => 'primary'],
-        ['floor' => 2.50, 'label' => 'Meets Expectations', 'variant' => 'default'],
-        ['floor' => 1.50, 'label' => 'Needs Improvement', 'variant' => 'warning'],
-        ['floor' => 0.00, 'label' => 'Unsatisfactory', 'variant' => 'destructive'],
+        ['floor' => 4.50, 'label' => 'Outstanding', 'variant' => 'grade-1'],
+        ['floor' => 3.50, 'label' => 'Exceeds Expectations', 'variant' => 'grade-2'],
+        ['floor' => 2.50, 'label' => 'Meets Expectations', 'variant' => 'grade-3'],
+        ['floor' => 1.50, 'label' => 'Needs Improvement', 'variant' => 'grade-5'],
+        ['floor' => 0.00, 'label' => 'Unsatisfactory', 'variant' => 'grade-6'],
     ],
 
     /*
