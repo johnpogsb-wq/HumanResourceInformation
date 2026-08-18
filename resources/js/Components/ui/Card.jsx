@@ -64,13 +64,75 @@ export function CardFooter({ className, children, ...props }) {
 }
 
 /**
+ * Tones a tile may carry.
+ *
+ * Colour here encodes the figure's *valence* — it is not decoration. A number
+ * that is neither good nor bad keeps the default, because once every tile is
+ * coloured none of them reads as a signal any more. The `grade-*` entries are
+ * stops on the shared good -> bad ramp and are for figures that sit on a
+ * scale; the named tones are for figures that mean one thing.
+ *
+ * Spelled out rather than built from a template string: Tailwind scans for
+ * literal class names.
+ */
+const ICON_TONES = {
+    primary: 'bg-primary/10 text-primary',
+    info: 'bg-info/10 text-info',
+    success: 'bg-success/10 text-success',
+    warning: 'bg-warning/10 text-warning',
+    destructive: 'bg-destructive/10 text-destructive',
+    muted: 'bg-muted text-muted-foreground',
+};
+
+const TEXT_TONES = {
+    default: 'text-foreground',
+    primary: 'text-primary',
+    info: 'text-info',
+    success: 'text-success',
+    warning: 'text-warning',
+    destructive: 'text-destructive',
+    muted: 'text-muted-foreground',
+    'grade-1': 'text-grade-1',
+    'grade-2': 'text-grade-2',
+    'grade-3': 'text-grade-3',
+    'grade-4': 'text-grade-4',
+    'grade-5': 'text-grade-5',
+    'grade-6': 'text-grade-6',
+};
+
+const BAR_TONES = {
+    primary: 'bg-chart-1',
+    success: 'bg-success',
+    warning: 'bg-warning',
+    destructive: 'bg-destructive',
+    'grade-1': 'bg-grade-1',
+    'grade-2': 'bg-grade-2',
+    'grade-3': 'bg-grade-3',
+    'grade-4': 'bg-grade-4',
+    'grade-5': 'bg-grade-5',
+    'grade-6': 'bg-grade-6',
+};
+
+/**
  * Dashboard KPI tile.
  *
  * `trend` takes `{ direction: 'up' | 'down', label }`. Direction only sets the
  * arrow and colour — whether "up" is good is the caller's business, so the
  * label carries the meaning.
+ *
+ * `tone` colours the icon tile. The headline number itself stays in the
+ * foreground colour: it is the thing being read, and tinting it costs
+ * contrast for no added meaning.
  */
-export function StatCard({ label, value, icon: Icon, hint, trend, className }) {
+export function StatCard({
+    label,
+    value,
+    icon: Icon,
+    hint,
+    trend,
+    tone = 'primary',
+    className,
+}) {
     const TrendIcon = trend?.direction === 'down' ? ArrowDown : ArrowUp;
 
     return (
@@ -80,7 +142,12 @@ export function StatCard({ label, value, icon: Icon, hint, trend, className }) {
                     {label}
                 </p>
                 {Icon && (
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                    <span
+                        className={cn(
+                            'grid h-9 w-9 shrink-0 place-items-center rounded-lg',
+                            ICON_TONES[tone] ?? ICON_TONES.primary,
+                        )}
+                    >
                         <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
                     </span>
                 )}
@@ -111,7 +178,17 @@ export function StatCard({ label, value, icon: Icon, hint, trend, className }) {
  * A tile whose headline is a share of something — the bar makes the proportion
  * readable without doing arithmetic.
  */
-export function MeterCard({ label, value, percent, icon: Icon, hint, badge, className }) {
+export function MeterCard({
+    label,
+    value,
+    percent,
+    icon: Icon,
+    hint,
+    badge,
+    tone,
+    iconTone = 'primary',
+    className,
+}) {
     const clamped = Math.max(0, Math.min(100, percent ?? 0));
 
     return (
@@ -121,7 +198,12 @@ export function MeterCard({ label, value, percent, icon: Icon, hint, badge, clas
                     {label}
                 </p>
                 {Icon && (
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                    <span
+                        className={cn(
+                            'grid h-9 w-9 shrink-0 place-items-center rounded-lg',
+                            ICON_TONES[iconTone] ?? ICON_TONES.primary,
+                        )}
+                    >
                         <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
                     </span>
                 )}
@@ -131,7 +213,16 @@ export function MeterCard({ label, value, percent, icon: Icon, hint, badge, clas
                 <span className="text-[26px] font-semibold tabular-nums leading-tight text-foreground">
                     {value}
                 </span>
-                {badge && <span className="text-xs font-medium text-primary">{badge}</span>}
+                {badge && (
+                    <span
+                        className={cn(
+                            'text-xs font-medium',
+                            TEXT_TONES[tone] ?? TEXT_TONES.primary,
+                        )}
+                    >
+                        {badge}
+                    </span>
+                )}
             </p>
 
             <span
@@ -140,7 +231,10 @@ export function MeterCard({ label, value, percent, icon: Icon, hint, badge, clas
                 aria-label={`${clamped}%`}
             >
                 <span
-                    className="block h-full rounded-r-[4px] bg-chart-1 transition-[width] duration-500"
+                    className={cn(
+                        'block h-full rounded-r-[4px] transition-[width] duration-500',
+                        BAR_TONES[tone] ?? BAR_TONES.primary,
+                    )}
                     style={{ width: `${clamped}%` }}
                 />
             </span>
@@ -154,7 +248,7 @@ export function MeterCard({ label, value, percent, icon: Icon, hint, badge, clas
  * A tile holding two or three related counts, for figures that only mean
  * something beside each other.
  */
-export function SplitStatCard({ label, icon: Icon, stats = [], className }) {
+export function SplitStatCard({ label, icon: Icon, stats = [], tone = 'primary', className }) {
     return (
         <Card className={cn('p-4', className)}>
             <div className="flex items-start justify-between gap-3">
@@ -162,7 +256,12 @@ export function SplitStatCard({ label, icon: Icon, stats = [], className }) {
                     {label}
                 </p>
                 {Icon && (
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                    <span
+                        className={cn(
+                            'grid h-9 w-9 shrink-0 place-items-center rounded-lg',
+                            ICON_TONES[tone] ?? ICON_TONES.primary,
+                        )}
+                    >
                         <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
                     </span>
                 )}
@@ -177,9 +276,12 @@ export function SplitStatCard({ label, icon: Icon, stats = [], className }) {
                         <dd
                             className={cn(
                                 'text-[26px] font-semibold tabular-nums leading-tight',
-                                stat.tone === 'muted'
-                                    ? 'text-muted-foreground'
-                                    : 'text-foreground',
+                                // A zero carries no warning worth colouring —
+                                // "0 absent" in red reads as a problem when it
+                                // is the opposite.
+                                stat.value === 0 || stat.value === '0'
+                                    ? TEXT_TONES.muted
+                                    : (TEXT_TONES[stat.tone] ?? TEXT_TONES.default),
                             )}
                         >
                             {stat.value}

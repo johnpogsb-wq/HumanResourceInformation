@@ -66,10 +66,15 @@ class DashboardController extends Controller
 
         $average = $average !== null ? round((float) $average, 2) : null;
 
+        $band = $this->scorer->band($average);
+
         return [
             ...$base,
             'average_rating' => $average,
-            'performance_band' => $this->scorer->band($average)['label'] ?? null,
+            'performance_band' => $band['label'] ?? null,
+            // The band already knows where the score sits on the ramp; the
+            // dashboard reads it rather than deriving its own cut-offs.
+            'performance_band_variant' => $band['variant'] ?? null,
         ];
     }
 

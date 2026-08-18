@@ -26,6 +26,26 @@ const SERIES = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4'];
 const SERIES_TEXT = ['text-chart-1', 'text-chart-2', 'text-chart-3', 'text-chart-4'];
 
 /**
+ * Where a percentage sits on the good -> bad ramp.
+ *
+ * Presentational only — these cut-offs colour a bar, they do not decide
+ * anything. The rules that carry consequences (chronic lateness, absence
+ * trends) live in config/timekeeping.php and are deliberately not restated
+ * here, so nobody can mistake a shade for a threshold.
+ */
+function gradeForPercent(percent) {
+    const value = Number(percent) || 0;
+
+    if (value >= 95) return 'grade-1';
+    if (value >= 90) return 'grade-2';
+    if (value >= 80) return 'grade-3';
+    if (value >= 70) return 'grade-4';
+    if (value >= 50) return 'grade-5';
+
+    return 'grade-6';
+}
+
+/**
  * Active headcount by department.
  *
  * One measure across categories, so every bar wears the same hue — colour would
@@ -191,18 +211,23 @@ export default function Dashboard({
                     label="Present Today"
                     value={attendanceToday.present}
                     icon={UserCheck}
+                    tone="success"
                     hint={`of ${attendanceToday.expected} scheduled`}
                 />
+                {/* Being on approved leave is not a fault, so this stays
+                    informational rather than a warning. */}
                 <StatCard
                     label="On Leave Today"
                     value={leaveToday.count}
                     icon={CalendarDays}
+                    tone="info"
                     hint={leaveToday.count > 0 ? leaveToday.summary : 'Nobody is away'}
                 />
                 <StatCard
                     label="Latest Payroll"
                     value={formatCurrency(payroll.total_net)}
                     icon={Wallet}
+                    tone="primary"
                     hint={payroll.period ?? 'No payroll run yet'}
                 />
             </div>
@@ -212,10 +237,11 @@ export default function Dashboard({
                 <SplitStatCard
                     label="Today's Attendance"
                     icon={Clock}
+                    tone="success"
                     stats={[
-                        { label: 'Present', value: attendanceToday.present },
-                        { label: 'Late', value: attendanceToday.late },
-                        { label: 'Absent', value: attendanceToday.absent, tone: 'muted' },
+                        { label: 'Present', value: attendanceToday.present, tone: 'success' },
+                        { label: 'Late', value: attendanceToday.late, tone: 'warning' },
+                        { label: 'Absent', value: attendanceToday.absent, tone: 'destructive' },
                     ]}
                 />
 
@@ -224,25 +250,34 @@ export default function Dashboard({
                     value={`${attendanceToday.rate}%`}
                     percent={attendanceToday.rate}
                     icon={UserCheck}
+                    iconTone="success"
+                    tone={gradeForPercent(attendanceToday.rate)}
                     hint={`${attendanceToday.present} of ${attendanceToday.expected} on duty`}
                 />
 
+                {/* The bar takes the band's own colour, so the meter and the
+                    badge cannot disagree about how the score reads. */}
                 <MeterCard
                     label="Avg Performance"
                     value={statistics.average_rating?.toFixed(2) ?? '—'}
                     percent={((statistics.average_rating ?? 0) / 5) * 100}
                     icon={ClipboardCheck}
+                    iconTone="primary"
+                    tone={statistics.performance_band_variant ?? 'primary'}
                     badge={statistics.performance_band ?? undefined}
                     hint="Latest completed review cycle"
                 />
 
+                {/* Anything waiting on a decision is a warning, not a fault —
+                    and each drops to grey at zero, so an empty queue is quiet. */}
                 <SplitStatCard
                     label="Awaiting Approval"
                     icon={CalendarClock}
+                    tone="warning"
                     stats={[
-                        { label: 'Leave', value: approvals.leave },
-                        { label: 'Overtime', value: approvals.overtime },
-                        { label: 'Reviews', value: approvals.reviews, tone: 'muted' },
+                        { label: 'Leave', value: approvals.leave, tone: 'warning' },
+                        { label: 'Overtime', value: approvals.overtime, tone: 'warning' },
+                        { label: 'Reviews', value: approvals.reviews, tone: 'warning' },
                     ]}
                 />
             </div>

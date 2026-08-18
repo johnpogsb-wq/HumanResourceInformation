@@ -70,6 +70,13 @@ Light and dark both work because components reference tokens, not values.
   `breadcrumbs`.
 - Chart marks use `--chart-1`, held apart from `--primary` because chart fills
   have to sit inside an OKLCH lightness band that `--primary` misses in dark mode.
+- **Dashboard tiles take a `tone`.** `StatCard` and `SplitStatCard` colour the
+  icon tile; `SplitStatCard` also colours each figure, and `MeterCard`'s `tone`
+  colours the bar and badge while `iconTone` handles the tile. Tone means
+  *valence*, not decoration — an approved absence is `info`, not `warning`, and
+  a stat at **zero drops to grey by itself**, because "0 absent" in red reads as
+  a problem when it is the opposite. The headline number in `StatCard` stays in
+  the foreground colour: it is the thing being read.
 - **`--grade-1` … `--grade-6` are a ramp, not six colours.** Dark green →
   green → yellow-green → yellow → orange → red, meaningful only in order.
   Reach for them when something is *a position on a scale*; keep
