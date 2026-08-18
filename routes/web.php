@@ -113,8 +113,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('leave/balances', [LeaveBalanceController::class, 'index'])->name('leave.balances');
         Route::post('leave/balances', [LeaveBalanceController::class, 'update'])->name('leave.balances.update');
-        Route::post('leave/balances/allocate', [LeaveBalanceController::class, 'allocate'])
-            ->name('leave.balances.allocate');
+        // Credits are earned per month of service, not handed out whole on
+        // 1 January. Safe to re-run — it recomputes rather than adding.
+        Route::post('leave/balances/accrue', [LeaveBalanceController::class, 'accrue'])
+            ->name('leave.balances.accrue');
 
         Route::get('leave/calendar', LeaveCalendarController::class)->name('leave.calendar');
 

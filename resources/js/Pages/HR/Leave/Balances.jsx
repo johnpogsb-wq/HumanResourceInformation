@@ -21,7 +21,7 @@ import { cn, initials } from '@/lib/utils';
 
 export default function Balances({ year, years, types, rows, can }) {
     const [editing, setEditing] = useState(null); // { row, type, credits }
-    const [allocateOpen, setAllocateOpen] = useState(false);
+    const [accrueOpen, setAccrueOpen] = useState(false);
 
     const form = useForm({
         employee_id: '',
@@ -31,7 +31,7 @@ export default function Balances({ year, years, types, rows, can }) {
         credits_carried_over: 0,
     });
 
-    const allocateForm = useForm({ year });
+    const accrueForm = useForm({ year });
 
     const openEditor = (row, type) => {
         const credits = row.credits[type.id];
@@ -56,12 +56,12 @@ export default function Balances({ year, years, types, rows, can }) {
         });
     };
 
-    const submitAllocate = (event) => {
+    const submitAccrue = (event) => {
         event.preventDefault();
 
-        allocateForm.post('/hr/leave/balances/allocate', {
+        accrueForm.post('/hr/leave/balances/accrue', {
             preserveScroll: true,
-            onSuccess: () => setAllocateOpen(false),
+            onSuccess: () => setAccrueOpen(false),
         });
     };
 
@@ -75,9 +75,9 @@ export default function Balances({ year, years, types, rows, can }) {
             ]}
             actions={
                 can.adjust && (
-                    <Button size="sm" variant="outline" onClick={() => setAllocateOpen(true)}>
+                    <Button size="sm" variant="outline" onClick={() => setAccrueOpen(true)}>
                         <Sparkles className="h-4 w-4" />
-                        <span className="hidden sm:inline">Allocate Year</span>
+                        <span className="hidden sm:inline">Accrue Credits</span>
                     </Button>
                 )
             }
@@ -265,33 +265,34 @@ export default function Balances({ year, years, types, rows, can }) {
                 </form>
             </Modal>
 
-            {/* Annual allocation */}
+            {/* Accrual */}
             <Modal
-                show={allocateOpen}
-                onClose={() => setAllocateOpen(false)}
-                title="Allocate Annual Credits"
+                show={accrueOpen}
+                onClose={() => setAccrueOpen(false)}
+                title="Accrue Leave Credits"
                 maxWidth="md"
             >
-                <form onSubmit={submitAllocate} className="space-y-4">
+                <form onSubmit={submitAccrue} className="space-y-4">
                     <div className="flex gap-3">
                         <Wallet
                             className="mt-0.5 h-5 w-5 shrink-0 text-primary"
                             aria-hidden="true"
                         />
                         <p className="text-sm text-muted-foreground">
-                            Grants every active employee the default entitlement for each leave
-                            type. Existing rows keep their used credits — only the entitlement
-                            is reset.
+                            Credits are earned per completed month of service — a 15-day type
+                            accrues 1.25 days a month — so someone hired in November earns two
+                            months' worth, not a full year. Used credits are untouched, and
+                            re-running recomputes rather than adds.
                         </p>
                     </div>
 
-                    <Field label="Year" required error={allocateForm.errors.year}>
+                    <Field label="Year" required error={accrueForm.errors.year}>
                         {({ id }) => (
                             <Select
                                 id={id}
-                                value={allocateForm.data.year}
+                                value={accrueForm.data.year}
                                 onChange={(event) =>
-                                    allocateForm.setData('year', event.target.value)
+                                    accrueForm.setData('year', event.target.value)
                                 }
                                 options={years.map((value) => ({ value, label: value }))}
                             />
@@ -299,11 +300,11 @@ export default function Balances({ year, years, types, rows, can }) {
                     </Field>
 
                     <div className="flex justify-end gap-2 pt-2">
-                        <Button variant="outline" onClick={() => setAllocateOpen(false)}>
+                        <Button variant="outline" onClick={() => setAccrueOpen(false)}>
                             Cancel
                         </Button>
-                        <Button type="submit" loading={allocateForm.processing}>
-                            Allocate
+                        <Button type="submit" loading={accrueForm.processing}>
+                            Accrue
                         </Button>
                     </div>
                 </form>

@@ -7,6 +7,7 @@ use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\LeaveType;
 use App\Services\EmployeeService;
+use App\Services\LeaveAccrualService;
 use App\Services\LeaveService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -101,10 +102,16 @@ class LeaveBalanceController extends Controller
     }
 
     /**
-     * Grants every active employee the default allocation for a year. Existing
-     * rows keep their used credits — only the entitlement is (re)set.
+     * Brings every balance up to what service has actually earned.
+     *
+     * This replaced a bulk allocation that handed every active employee a full
+     * year's entitlement on 1 January — which meant someone hired in November
+     * started with the same fifteen days as someone who had worked all year,
+     * and could file all of them in December. Safe to re-run: it recomputes
+     * from the hire date rather than adding, so running it twice grants
+     * nothing twice.
      */
-    public function allocate(Request $request): RedirectResponse
+    public function accrue(Request $request, LeaveAccrualService $accrual): RedirectResponse
     {
         Gate::authorize('adjustBalances', LeaveRequest::class);
 
@@ -112,25 +119,23 @@ class LeaveBalanceController extends Controller
             'year' => ['required', 'integer', 'min:2000', 'max:2100'],
         ]);
 
-        $types = LeaveType::where('is_active', true)->where('default_credits', '>', 0)->get();
-        $employees = Employee::where('status', '!=', 'inactive')->get();
-        $granted = 0;
+        $result = $accrual->accrue($validated['year']);
 
-        foreach ($employees as $employee) {
-            foreach ($types as $type) {
-                LeaveBalance::updateOrCreate(
-                    [
-                        'employee_id' => $employee->id,
-                        'leave_type_id' => $type->id,
-                        'year' => $validated['year'],
-                    ],
-                    ['credits_earned' => $type->default_credits],
-                );
+        $message = "Accrued credits for {$validated['year']}: "
+            ."{$result['updated']} line(s) updated, {$result['unchanged']} already current.";
 
-                $granted++;
-            }
+        // Balances that had already been spent past what service earns are
+        // held at what was used, not reduced — but HR should know.
+        if ($result['over_granted'] !== []) {
+            $count = count($result['over_granted']);
+
+            return back()->with(
+                'error',
+                $message." {$count} balance(s) had already used more than accrual grants; "
+                    .'those were left at the used figure rather than reduced.',
+            );
         }
 
-        return back()->with('success', "Allocated {$granted} credit line(s) for {$validated['year']}.");
+        return back()->with('success', $message);
     }
 }

@@ -205,6 +205,23 @@ leave, HR included.
   supervisor's own reports, endorsed requests for HR. Shared lazily from
   `HandleInertiaRequests`, so guests never run the query.
 
+**Credits accrue, they are not handed out.** The screen used to grant every
+active employee a full year's entitlement on 1 January — wrong in the direction
+that costs money, since someone hired in November started with the same fifteen
+days as someone who had worked all year. `LeaveAccrualCalculator` earns credits
+per **whole calendar month** of service instead: a 15-day type accrues 1.25 days
+a month, and rates and any waiting period live in `config/leave.php`.
+
+- **Whole calendar months, not anniversaries.** 1 January to 31 December is 364
+  days — one short of twelve anniversary months — so anniversary counting would
+  leave a full-year employee at 11/12 of their entitlement.
+- `LeaveAccrualService::accrue()` **recomputes rather than adds**, so it is safe
+  to re-run and needs no "already accrued this month" state to keep in step.
+- A balance already spent past what accrual grants is **held at the used figure,
+  not reduced**: dropping earned below used would invent a negative balance and
+  imply the approved leave was never valid. Those cases are reported to HR
+  instead.
+
 ## Payroll (Module 4)
 
 **Statutory rates live in `config/payroll.php`, not in code.** SSS, PhilHealth,
@@ -377,8 +394,7 @@ Seed accounts (password `password`): `admin@primepower.test`,
 All five modules are functional. Still outstanding: final-pay
 computation; peer and subordinate reviews are supported by the schema and
 scoring but have no assignment UI (only self and supervisor are created at
-rollout); leave credit accrual on a schedule (credits are allocated in bulk per
-year); email notifications (the bell and the credential indicator are in-app
+rollout); email notifications (the bell and the credential indicator are in-app
 only).
 
 Movable holidays — Maundy Thursday, Good Friday, and the two Eids — are
