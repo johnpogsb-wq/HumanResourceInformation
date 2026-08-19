@@ -21,9 +21,7 @@ import {
     Table,
     TableEmpty,
     Textarea,
-    SectionTabs,
 } from '@/Components/ui';
-import { PAYROLL_SECTIONS } from '@/config/navigation';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 const titleCase = (value) =>
@@ -110,8 +108,6 @@ export default function Separations({
                 )
             }
         >
-            <SectionTabs items={PAYROLL_SECTIONS} />
-
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
                 <StatCard label="Awaiting Release" value={pending.length} icon={DoorOpen} />
                 <StatCard

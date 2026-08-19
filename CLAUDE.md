@@ -68,19 +68,13 @@ Light and dark both work because components reference tokens, not values.
   `@/Components/ui` barrel.
 - Every authenticated page wraps in `@/Layouts/AppLayout` and passes `title` +
   `breadcrumbs`.
-- **A module with many screens gets one sidebar entry and `SectionTabs`**, not
-  one entry per screen — the sidebar says *where you are in the system*, and
-  those screens are all one place. Payroll does this; its seven sections live in
-  `PAYROLL_SECTIONS` in `navigation.js` rather than in the component, so the
-  sidebar and the dropdown read one source **and the hrefs reach `ALL_HREFS`** —
-  without that the dropdown can never know which entry is current, because
-  `bestMatch()` only considers hrefs it has been told about. `SectionTabs`
-  renders as a `Menu` (Headless UI) rather than a row of tabs — the button
-  names *where you are*, opening it shows *where else you can go*, and it does
-  not compete with the page's own action buttons for header width the way a
-  seven-wide tab row did. It filters by role like the sidebar does, and **hides
-  entirely below two entries**: a lone option is not a choice, it just shows
-  someone where they cannot go.
+- **A module with several screens is one sidebar entry with `children`**, which
+  the sidebar renders as an expandable dropdown — not a flat link per screen.
+  Payroll's seven screens live this way, same shape as Employee Information,
+  Timekeeping, Leave, and Performance. Every child `href` is picked up by
+  `ALL_HREFS` in `navigation.js` automatically, which is what lets `bestMatch()`
+  highlight the right entry when its screen is open. Children filter by role
+  like every other nav entry.
 - Chart marks use `--chart-1`, held apart from `--primary` because chart fills
   have to sit inside an OKLCH lightness band that `--primary` misses in dark mode.
 - **Dashboard tiles take a `tone`.** `StatCard` and `SplitStatCard` colour the
@@ -179,12 +173,11 @@ plus the assigned `Shift`.
   `OvertimeRequest` — that gate belongs to Payroll.
 - `TimekeepingService::record()` upserts one row per employee/date.
 
-Seven screens: **Daily Records** (DTR + CSV import), **Overtime** (file /
-approve / reject), **Shifts & Schedules**, **Holidays**, **Reports**
-(per-employee aggregation, CSV export), **Exceptions**, and **History**. They
-are still seven sidebar children — unlike Payroll, they have not been moved
-onto `SectionTabs` yet. Only HR records or corrects time; approvers are HR or
-the employee's own supervisor, never the requester.
+Seven screens, one sidebar entry with `children`: **Daily Records** (DTR + CSV
+import), **Overtime** (file / approve / reject), **Shifts & Schedules**,
+**Holidays**, **Reports** (per-employee aggregation, CSV export),
+**Exceptions**, and **History**. Only HR records or corrects time; approvers
+are HR or the employee's own supervisor, never the requester.
 
 A shift still referenced by a schedule or a time record is **deactivated**
 instead of deleted, so attendance history keeps its shift.

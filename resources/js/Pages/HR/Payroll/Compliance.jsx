@@ -14,9 +14,7 @@ import {
     TR,
     Table,
     TableEmpty,
-    SectionTabs,
 } from '@/Components/ui';
-import { PAYROLL_SECTIONS } from '@/config/navigation';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 /** Money columns are right-aligned; identifiers and names are not. */
@@ -73,8 +71,6 @@ export default function Compliance({
                 )
             }
         >
-            <SectionTabs items={PAYROLL_SECTIONS} />
-
             <Card className="mb-5">
                 <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-end">
                     <Field label="Report" className="w-full lg:w-72">

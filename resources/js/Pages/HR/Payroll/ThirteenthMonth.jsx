@@ -15,9 +15,7 @@ import {
     TR,
     Table,
     TableEmpty,
-    SectionTabs,
 } from '@/Components/ui';
-import { PAYROLL_SECTIONS } from '@/config/navigation';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 export default function ThirteenthMonth({ rows, totals, filters, years, deadline }) {
@@ -50,8 +48,6 @@ export default function ThirteenthMonth({ rows, totals, filters, years, deadline
                 )
             }
         >
-            <SectionTabs items={PAYROLL_SECTIONS} />
-
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
                 <StatCard label="Employees" value={totals.employees} icon={Users} />
                 <StatCard
