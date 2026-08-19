@@ -1,7 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
     Bell,
-    Building2,
     Database,
     Palette,
     Plug,
@@ -19,7 +18,6 @@ import { cn } from '@/lib/utils';
 export const SETTINGS_SECTIONS = [
     { label: 'General', href: '/settings/general', icon: SettingsIcon, admin: true },
     { label: 'Appearance', href: '/settings/appearance', icon: Palette },
-    { label: 'Organization', href: '/settings/organization', icon: Building2, hr: true },
     { label: 'Notifications', href: '/settings/notifications', icon: Bell, admin: true },
     { label: 'Users & Access', href: '/settings/users', icon: Users, admin: true },
     { label: 'Security', href: '/settings/security', icon: Shield },

@@ -136,6 +136,34 @@ config-driven and database-free, the same shape as `AttendanceExceptionScanner`.
   near-white on light mode's darker orange, near-black on dark mode's brighter
   amber, which would otherwise sit near 2.5:1.
 
+## Master data (Module 1)
+
+**Departments** and **Positions** are the org structure every employee record
+is filed against, and every other module reads: KPI scoping, payroll grouping,
+and the salary band Salaries & Adjustments checks a new rate against.
+
+They used to be two tables stacked on one cramped Settings page. They are two
+full-width screens under Employee Information now — HR maintains them while
+filing people, not while configuring the system — and `/settings/organization`
+redirects to `/hr/departments` rather than 404ing.
+
+- Both reuse the **`manageOrganization` gate**, not a new permission: moving a
+  screen does not change who is allowed to shape the org chart. Supervisors and
+  employees get a 403, so the nav entries carry `roles` to match.
+- **Anything in use is deactivated, never deleted** — a department with
+  employees or positions under it, a position somebody holds. History has to
+  keep the department and job title it was filed under. Only a genuinely unused
+  row is removed, and the confirm dialog says which of the two will happen
+  *before* the click.
+- Search uses `scopeSearch` on both models with the **`ilike`/`like` driver
+  switch**, the same shape as `Employee::scopeSearch` — a plain `like` matches
+  case-sensitively on Postgres and would silently return nothing.
+- The **summary tiles count the whole table, not the filtered view**. A summary
+  that moves while you type is not a summary.
+- Positions with no salary band are **counted, not flagged as an error**. A
+  band is optional and advisory, but a rate keyed against a bandless position
+  has nothing to be compared to, which is worth seeing.
+
 ## 201 file completeness (Module 1)
 
 **201 File Status** answers what Credentials doesn't: not "what is about to
@@ -398,16 +426,19 @@ The rating scale, the 360 reviewer weights, and the performance bands live in
 
 ## Settings
 
-Eight sections under `/settings`, sharing `SettingsLayout` (section list on the
-left). Company-wide sections are **admin-only**; Organization is HR too;
-Appearance and Security belong to every signed-in user.
+Seven sections under `/settings`, sharing `SettingsLayout` (section list on the
+left). Company-wide sections are **admin-only**; Appearance and Security belong
+to every signed-in user.
 
 - Values live in a **key/value `settings` table**, namespaced (`company.name`),
   JSON-valued, read through one cached map. A new preference is a new key in
   `Setting::DEFAULTS`, not a migration.
-- **Organization** is the departments/positions CRUD. **Users & Access** is the
-  only place besides the employee form where a login is created — an admin
-  cannot demote or deactivate themselves, and deactivating revokes API tokens.
+- **Users & Access** is the only place besides the employee form where a login
+  is created — an admin cannot demote or deactivate themselves, and
+  deactivating revokes API tokens.
+- **Organization moved out.** Departments and positions are master data under
+  Employee Information now (see below); `/settings/organization` redirects to
+  `/hr/departments` so old links still land.
 - **Security** replaced the starter kit's `/profile`, which now redirects there.
   `email_verified_at` is guarded, so clearing it on an email change has to
   happen outside the mass-assignment payload.

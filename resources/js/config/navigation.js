@@ -2,6 +2,7 @@ import {
     BadgeCheck,
     Banknote,
     Bell,
+    Briefcase,
     Building2,
     CalendarDays,
     CalendarRange,
@@ -86,6 +87,23 @@ export const NAV_GROUPS = [
                         label: '201 File Status',
                         icon: FileWarning,
                         href: '/hr/onboarding',
+                    },
+                    // Master data. HR maintains the org structure while filing
+                    // people, so it sits with the records rather than under
+                    // Settings, where it used to live.
+                    {
+                        id: 'employee-departments',
+                        label: 'Departments',
+                        icon: Building2,
+                        href: '/hr/departments',
+                        roles: ['admin', 'hr_staff'],
+                    },
+                    {
+                        id: 'employee-positions',
+                        label: 'Positions',
+                        icon: Briefcase,
+                        href: '/hr/positions',
+                        roles: ['admin', 'hr_staff'],
                     },
                 ],
             },
@@ -272,13 +290,6 @@ export const NAV_GROUPS = [
                         label: 'Appearance',
                         icon: Palette,
                         href: '/settings/appearance',
-                    },
-                    {
-                        id: 'set-organization',
-                        label: 'Organization',
-                        icon: Building2,
-                        href: '/settings/organization',
-                        roles: ['admin', 'hr_staff'],
                     },
                     {
                         id: 'set-notifications',

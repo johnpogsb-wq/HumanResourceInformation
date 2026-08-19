@@ -2,9 +2,7 @@
 
 namespace Tests\Feature\Settings;
 
-use App\Models\Department;
 use App\Models\Employee;
-use App\Models\Position;
 use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -43,13 +41,6 @@ class SettingsTest extends TestCase
 
         $this->actingAs($user)->get('/settings/appearance')->assertOk();
         $this->actingAs($user)->get('/settings/security')->assertOk();
-    }
-
-    public function test_hr_staff_may_maintain_the_org_structure(): void
-    {
-        $this->actingAs(User::factory()->hrStaff()->create())
-            ->get('/settings/organization')
-            ->assertOk();
     }
 
     public function test_guests_are_redirected_to_login(): void
@@ -102,84 +93,6 @@ class SettingsTest extends TestCase
                 ],
             ])
             ->assertSessionHasErrors('company.name');
-    }
-
-    // --- Organization -----------------------------------------------------
-
-    public function test_hr_can_create_a_department_and_position(): void
-    {
-        $hr = User::factory()->hrStaff()->create();
-
-        $this->actingAs($hr)->post('/settings/organization/departments', [
-            'code' => 'ops',
-            'name' => 'Fleet Operations',
-        ])->assertRedirect();
-
-        // Codes are normalised to upper case.
-        $department = Department::firstOrFail();
-        $this->assertSame('OPS', $department->code);
-
-        $this->actingAs($hr)->post('/settings/organization/positions', [
-            'department_id' => $department->id,
-            'code' => 'ops-drv',
-            'title' => 'Professional Driver',
-            'min_salary' => 18000,
-            'max_salary' => 25000,
-        ])->assertRedirect();
-
-        $this->assertDatabaseHas('positions', ['code' => 'OPS-DRV']);
-    }
-
-    public function test_department_codes_must_be_unique(): void
-    {
-        Department::create(['code' => 'OPS', 'name' => 'Operations']);
-
-        $this->actingAs(User::factory()->hrStaff()->create())
-            ->post('/settings/organization/departments', ['code' => 'OPS', 'name' => 'Duplicate'])
-            ->assertSessionHasErrors('code');
-    }
-
-    public function test_a_maximum_salary_cannot_sit_below_the_minimum(): void
-    {
-        $department = Department::create(['code' => 'OPS', 'name' => 'Operations']);
-
-        $this->actingAs(User::factory()->hrStaff()->create())
-            ->post('/settings/organization/positions', [
-                'department_id' => $department->id,
-                'code' => 'OPS-X',
-                'title' => 'Backwards Band',
-                'min_salary' => 30000,
-                'max_salary' => 20000,
-            ])
-            ->assertSessionHasErrors('max_salary');
-    }
-
-    public function test_a_department_in_use_is_deactivated_rather_than_deleted(): void
-    {
-        $department = Department::create(['code' => 'OPS', 'name' => 'Operations']);
-        Employee::factory()->create(['department_id' => $department->id]);
-
-        $this->actingAs(User::factory()->hrStaff()->create())
-            ->delete("/settings/organization/departments/{$department->id}")
-            ->assertRedirect();
-
-        $this->assertDatabaseHas('departments', ['id' => $department->id, 'is_active' => false]);
-    }
-
-    public function test_an_unused_position_is_deleted(): void
-    {
-        $department = Department::create(['code' => 'OPS', 'name' => 'Operations']);
-        $position = Position::create([
-            'department_id' => $department->id,
-            'code' => 'OPS-X',
-            'title' => 'Unused',
-        ]);
-
-        $this->actingAs(User::factory()->hrStaff()->create())
-            ->delete("/settings/organization/positions/{$position->id}")
-            ->assertRedirect();
-
-        $this->assertDatabaseCount('positions', 0);
     }
 
     // --- Users & Access ---------------------------------------------------

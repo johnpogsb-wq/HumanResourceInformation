@@ -7,6 +7,7 @@ use App\Http\Controllers\CompensationController;
 use App\Http\Controllers\ComplianceController;
 use App\Http\Controllers\CredentialController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\HolidayController;
 use App\Http\Controllers\KpiController;
@@ -19,13 +20,13 @@ use App\Http\Controllers\OvertimeController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\PerformanceController;
+use App\Http\Controllers\PositionController;
 use App\Http\Controllers\ReviewCycleController;
 use App\Http\Controllers\SalaryController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\SeparationController;
 use App\Http\Controllers\Settings\DataExportController;
 use App\Http\Controllers\Settings\IntegrationController;
-use App\Http\Controllers\Settings\OrganizationController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\UserAccessController;
@@ -52,6 +53,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // Which 201 files are still missing a requirement.
         Route::get('onboarding', [OnboardingController::class, 'index'])->name('onboarding');
+
+        // Master data — the org structure employee records are filed against.
+        Route::get('departments', [DepartmentController::class, 'index'])->name('departments');
+        Route::post('departments', [DepartmentController::class, 'store'])->name('departments.store');
+        Route::put('departments/{department}', [DepartmentController::class, 'update'])
+            ->name('departments.update');
+        Route::delete('departments/{department}', [DepartmentController::class, 'destroy'])
+            ->name('departments.destroy');
+
+        Route::get('positions', [PositionController::class, 'index'])->name('positions');
+        Route::post('positions', [PositionController::class, 'store'])->name('positions.store');
+        Route::put('positions/{position}', [PositionController::class, 'update'])
+            ->name('positions.update');
+        Route::delete('positions/{position}', [PositionController::class, 'destroy'])
+            ->name('positions.destroy');
 
         Route::post('employees/{employee}/documents', [EmployeeController::class, 'storeDocument'])
             ->name('employees.documents.store');
@@ -229,13 +245,11 @@ Route::middleware(['auth', 'verified'])->prefix('settings')->name('settings.')->
 
     Route::get('appearance', [SettingsController::class, 'appearance'])->name('appearance');
 
-    Route::get('organization', [OrganizationController::class, 'index'])->name('organization');
-    Route::post('organization/departments', [OrganizationController::class, 'storeDepartment'])->name('departments.store');
-    Route::put('organization/departments/{department}', [OrganizationController::class, 'updateDepartment'])->name('departments.update');
-    Route::delete('organization/departments/{department}', [OrganizationController::class, 'destroyDepartment'])->name('departments.destroy');
-    Route::post('organization/positions', [OrganizationController::class, 'storePosition'])->name('positions.store');
-    Route::put('organization/positions/{position}', [OrganizationController::class, 'updatePosition'])->name('positions.update');
-    Route::delete('organization/positions/{position}', [OrganizationController::class, 'destroyPosition'])->name('positions.destroy');
+    // Departments and positions moved to Employee Information, where HR
+    // maintains them while filing people rather than while configuring the
+    // system. Kept as a redirect so old links and bookmarks still land.
+    Route::get('organization', fn () => redirect()->route('hr.departments'))
+        ->name('organization');
 
     Route::get('notifications', [SettingsController::class, 'notifications'])->name('notifications');
     Route::put('notifications', [SettingsController::class, 'updateNotifications'])->name('notifications.update');
