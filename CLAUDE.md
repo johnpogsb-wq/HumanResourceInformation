@@ -72,11 +72,15 @@ Light and dark both work because components reference tokens, not values.
   one entry per screen — the sidebar says *where you are in the system*, and
   those screens are all one place. Payroll does this; its seven sections live in
   `PAYROLL_SECTIONS` in `navigation.js` rather than in the component, so the
-  sidebar and the tabs read one source **and the hrefs reach `ALL_HREFS`** —
-  without that a tab can never know it is the active one, because `bestMatch()`
-  only considers hrefs it has been told about. Tabs filter by role like the
-  sidebar does, and **hide entirely below two entries**: a lone tab is not a
-  choice, it just shows someone where they cannot go.
+  sidebar and the dropdown read one source **and the hrefs reach `ALL_HREFS`** —
+  without that the dropdown can never know which entry is current, because
+  `bestMatch()` only considers hrefs it has been told about. `SectionTabs`
+  renders as a `Menu` (Headless UI) rather than a row of tabs — the button
+  names *where you are*, opening it shows *where else you can go*, and it does
+  not compete with the page's own action buttons for header width the way a
+  seven-wide tab row did. It filters by role like the sidebar does, and **hides
+  entirely below two entries**: a lone option is not a choice, it just shows
+  someone where they cannot go.
 - Chart marks use `--chart-1`, held apart from `--primary` because chart fills
   have to sit inside an OKLCH lightness band that `--primary` misses in dark mode.
 - **Dashboard tiles take a `tone`.** `StatCard` and `SplitStatCard` colour the
