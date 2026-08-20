@@ -4,8 +4,8 @@ import { CalendarClock, Loader2, Plus, UserCheck, Users, UserX } from 'lucide-re
 import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
-    Button,
     Card,
+    FloatingActionButton,
     SearchInput,
     Select,
     StatCard,
@@ -93,15 +93,13 @@ export default function Index({ employees, statistics, departments, filters, sor
         <AppLayout
             title="Employee Information"
             breadcrumbs={[{ label: 'Human Resource' }, { label: 'Employee Information' }]}
-            actions={
-                can.create && (
-                    <Button href="/hr/employees/create" size="sm">
-                        <Plus className="h-4 w-4" />
-                        <span className="hidden sm:inline">Add Employee</span>
-                    </Button>
-                )
-            }
         >
+            {can.create && (
+                <FloatingActionButton icon={Plus} href="/hr/employees/create">
+                    Add Employee
+                </FloatingActionButton>
+            )}
+
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {stats.map((stat) => (
                     <StatCard key={stat.label} {...stat} />

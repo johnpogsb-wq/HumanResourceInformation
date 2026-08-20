@@ -7,6 +7,7 @@ import {
     Button,
     Card,
     Field,
+    FloatingActionButton,
     Input,
     Modal,
     Pagination,
@@ -47,15 +48,13 @@ export default function Index({ periods, suggestion, can }) {
         <AppLayout
             title="Payroll & Compensation"
             breadcrumbs={[{ label: 'Human Resource' }, { label: 'Payroll & Compensation' }]}
-            actions={
-                can.create && (
-                    <Button size="sm" onClick={() => setCreateOpen(true)}>
-                        <Plus className="h-4 w-4" />
-                        <span className="hidden sm:inline">New Period</span>
-                    </Button>
-                )
-            }
         >
+            {can.create && (
+                <FloatingActionButton icon={Plus} onClick={() => setCreateOpen(true)}>
+                    New Period
+                </FloatingActionButton>
+            )}
+
             <Card>
                 <Table>
                     <THead>

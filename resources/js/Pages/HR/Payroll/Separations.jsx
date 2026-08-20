@@ -8,6 +8,7 @@ import {
     Card,
     CardHeader,
     Field,
+    FloatingActionButton,
     Input,
     Modal,
     Pagination,
@@ -99,15 +100,13 @@ export default function Separations({
                 { label: 'Payroll', href: '/hr/payroll' },
                 { label: 'Separation & Final Pay' },
             ]}
-            actions={
-                can.create && (
-                    <Button size="sm" onClick={() => setOpen(true)}>
-                        <Plus className="h-4 w-4" />
-                        <span className="hidden sm:inline">Open Separation</span>
-                    </Button>
-                )
-            }
         >
+            {can.create && (
+                <FloatingActionButton icon={Plus} onClick={() => setOpen(true)}>
+                    Open Separation
+                </FloatingActionButton>
+            )}
+
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
                 <StatCard label="Awaiting Release" value={pending.length} icon={DoorOpen} />
                 <StatCard

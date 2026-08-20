@@ -7,6 +7,7 @@ import {
     Button,
     Card,
     Field,
+    FloatingActionButton,
     Input,
     Modal,
     Pagination,
@@ -136,19 +137,19 @@ export default function Index({
             breadcrumbs={[{ label: 'Human Resource' }, { label: 'Timekeeping & Attendance' }]}
             actions={
                 can.manage && (
-                    <div className="flex items-center gap-1.5">
-                        <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
-                            <Upload className="h-4 w-4" />
-                            <span className="hidden sm:inline">Import</span>
-                        </Button>
-                        <Button size="sm" onClick={() => setEntryOpen(true)}>
-                            <Plus className="h-4 w-4" />
-                            <span className="hidden sm:inline">Record Time</span>
-                        </Button>
-                    </div>
+                    <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+                        <Upload className="h-4 w-4" />
+                        <span className="hidden sm:inline">Import</span>
+                    </Button>
                 )
             }
         >
+            {can.manage && (
+                <FloatingActionButton icon={Plus} onClick={() => setEntryOpen(true)}>
+                    Record Time
+                </FloatingActionButton>
+            )}
+
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {stats.map((stat) => (
                     <StatCard key={stat.label} {...stat} />

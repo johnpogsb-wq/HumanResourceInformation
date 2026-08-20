@@ -17,6 +17,7 @@ import {
     Card,
     CardHeader,
     Field,
+    FloatingActionButton,
     Input,
     Modal,
     Pagination,
@@ -138,15 +139,13 @@ export default function Salaries({ adjustments, filters, reasons, summary, emplo
                 { label: 'Payroll', href: '/hr/payroll' },
                 { label: 'Salaries & Adjustments' },
             ]}
-            actions={
-                can.create && (
-                    <Button size="sm" onClick={() => setOpen(true)}>
-                        <Plus className="h-4 w-4" />
-                        <span className="hidden sm:inline">Set Salary</span>
-                    </Button>
-                )
-            }
         >
+            {can.create && (
+                <FloatingActionButton icon={Plus} onClick={() => setOpen(true)}>
+                    Set Salary
+                </FloatingActionButton>
+            )}
+
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
                 <StatCard
                     label="Monthly Payroll"

@@ -68,6 +68,16 @@ Light and dark both work because components reference tokens, not values.
   `@/Components/ui` barrel.
 - Every authenticated page wraps in `@/Layouts/AppLayout` and passes `title` +
   `breadcrumbs`.
+- **A screen's one primary "create" action is a `FloatingActionButton`**, not
+  a header `Button` — pinned bottom-right instead of competing with filters
+  and exports for the topbar. Only the single "+ Add/New/File/Open" action
+  moves; multi-button toolbars, exports, and workflow actions (Submit,
+  Approve, Release) stay in `actions` — a page never gets more than one FAB.
+  It sits at `bottom-24`, not flush in the corner: `Toast` already owns
+  `bottom-5 right-5` for flash messages, and the two are often triggered by
+  the same click (open the FAB, save, toast confirms), so flush would stack a
+  persistent button under a transient one for the toast's few seconds on
+  screen.
 - **A module with several screens is one sidebar entry with `children`**, which
   the sidebar renders as an expandable dropdown — not a flat link per screen.
   Payroll's seven screens live this way, same shape as Employee Information,

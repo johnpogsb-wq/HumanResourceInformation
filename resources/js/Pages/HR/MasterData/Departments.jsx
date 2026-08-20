@@ -8,6 +8,7 @@ import {
     Card,
     CardHeader,
     Field,
+    FloatingActionButton,
     Input,
     Modal,
     SearchInput,
@@ -86,13 +87,11 @@ export default function Departments({ departments, filters, summary }) {
                 { label: 'Employee Information', href: '/hr/employees' },
                 { label: 'Departments' },
             ]}
-            actions={
-                <Button size="sm" onClick={() => open('new')}>
-                    <Plus className="h-4 w-4" />
-                    <span className="hidden sm:inline">New Department</span>
-                </Button>
-            }
         >
+            <FloatingActionButton icon={Plus} onClick={() => open('new')}>
+                New Department
+            </FloatingActionButton>
+
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
                 <StatCard
                     label="Departments"

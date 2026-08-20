@@ -8,6 +8,7 @@ import {
     Card,
     CardHeader,
     Field,
+    FloatingActionButton,
     Input,
     Modal,
     Select,
@@ -87,15 +88,13 @@ export default function Holidays({ holidays, filters, years, summary, nextYear, 
                 { label: 'Timekeeping', href: '/hr/timekeeping' },
                 { label: 'Holidays' },
             ]}
-            actions={
-                can.manage && (
-                    <Button size="sm" onClick={() => open('new')}>
-                        <Plus className="h-4 w-4" />
-                        <span className="hidden sm:inline">Add Holiday</span>
-                    </Button>
-                )
-            }
         >
+            {can.manage && (
+                <FloatingActionButton icon={Plus} onClick={() => open('new')}>
+                    Add Holiday
+                </FloatingActionButton>
+            )}
+
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
                 <StatCard
                     label={`Holidays in ${filters.year}`}
