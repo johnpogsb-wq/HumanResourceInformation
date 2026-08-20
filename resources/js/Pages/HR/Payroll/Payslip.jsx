@@ -62,12 +62,6 @@ export default function PayslipPage({ payslip }) {
                 { label: 'Payroll', href: '/hr/payroll/payslips' },
                 { label: payslip.payslip_number },
             ]}
-            actions={
-                <Button size="sm" variant="outline" onClick={() => window.print()}>
-                    <Printer className="h-4 w-4" />
-                    <span className="hidden sm:inline">Print / Save as PDF</span>
-                </Button>
-            }
         >
             {/* Chrome that should not end up on paper. */}
             <div className="mb-4 print:hidden">
@@ -221,7 +215,16 @@ export default function PayslipPage({ payslip }) {
                 </div>
             </Card>
 
-            <div className="mt-4 text-center print:hidden">
+            {/* Below the payslip, not in the topbar: printing is what you do
+                once you have read the thing, so the button belongs at the end
+                of it. `print:hidden` because the button must not appear on the
+                page it prints. */}
+            <div className="mt-4 flex flex-col items-center gap-3 print:hidden">
+                <Button variant="outline" onClick={() => window.print()}>
+                    <Printer className="h-4 w-4" />
+                    Print / Save as PDF
+                </Button>
+
                 <Badge variant="muted">Run status: {payslip.run_status}</Badge>
             </div>
         </AppLayout>
