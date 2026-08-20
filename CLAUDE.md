@@ -85,6 +85,16 @@ Light and dark both work because components reference tokens, not values.
   `ALL_HREFS` in `navigation.js` automatically, which is what lets `bestMatch()`
   highlight the right entry when its screen is open. Children filter by role
   like every other nav entry.
+- **Settings is the one exception** — a flat link to `/settings/appearance`,
+  not a dropdown, because it already has its own in-page section list
+  (`SETTINGS_SECTIONS` in `SettingsLayout`) once you're inside; a second copy
+  of the same seven links in the sidebar would only duplicate it. The link
+  targets Appearance specifically because it is the one section every role can
+  open — General, Notifications, Users & Access, Data & Backup, and
+  Integrations are admin-only. Because its sub-pages carry no sidebar
+  `children`, the entry needs `activePrefix: '/settings/'` to stay lit on
+  every settings page, not just Appearance — `isItemActive()` checks that
+  before falling back to the usual `children` match.
 - Chart marks use `--chart-1`, held apart from `--primary` because chart fills
   have to sit inside an OKLCH lightness band that `--primary` misses in dark mode.
 - **Dashboard tiles take a `tone`.** `StatCard` and `SplitStatCard` colour the

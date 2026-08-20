@@ -1,14 +1,12 @@
 import {
     BadgeCheck,
     Banknote,
-    Bell,
     Briefcase,
     Building2,
     CalendarDays,
     CalendarRange,
     ClipboardList,
     Clock,
-    Database,
     DoorOpen,
     FileText,
     FileWarning,
@@ -19,11 +17,8 @@ import {
     IdCard,
     LayoutDashboard,
     ListChecks,
-    Palette,
-    Plug,
     Receipt,
     Settings,
-    Shield,
     ShieldAlert,
     ShieldCheck,
     Target,
@@ -31,7 +26,6 @@ import {
     TriangleAlert,
     UserPlus,
     Users,
-    UsersRound,
     Wallet,
     Wallet2,
 } from 'lucide-react';
@@ -277,55 +271,22 @@ export const NAV_GROUPS = [
                 id: 'settings',
                 label: 'Settings',
                 icon: Settings,
-                children: [
-                    {
-                        id: 'set-general',
-                        label: 'General',
-                        icon: Settings,
-                        href: '/settings/general',
-                        roles: ['admin'],
-                    },
-                    {
-                        id: 'set-appearance',
-                        label: 'Appearance',
-                        icon: Palette,
-                        href: '/settings/appearance',
-                    },
-                    {
-                        id: 'set-notifications',
-                        label: 'Notifications',
-                        icon: Bell,
-                        href: '/settings/notifications',
-                        roles: ['admin'],
-                    },
-                    {
-                        id: 'set-users',
-                        label: 'Users & Access',
-                        icon: UsersRound,
-                        href: '/settings/users',
-                        roles: ['admin'],
-                    },
-                    {
-                        id: 'set-security',
-                        label: 'Security',
-                        icon: Shield,
-                        href: '/settings/security',
-                    },
-                    {
-                        id: 'set-data',
-                        label: 'Data & Backup',
-                        icon: Database,
-                        href: '/settings/data',
-                        roles: ['admin'],
-                    },
-                    {
-                        id: 'set-integrations',
-                        label: 'Integrations',
-                        icon: Plug,
-                        href: '/settings/integrations',
-                        roles: ['admin'],
-                    },
-                ],
+                // One entry, not seven. Unlike Payroll or Timekeeping, this
+                // one has nowhere else to keep the sub-navigation — once
+                // inside, SettingsLayout already renders its own section list
+                // (SETTINGS_SECTIONS) beside the page — so a second, dropdown
+                // copy of the same seven links in the sidebar was pure
+                // duplication of a list that already exists one click in.
+                // Appearance is the target because it is the one section
+                // every role can open — General, Notifications, Users &
+                // Access, Data & Backup, and Integrations are admin-only, and
+                // this link has no `roles` restriction of its own.
+                href: '/settings/appearance',
+                // But the entry still has to stay lit on every other settings
+                // page, not just Appearance — see isItemActive(). Trailing
+                // slash so this can't also match some unrelated future
+                // `/settings-something` route by accident.
+                activePrefix: '/settings/',
             },
         ],
     },
@@ -366,6 +327,15 @@ export function isHrefActive(href, currentUrl) {
 /** True when any of the item's children owns the current URL. */
 export function isItemActive(item, currentUrl) {
     if (item.href && isHrefActive(item.href, currentUrl)) return true;
+
+    // For an item whose sub-navigation lives outside the sidebar entirely
+    // (Settings: SettingsLayout renders its own section list once you're
+    // in) rather than as `children` here — the entry still has to read as
+    // current from any page under it, not just the one it happens to link
+    // to.
+    if (item.activePrefix && pathOf(currentUrl).startsWith(item.activePrefix)) {
+        return true;
+    }
 
     return (item.children ?? []).some((child) => isHrefActive(child.href, currentUrl));
 }
