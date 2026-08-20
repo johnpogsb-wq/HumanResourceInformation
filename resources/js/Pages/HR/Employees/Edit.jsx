@@ -107,6 +107,7 @@ export default function Edit({ employee, options }) {
                     errors={errors}
                     options={options}
                     isEdit
+                    currentPhotoUrl={record.photo_url}
                 />
 
                 <div className="mt-5 flex justify-end gap-2">

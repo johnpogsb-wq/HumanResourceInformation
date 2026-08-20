@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardBody, CardHeader, Field, Input, Select, Textarea } from '@/Components/ui';
+import { initials } from '@/lib/utils';
 
 const GENDERS = [
     { value: 'male', label: 'Male' },
@@ -42,7 +43,34 @@ function Section({ title, description, children }) {
 /**
  * Shared by Create and Edit. `data`/`setData`/`errors` come from Inertia's useForm.
  */
-export default function EmployeeForm({ data, setData, errors, options, isEdit = false }) {
+export default function EmployeeForm({
+    data,
+    setData,
+    errors,
+    options,
+    isEdit = false,
+    currentPhotoUrl = null,
+}) {
+    // A live preview of whatever is picked — the newly-chosen file if there is
+    // one, else the photo already on file when editing. Without this, HR has
+    // no way to confirm they grabbed the right 2x2 before saving, and no way
+    // to see that a photo already exists when opening someone's record to edit.
+    const [previewUrl, setPreviewUrl] = useState(currentPhotoUrl);
+
+    useEffect(() => {
+        if (!data.photo) {
+            setPreviewUrl(currentPhotoUrl);
+            return;
+        }
+
+        const objectUrl = URL.createObjectURL(data.photo);
+        setPreviewUrl(objectUrl);
+
+        // Object URLs are never freed automatically — revoke the old one
+        // whenever a different file is chosen, or the form unmounts.
+        return () => URL.revokeObjectURL(objectUrl);
+    }, [data.photo, currentPhotoUrl]);
+
     // Positions belong to a department — narrow the list once one is chosen.
     const positions = useMemo(() => {
         if (!data.department_id) return options.positions;
@@ -152,17 +180,43 @@ export default function EmployeeForm({ data, setData, errors, options, isEdit = 
                     )}
                 </Field>
 
-                <Field label="Photo" hint="JPG or PNG, max 2 MB" error={errors.photo}>
+                <Field
+                    label="Photo"
+                    hint="2x2, JPG or PNG, max 2 MB"
+                    error={errors.photo}
+                    className="sm:col-span-2 lg:col-span-3"
+                >
                     {({ id }) => (
-                        <input
-                            id={id}
-                            type="file"
-                            accept="image/*"
-                            onChange={(event) =>
-                                setData('photo', event.target.files[0] ?? null)
-                            }
-                            className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-xs file:font-medium file:text-secondary-foreground hover:file:bg-secondary/70"
-                        />
+                        <div className="flex items-center gap-4">
+                            {previewUrl ? (
+                                <img
+                                    src={previewUrl}
+                                    alt=""
+                                    className="h-20 w-20 shrink-0 rounded-full object-cover ring-2 ring-border"
+                                />
+                            ) : (
+                                <span className="grid h-20 w-20 shrink-0 place-items-center rounded-full bg-primary/10 text-lg font-semibold text-primary">
+                                    {initials(`${data.first_name} ${data.last_name}`) || '—'}
+                                </span>
+                            )}
+
+                            <div className="min-w-0 flex-1">
+                                <input
+                                    id={id}
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={(event) =>
+                                        setData('photo', event.target.files[0] ?? null)
+                                    }
+                                    className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-xs file:font-medium file:text-secondary-foreground hover:file:bg-secondary/70"
+                                />
+                                {isEdit && currentPhotoUrl && !data.photo && (
+                                    <p className="mt-1.5 text-xs text-muted-foreground">
+                                        Choosing a new file replaces the photo on file.
+                                    </p>
+                                )}
+                            </div>
+                        </div>
                     )}
                 </Field>
             </Section>
