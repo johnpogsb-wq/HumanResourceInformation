@@ -51,7 +51,14 @@ class EmployeeController extends Controller
             ->withQueryString();
 
         return Inertia::render('HR/Employees/Index', [
-            'employees' => EmployeeResource::collection($employees),
+            // Infinite scroll, not page buttons: on a partial reload (the
+            // WhenVisible sentinel asking for the next `page`) the new rows
+            // are appended to `data` instead of replacing it. A full visit —
+            // first load, or a filter/sort change — ignores this and renders
+            // fresh, so switching filters correctly starts back at page 1
+            // instead of showing a merged mix of two result sets.
+            'employees' => Inertia::merge(EmployeeResource::collection($employees))
+                ->append('data', 'id'),
             'statistics' => $this->employees->statistics($this->employees->scopedQuery($request->user())),
             'departments' => Department::orderBy('name')->get(['id', 'name']),
             'filters' => $filters,

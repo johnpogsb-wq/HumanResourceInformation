@@ -1,12 +1,11 @@
-import { Link, router } from '@inertiajs/react';
+import { Link, router, WhenVisible } from '@inertiajs/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarClock, Plus, UserCheck, Users, UserX } from 'lucide-react';
+import { CalendarClock, Loader2, Plus, UserCheck, Users, UserX } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
     Button,
     Card,
-    Pagination,
     SearchInput,
     Select,
     StatCard,
@@ -78,9 +77,7 @@ export default function Index({ employees, statistics, departments, filters, sor
 
     const rows = employees.data ?? [];
     const meta = employees.meta ?? {};
-    // `employees.links` is the {first,last,prev,next} object — the numbered page
-    // links live on meta.links.
-    const links = meta.links ?? [];
+    const hasMore = (meta.current_page ?? 1) < (meta.last_page ?? 1);
 
     const stats = useMemo(
         () => [
@@ -194,62 +191,102 @@ export default function Index({ employees, statistics, departments, filters, sor
                                 description="Try adjusting your search or filters, or add a new employee record."
                             />
                         ) : (
-                            rows.map((employee) => (
-                                <TR key={employee.id}>
-                                    <TD>
-                                        <Link
-                                            href={`/hr/employees/${employee.id}`}
-                                            className="group flex items-center gap-3"
-                                        >
-                                            {employee.photo_url ? (
-                                                <img
-                                                    src={employee.photo_url}
-                                                    alt=""
-                                                    className="h-9 w-9 shrink-0 rounded-full object-cover"
-                                                />
-                                            ) : (
-                                                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                                                    {initials(employee.full_name)}
+                            <>
+                                {rows.map((employee) => (
+                                    <TR key={employee.id}>
+                                        <TD>
+                                            <Link
+                                                href={`/hr/employees/${employee.id}`}
+                                                className="group flex items-center gap-3"
+                                            >
+                                                {employee.photo_url ? (
+                                                    <img
+                                                        src={employee.photo_url}
+                                                        alt=""
+                                                        className="h-9 w-9 shrink-0 rounded-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                                                        {initials(employee.full_name)}
+                                                    </span>
+                                                )}
+
+                                                <span className="min-w-0">
+                                                    <span className="block truncate text-sm font-medium text-foreground group-hover:text-primary">
+                                                        {employee.full_name}
+                                                    </span>
+                                                    <span className="block truncate text-xs text-muted-foreground">
+                                                        {employee.employee_number}
+                                                    </span>
                                                 </span>
-                                            )}
+                                            </Link>
+                                        </TD>
 
-                                            <span className="min-w-0">
-                                                <span className="block truncate text-sm font-medium text-foreground group-hover:text-primary">
-                                                    {employee.full_name}
-                                                </span>
-                                                <span className="block truncate text-xs text-muted-foreground">
-                                                    {employee.employee_number}
-                                                </span>
-                                            </span>
-                                        </Link>
-                                    </TD>
+                                        <TD className="text-sm text-muted-foreground">
+                                            {employee.department?.name ?? '—'}
+                                        </TD>
 
-                                    <TD className="text-sm text-muted-foreground">
-                                        {employee.department?.name ?? '—'}
-                                    </TD>
+                                        <TD className="text-sm text-muted-foreground">
+                                            {employee.position?.title ?? '—'}
+                                        </TD>
 
-                                    <TD className="text-sm text-muted-foreground">
-                                        {employee.position?.title ?? '—'}
-                                    </TD>
+                                        <TD>
+                                            <Badge status={employee.employment_status} />
+                                        </TD>
 
-                                    <TD>
-                                        <Badge status={employee.employment_status} />
-                                    </TD>
+                                        <TD className="whitespace-nowrap text-sm text-muted-foreground">
+                                            {formatDate(employee.date_hired)}
+                                        </TD>
 
-                                    <TD className="whitespace-nowrap text-sm text-muted-foreground">
-                                        {formatDate(employee.date_hired)}
-                                    </TD>
+                                        <TD>
+                                            <Badge status={employee.status} />
+                                        </TD>
+                                    </TR>
+                                ))}
 
-                                    <TD>
-                                        <Badge status={employee.status} />
-                                    </TD>
-                                </TR>
-                            ))
+                                {/* Scrolling this row into view fetches the next
+                                    page and appends it above — infinite scroll
+                                    instead of numbered pages. It disappears once
+                                    the last page has loaded. */}
+                                {hasMore && (
+                                    <WhenVisible
+                                        as="tr"
+                                        always
+                                        data="employees"
+                                        params={{
+                                            data: { page: (meta.current_page ?? 1) + 1 },
+                                            // Otherwise each scroll-triggered
+                                            // fetch pushes ?page=2, ?page=3…
+                                            // onto the URL and browser history —
+                                            // one Back press per page loaded,
+                                            // and a refresh mid-scroll would
+                                            // render only that lone page instead
+                                            // of everything loaded so far.
+                                            preserveUrl: true,
+                                        }}
+                                    >
+                                        {({ fetching }) => (
+                                            <TD colSpan={6} className="py-4 text-center">
+                                                {fetching && (
+                                                    <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                        Loading more…
+                                                    </span>
+                                                )}
+                                            </TD>
+                                        )}
+                                    </WhenVisible>
+                                )}
+                            </>
                         )}
                     </TBody>
                 </Table>
 
-                <Pagination links={links} meta={meta} />
+                {!hasMore && rows.length > 0 && (
+                    <p className="border-t border-border px-4 py-3 text-center text-xs text-muted-foreground">
+                        {rows.length} of {meta.total} employee(s)
+                    </p>
+                )}
             </Card>
         </AppLayout>
     );

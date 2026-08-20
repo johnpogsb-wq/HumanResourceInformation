@@ -457,6 +457,16 @@ to every signed-in user.
 - **Paginator links.** `employees.links` is the `{first,last,prev,next}` *object*;
   the numbered page buttons are `employees.meta.links` (an *array*). Passing the
   object to `<Pagination>` crashes React and blanks the page. Guarded by a test.
+- **Infinite scroll needs `preserveUrl`.** The Employee Directory loads more
+  rows with `<WhenVisible>` + `Inertia::merge(...)->append('data', 'id')`
+  instead of numbered pages — merge is server-driven and only applies on a
+  *partial* reload, so a full visit (first load, or a filter/sort change)
+  renders fresh instead of showing a stitched-together mix of two result sets.
+  `WhenVisible`'s `params` must carry `preserveUrl: true`, or every
+  scroll-triggered fetch pushes `?page=2`, `?page=3`… onto the URL and browser
+  history: Back needs one press per page loaded, and refreshing mid-scroll
+  re-renders as a full visit showing only that lone page instead of everything
+  loaded so far.
 - **File uploads over PUT.** Browsers can't send multipart on PUT — put
   `_method: 'put'` in the `useForm` data and `post()` with `forceFormData: true`.
 - **Documents are on the private disk.** Never link to `/storage/...` for a 201

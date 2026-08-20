@@ -43,6 +43,44 @@ class EmployeeManagementTest extends TestCase
         $this->assertGreaterThan(3, count($links));
     }
 
+    /**
+     * The directory scrolls to load more instead of numbered pages: a partial
+     * reload for the next page must carry the merge instructions the client
+     * needs to append rows rather than replace them, and must never repeat a
+     * row the first page already sent.
+     */
+    public function test_scrolling_further_merges_the_next_page_instead_of_replacing_it(): void
+    {
+        Employee::factory()->count(20)->create();
+        $hr = $this->hr();
+
+        $first = $this->actingAs($hr)->get('/hr/employees');
+        $version = $first->viewData('page')['version'];
+        $firstIds = collect($first->viewData('page')['props']['employees']['data'])->pluck('id');
+
+        $partial = $this->actingAs($hr)->withHeaders([
+            'X-Inertia' => 'true',
+            'X-Inertia-Version' => $version,
+            'X-Inertia-Partial-Component' => 'HR/Employees/Index',
+            'X-Inertia-Partial-Data' => 'employees',
+        ])->get('/hr/employees?page=2');
+
+        $partial->assertOk();
+        $payload = $partial->json();
+
+        // The server sends only page 2's rows — the client does the
+        // appending — plus the instructions it needs to do that.
+        $this->assertCount(5, $payload['props']['employees']['data']);
+        $this->assertContains('employees.data', $payload['mergeProps']);
+        $this->assertContains('employees.data.id', $payload['matchPropsOn']);
+
+        $secondIds = collect($payload['props']['employees']['data'])->pluck('id');
+        $this->assertTrue(
+            $firstIds->intersect($secondIds)->isEmpty(),
+            'page 2 must not repeat a row page 1 already sent',
+        );
+    }
+
     public function test_hr_can_create_an_employee(): void
     {
         $department = $this->department();
