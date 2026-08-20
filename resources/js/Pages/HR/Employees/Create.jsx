@@ -1,5 +1,5 @@
 import { useForm } from '@inertiajs/react';
-import { ArrowLeft, Save } from 'lucide-react';
+import { Save } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import EmployeeForm from '@/Pages/HR/Employees/Partials/EmployeeForm';
 import { Button } from '@/Components/ui';
@@ -59,7 +59,7 @@ const BLANK_EMPLOYEE = {
     user_role: 'employee',
 };
 
-export default function Create({ options, nextEmployeeNumber }) {
+export default function Create({ options }) {
     const { data, setData, post, processing, errors } = useForm(BLANK_EMPLOYEE);
 
     const submit = (event) => {
@@ -77,29 +77,6 @@ export default function Create({ options, nextEmployeeNumber }) {
             ]}
         >
             <form onSubmit={submit}>
-                <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                        <p className="text-sm text-muted-foreground">
-                            Employee number{' '}
-                            <span className="font-medium text-foreground">
-                                {nextEmployeeNumber}
-                            </span>{' '}
-                            will be assigned on save.
-                        </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        <Button variant="outline" href="/hr/employees">
-                            <ArrowLeft className="h-4 w-4" />
-                            Cancel
-                        </Button>
-                        <Button type="submit" loading={processing}>
-                            <Save className="h-4 w-4" />
-                            Save Employee
-                        </Button>
-                    </div>
-                </div>
-
                 <EmployeeForm data={data} setData={setData} errors={errors} options={options} />
 
                 <div className="mt-5 flex justify-end gap-2">

@@ -75,7 +75,6 @@ class EmployeeController extends Controller
 
         return Inertia::render('HR/Employees/Create', [
             'options' => $this->formOptions(),
-            'nextEmployeeNumber' => Employee::nextEmployeeNumber(),
         ]);
     }
 
