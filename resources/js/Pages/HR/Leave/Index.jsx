@@ -15,7 +15,6 @@ import {
     Button,
     Card,
     Field,
-    FloatingActionButton,
     Input,
     Modal,
     Pagination,
@@ -140,12 +139,6 @@ export default function Index({
             title="Leave & Absence"
             breadcrumbs={[{ label: 'Human Resource' }, { label: 'Leave & Absence' }]}
         >
-            {can.create && (
-                <FloatingActionButton icon={Plus} onClick={() => setFileOpen(true)}>
-                    File Leave
-                </FloatingActionButton>
-            )}
-
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {stats.map((stat) => (
                     <StatCard key={stat.label} {...stat} />
@@ -189,6 +182,13 @@ export default function Index({
                             label: employee.full_name,
                         }))}
                     />
+
+                    {can.create && (
+                        <Button className="lg:ml-auto" onClick={() => setFileOpen(true)}>
+                            <Plus className="h-4 w-4" />
+                            File Leave
+                        </Button>
+                    )}
                 </div>
 
                 <Table>

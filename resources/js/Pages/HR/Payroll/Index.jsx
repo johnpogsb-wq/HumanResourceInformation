@@ -7,7 +7,7 @@ import {
     Button,
     Card,
     Field,
-    FloatingActionButton,
+    CardHeader,
     Input,
     Modal,
     Pagination,
@@ -49,13 +49,22 @@ export default function Index({ periods, suggestion, can }) {
             title="Payroll & Compensation"
             breadcrumbs={[{ label: 'Human Resource' }, { label: 'Payroll & Compensation' }]}
         >
-            {can.create && (
-                <FloatingActionButton icon={Plus} onClick={() => setCreateOpen(true)}>
-                    New Period
-                </FloatingActionButton>
-            )}
-
             <Card>
+                {/* No filters on this screen, so the header carries only the
+                    action — same top-right slot the filtered screens use. */}
+                <CardHeader
+                    title="Payroll Periods"
+                    description="Each period holds one run. A run is computed, submitted, approved, then paid."
+                    action={
+                        can.create && (
+                            <Button onClick={() => setCreateOpen(true)}>
+                                <Plus className="h-4 w-4" />
+                                New Period
+                            </Button>
+                        )
+                    }
+                />
+
                 <Table>
                     <THead>
                         <TR>

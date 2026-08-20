@@ -9,7 +9,6 @@ import {
     CardBody,
     CardHeader,
     Field,
-    FloatingActionButton,
     Input,
     Modal,
     Select,
@@ -69,10 +68,6 @@ export default function Users({ users, roles, unlinkedEmployees }) {
             title="Users & Access"
             description="Login accounts and what each one may do. Self-registration is disabled, so accounts are only created here or from the employee form."
         >
-            <FloatingActionButton icon={Plus} onClick={() => setCreateOpen(true)}>
-                New Account
-            </FloatingActionButton>
-
             <Card>
                 <CardHeader title="Roles" description="What each role can reach." />
                 <CardBody className="grid gap-3 sm:grid-cols-2">
@@ -97,6 +92,12 @@ export default function Users({ users, roles, unlinkedEmployees }) {
                 <CardHeader
                     title="Accounts"
                     description="Changing a role takes effect the next time the person loads a page."
+                    action={
+                        <Button onClick={() => setCreateOpen(true)}>
+                            <Plus className="h-4 w-4" />
+                            New Account
+                        </Button>
+                    }
                 />
 
                 <Table>

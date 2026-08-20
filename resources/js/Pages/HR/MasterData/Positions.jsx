@@ -8,7 +8,6 @@ import {
     Card,
     CardHeader,
     Field,
-    FloatingActionButton,
     Input,
     Modal,
     SearchInput,
@@ -114,10 +113,6 @@ export default function Positions({ positions, filters, departments, summary }) 
                 { label: 'Positions' },
             ]}
         >
-            <FloatingActionButton icon={Plus} onClick={() => open('new')}>
-                New Position
-            </FloatingActionButton>
-
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
                 <StatCard
                     label="Positions"
@@ -162,6 +157,10 @@ export default function Positions({ positions, filters, departments, summary }) 
                                     ...departments,
                                 ]}
                             />
+                            <Button onClick={() => open('new')}>
+                                <Plus className="h-4 w-4" />
+                                New Position
+                            </Button>
                         </div>
                     }
                 />

@@ -7,7 +7,6 @@ import {
     Button,
     Card,
     Field,
-    FloatingActionButton,
     Input,
     Modal,
     Pagination,
@@ -110,12 +109,6 @@ export default function Overtime({
                 { label: 'Overtime' },
             ]}
         >
-            {can.create && (
-                <FloatingActionButton icon={Plus} onClick={() => setFileOpen(true)}>
-                    File Overtime
-                </FloatingActionButton>
-            )}
-
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {stats.map((stat) => (
                     <StatCard key={stat.label} {...stat} />
@@ -147,6 +140,13 @@ export default function Overtime({
                             label: employee.full_name,
                         }))}
                     />
+
+                    {can.create && (
+                        <Button className="sm:ml-auto" onClick={() => setFileOpen(true)}>
+                            <Plus className="h-4 w-4" />
+                            File Overtime
+                        </Button>
+                    )}
                 </div>
 
                 <Table>

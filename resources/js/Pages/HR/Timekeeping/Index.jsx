@@ -7,7 +7,6 @@ import {
     Button,
     Card,
     Field,
-    FloatingActionButton,
     Input,
     Modal,
     Pagination,
@@ -135,21 +134,7 @@ export default function Index({
         <AppLayout
             title="Timekeeping & Attendance"
             breadcrumbs={[{ label: 'Human Resource' }, { label: 'Timekeeping & Attendance' }]}
-            actions={
-                can.manage && (
-                    <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
-                        <Upload className="h-4 w-4" />
-                        <span className="hidden sm:inline">Import</span>
-                    </Button>
-                )
-            }
         >
-            {can.manage && (
-                <FloatingActionButton icon={Plus} onClick={() => setEntryOpen(true)}>
-                    Record Time
-                </FloatingActionButton>
-            )}
-
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {stats.map((stat) => (
                     <StatCard key={stat.label} {...stat} />
@@ -228,6 +213,22 @@ export default function Index({
                             />
                         )}
                     </Field>
+
+                    {/* Actions end the filter row: `lg:ml-auto` pushes them
+                        right of the last filter, and the row's `items-end`
+                        lines them up with the inputs rather than the labels. */}
+                    {can.manage && (
+                        <div className="flex gap-2 lg:ml-auto">
+                            <Button variant="outline" onClick={() => setImportOpen(true)}>
+                                <Upload className="h-4 w-4" />
+                                Import
+                            </Button>
+                            <Button onClick={() => setEntryOpen(true)}>
+                                <Plus className="h-4 w-4" />
+                                Record Time
+                            </Button>
+                        </div>
+                    )}
                 </div>
 
                 <Table>

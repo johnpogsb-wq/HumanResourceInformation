@@ -68,16 +68,20 @@ Light and dark both work because components reference tokens, not values.
   `@/Components/ui` barrel.
 - Every authenticated page wraps in `@/Layouts/AppLayout` and passes `title` +
   `breadcrumbs`.
-- **A screen's one primary "create" action is a `FloatingActionButton`**, not
-  a header `Button` — pinned bottom-right instead of competing with filters
-  and exports for the topbar. Only the single "+ Add/New/File/Open" action
-  moves; multi-button toolbars, exports, and workflow actions (Submit,
-  Approve, Release) stay in `actions` — a page never gets more than one FAB.
-  It sits at `bottom-24`, not flush in the corner: `Toast` already owns
-  `bottom-5 right-5` for flash messages, and the two are often triggered by
-  the same click (open the FAB, save, toast confirms), so flush would stack a
-  persistent button under a transient one for the toast's few seconds on
-  screen.
+- **A list screen's "create" action sits with its filters**, at the top-right
+  of the table's own card — never in `AppLayout`'s `actions` slot, and never
+  as a floating button (both were tried; the filter row is where it landed).
+  The card takes one of two shapes depending on what the screen already has:
+  - **Has a filter row** (Employees, Leave, Timekeeping, Overtime): the button
+    ends that flex row, pushed right with `ml-auto`. Match the row's own
+    breakpoint — `lg:ml-auto` where the row is `lg:flex-row`, `sm:ml-auto`
+    where it is `sm:flex-row` — or it detaches on the size in between.
+  - **Filters live in `CardHeader`'s `action` prop** (Departments, Positions,
+    Salaries, Separations, Holidays): the button joins that same flex group.
+  A screen with no filters at all (Payroll Runs, API Tokens, Users) still uses
+  the `CardHeader` `action` slot, so the button lands in the same place either
+  way. Workflow actions (Submit, Approve, Release, Print) are not create
+  actions and stay where they are.
 - **A module with several screens is one sidebar entry with `children`**, which
   the sidebar renders as an expandable dropdown — not a flat link per screen.
   Payroll's seven screens live this way, same shape as Employee Information,

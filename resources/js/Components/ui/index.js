@@ -1,5 +1,4 @@
 export { default as Button } from './Button';
-export { default as FloatingActionButton } from './FloatingActionButton';
 export { default as Badge, STATUS_VARIANTS } from './Badge';
 export { default as Modal } from './Modal';
 export { default as Pagination } from './Pagination';

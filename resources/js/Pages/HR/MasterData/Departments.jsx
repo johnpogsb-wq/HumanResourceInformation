@@ -8,7 +8,6 @@ import {
     Card,
     CardHeader,
     Field,
-    FloatingActionButton,
     Input,
     Modal,
     SearchInput,
@@ -88,10 +87,6 @@ export default function Departments({ departments, filters, summary }) {
                 { label: 'Departments' },
             ]}
         >
-            <FloatingActionButton icon={Plus} onClick={() => open('new')}>
-                New Department
-            </FloatingActionButton>
-
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
                 <StatCard
                     label="Departments"
@@ -115,13 +110,19 @@ export default function Departments({ departments, filters, summary }) {
                     title="Departments"
                     description="Employee records, KPI scoping, and payroll reporting all group by these."
                     action={
-                        <div className="w-56">
-                            <SearchInput
-                                defaultValue={filters.search ?? ''}
-                                onChange={(event) => search(event.target.value)}
-                                placeholder="Search name or code"
-                                aria-label="Search departments"
-                            />
+                        <div className="flex gap-2">
+                            <div className="w-56">
+                                <SearchInput
+                                    defaultValue={filters.search ?? ''}
+                                    onChange={(event) => search(event.target.value)}
+                                    placeholder="Search name or code"
+                                    aria-label="Search departments"
+                                />
+                            </div>
+                            <Button onClick={() => open('new')}>
+                                <Plus className="h-4 w-4" />
+                                New Department
+                            </Button>
                         </div>
                     }
                 />

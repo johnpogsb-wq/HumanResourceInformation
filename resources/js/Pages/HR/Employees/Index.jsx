@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
     Card,
-    FloatingActionButton,
+    Button,
     SearchInput,
     Select,
     StatCard,
@@ -94,12 +94,6 @@ export default function Index({ employees, statistics, departments, filters, sor
             title="Employee Information"
             breadcrumbs={[{ label: 'Human Resource' }, { label: 'Employee Information' }]}
         >
-            {can.create && (
-                <FloatingActionButton icon={Plus} href="/hr/employees/create">
-                    Add Employee
-                </FloatingActionButton>
-            )}
-
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {stats.map((stat) => (
                     <StatCard key={stat.label} {...stat} />
@@ -158,6 +152,13 @@ export default function Index({ employees, statistics, departments, filters, sor
                                 { value: 'inactive', label: 'Inactive' },
                             ]}
                         />
+
+                        {can.create && (
+                            <Button href="/hr/employees/create">
+                                <Plus className="h-4 w-4" />
+                                Add Employee
+                            </Button>
+                        )}
                     </div>
                 </div>
 

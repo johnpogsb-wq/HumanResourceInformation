@@ -9,7 +9,6 @@ import {
     CardBody,
     CardHeader,
     Field,
-    FloatingActionButton,
     Input,
     Modal,
     TBody,
@@ -51,14 +50,16 @@ export default function Integrations({ tokens, endpoints, biometric }) {
             title="Integrations"
             description="API tokens and the outside systems this HRIS talks to."
         >
-            <FloatingActionButton icon={Plus} onClick={() => setCreateOpen(true)}>
-                New Token
-            </FloatingActionButton>
-
             <Card>
                 <CardHeader
                     title="API Tokens"
                     description="Sent as an Authorization: Bearer header. Only a hash is stored, so a token is shown once."
+                    action={
+                        <Button onClick={() => setCreateOpen(true)}>
+                            <Plus className="h-4 w-4" />
+                            New Token
+                        </Button>
+                    }
                 />
 
                 <Table>

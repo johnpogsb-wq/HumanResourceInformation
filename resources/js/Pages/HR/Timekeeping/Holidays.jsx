@@ -8,7 +8,6 @@ import {
     Card,
     CardHeader,
     Field,
-    FloatingActionButton,
     Input,
     Modal,
     Select,
@@ -89,12 +88,6 @@ export default function Holidays({ holidays, filters, years, summary, nextYear, 
                 { label: 'Holidays' },
             ]}
         >
-            {can.manage && (
-                <FloatingActionButton icon={Plus} onClick={() => open('new')}>
-                    Add Holiday
-                </FloatingActionButton>
-            )}
-
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
                 <StatCard
                     label={`Holidays in ${filters.year}`}
@@ -147,16 +140,24 @@ export default function Holidays({ holidays, filters, years, summary, nextYear, 
                     title={`${filters.year} Holiday Calendar`}
                     description="Read by leave costing, attendance status, and holiday pay."
                     action={
-                        <Select
-                            value={String(filters.year)}
-                            onChange={(event) => changeYear(event.target.value)}
-                            aria-label="Filter by year"
-                            className="w-32"
-                            options={years.map((year) => ({
-                                value: String(year),
-                                label: String(year),
-                            }))}
-                        />
+                        <div className="flex gap-2">
+                            <Select
+                                value={String(filters.year)}
+                                onChange={(event) => changeYear(event.target.value)}
+                                aria-label="Filter by year"
+                                className="w-32"
+                                options={years.map((year) => ({
+                                    value: String(year),
+                                    label: String(year),
+                                }))}
+                            />
+                            {can.manage && (
+                                <Button onClick={() => open('new')}>
+                                    <Plus className="h-4 w-4" />
+                                    Add Holiday
+                                </Button>
+                            )}
+                        </div>
                     }
                 />
 
