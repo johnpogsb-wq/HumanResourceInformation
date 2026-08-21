@@ -223,6 +223,31 @@ class EmployeeController extends Controller
         return $disk->download($document->file_path, $document->file_name);
     }
 
+    /**
+     * The same file, served `inline` so the browser renders it instead of
+     * saving it — a separate route rather than a query flag, so the download
+     * link keeps forcing a download and neither can change the other by
+     * accident. Behind the same `view` gate; these are still private files.
+     */
+    public function previewDocument(Employee $employee, EmployeeDocument $document): StreamedResponse
+    {
+        Gate::authorize('view', $employee);
+
+        abort_if($document->employee_id !== $employee->id, 404);
+
+        $disk = Storage::disk(EmployeeService::DOCUMENT_DISK);
+
+        abort_unless($disk->exists($document->file_path), 404);
+
+        return $disk->response($document->file_path, $document->file_name, [
+            // Belt and braces: the stored mime type is what the browser is
+            // told to render, and nosniff stops it guessing something else
+            // out of a file a user uploaded.
+            'Content-Type' => $document->mime_type ?: 'application/octet-stream',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
     public function destroyDocument(Employee $employee, EmployeeDocument $document): RedirectResponse
     {
         Gate::authorize('manageDocuments', $employee);

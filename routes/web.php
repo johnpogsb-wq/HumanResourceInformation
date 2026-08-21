@@ -77,6 +77,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('employees.documents.scan');
         Route::get('employees/{employee}/documents/{document}/download', [EmployeeController::class, 'downloadDocument'])
             ->name('employees.documents.download');
+        // Same file, served inline so the browser renders it in the preview.
+        Route::get('employees/{employee}/documents/{document}/preview', [EmployeeController::class, 'previewDocument'])
+            ->name('employees.documents.preview');
         Route::delete('employees/{employee}/documents/{document}', [EmployeeController::class, 'destroyDocument'])
             ->name('employees.documents.destroy');
 

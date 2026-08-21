@@ -101,6 +101,84 @@ class EmployeeDocumentTest extends TestCase
             ->assertDownload('contract.pdf');
     }
 
+    // --- Previewing --------------------------------------------------------
+
+    /**
+     * The preview serves the same private file, so it has to be exactly as
+     * gated as the download. A viewer that skipped the check would be a hole
+     * straight past EmployeePolicy.
+     */
+    public function test_the_preview_serves_the_file_inline_rather_than_downloading_it(): void
+    {
+        Storage::fake(EmployeeService::DOCUMENT_DISK);
+
+        $hr = User::factory()->hrStaff()->create();
+        $employee = Employee::factory()->create();
+        $document = $this->upload($employee, $hr);
+
+        $response = $this->actingAs($hr)
+            ->get("/hr/employees/{$employee->id}/documents/{$document->id}/preview")
+            ->assertOk();
+
+        $this->assertStringStartsWith(
+            'inline',
+            $response->headers->get('content-disposition'),
+        );
+        $this->assertSame('nosniff', $response->headers->get('x-content-type-options'));
+    }
+
+    public function test_a_guest_cannot_preview_a_document(): void
+    {
+        Storage::fake(EmployeeService::DOCUMENT_DISK);
+
+        $employee = Employee::factory()->create();
+        $document = $this->upload($employee, User::factory()->hrStaff()->create());
+
+        $this->post('/logout');
+
+        $this->get("/hr/employees/{$employee->id}/documents/{$document->id}/preview")
+            ->assertRedirect('/login');
+    }
+
+    public function test_an_unrelated_employee_cannot_preview_someone_elses_document(): void
+    {
+        Storage::fake(EmployeeService::DOCUMENT_DISK);
+
+        $employee = Employee::factory()->create();
+        $document = $this->upload($employee, User::factory()->hrStaff()->create());
+
+        $outsider = User::factory()->create();
+        Employee::factory()->create(['user_id' => $outsider->id]);
+
+        $this->actingAs($outsider)
+            ->get("/hr/employees/{$employee->id}/documents/{$document->id}/preview")
+            ->assertForbidden();
+    }
+
+    /** A .docx has no browser viewer — offer the download only. */
+    public function test_the_resource_reports_what_a_document_can_be_previewed_as(): void
+    {
+        Storage::fake(EmployeeService::DOCUMENT_DISK);
+
+        $hr = User::factory()->hrStaff()->create();
+        $employee = Employee::factory()->create();
+        $this->upload($employee, $hr);
+
+        $employee->documents()->update(['mime_type' => 'image/jpeg']);
+        $this->assertSame('image', $this->firstDocument($employee, $hr)['preview_as']);
+
+        $employee->documents()->update(['mime_type' => 'application/pdf']);
+        $this->assertSame('pdf', $this->firstDocument($employee, $hr)['preview_as']);
+
+        $employee->documents()->update(['mime_type' => 'text/plain']);
+        $this->assertSame('text', $this->firstDocument($employee, $hr)['preview_as']);
+
+        $employee->documents()->update([
+            'mime_type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ]);
+        $this->assertNull($this->firstDocument($employee, $hr)['preview_as']);
+    }
+
     public function test_a_document_id_from_another_employee_is_rejected(): void
     {
         Storage::fake(EmployeeService::DOCUMENT_DISK);
@@ -168,6 +246,14 @@ class EmployeeDocumentTest extends TestCase
         ])->assertSessionHasErrors('file');
 
         $this->assertDatabaseCount('employee_documents', 0);
+    }
+
+    /** @return array<string, mixed> the first document as the page receives it */
+    private function firstDocument(Employee $employee, User $actor): array
+    {
+        return $this->actingAs($actor)
+            ->get("/hr/employees/{$employee->id}")
+            ->viewData('page')['props']['employee']['data']['documents'][0];
     }
 
     private function upload(Employee $employee, User $actor): EmployeeDocument

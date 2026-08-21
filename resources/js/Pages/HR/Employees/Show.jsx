@@ -5,6 +5,7 @@ import {
     ArrowLeft,
     CheckCircle2,
     Download,
+    Eye,
     FileText,
     History,
     Loader2,
@@ -82,6 +83,7 @@ export default function Show({ employee, subordinates, audits, can }) {
     const [uploadOpen, setUploadOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [pendingDocument, setPendingDocument] = useState(null);
+    const [preview, setPreview] = useState(null);
 
     const upload = useForm({
         type: 'contract',
@@ -571,6 +573,23 @@ export default function Show({ employee, subordinates, audits, can }) {
 
                                         <TD>
                                             <div className="flex items-center justify-end gap-1">
+                                                {/* Only offered when the browser
+                                                    can actually render it — a
+                                                    .docx has no viewer. */}
+                                                {document.preview_as && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreview(document)}
+                                                        aria-label={`View ${document.title}`}
+                                                        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                                                    >
+                                                        <Eye
+                                                            className="h-4 w-4"
+                                                            aria-hidden="true"
+                                                        />
+                                                    </button>
+                                                )}
+
                                                 <a
                                                     href={document.url}
                                                     target="_blank"
@@ -923,6 +942,46 @@ export default function Show({ employee, subordinates, audits, can }) {
                     </span>{' '}
                     will be permanently removed. This cannot be undone.
                 </p>
+            </Modal>
+
+            {/* View document. The file is streamed from the private disk
+                through an authorized route — the browser never sees a storage
+                path, so a preview is exactly as gated as a download. */}
+            <Modal
+                show={Boolean(preview)}
+                onClose={() => setPreview(null)}
+                title={preview?.title ?? 'Document'}
+                description={preview?.file_name}
+                maxWidth="3xl"
+                footer={
+                    <>
+                        <Button variant="outline" onClick={() => setPreview(null)}>
+                            Close
+                        </Button>
+                        {preview && (
+                            <Button href={preview.url} external>
+                                <Download className="h-4 w-4" />
+                                Download
+                            </Button>
+                        )}
+                    </>
+                }
+            >
+                {preview?.preview_as === 'image' && (
+                    <img
+                        src={preview.preview_url}
+                        alt={preview.title}
+                        className="mx-auto max-h-[70vh] w-auto rounded-md border border-border object-contain"
+                    />
+                )}
+
+                {(preview?.preview_as === 'pdf' || preview?.preview_as === 'text') && (
+                    <iframe
+                        src={preview.preview_url}
+                        title={preview.title}
+                        className="h-[70vh] w-full rounded-md border border-border bg-background"
+                    />
+                )}
             </Modal>
         </AppLayout>
     );

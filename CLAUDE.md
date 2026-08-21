@@ -524,8 +524,14 @@ to every signed-in user.
 - **File uploads over PUT.** Browsers can't send multipart on PUT — put
   `_method: 'put'` in the `useForm` data and `post()` with `forceFormData: true`.
 - **Documents are on the private disk.** Never link to `/storage/...` for a 201
-  file; they're streamed through `hr.employees.documents.download` after a policy
-  check. Employee *photos* stay public so avatars don't cost a PHP request per row.
+  file; they're streamed through `hr.employees.documents.download` (forces a
+  save) or `…documents.preview` (serves `inline` for the in-app viewer) after
+  the same `view` policy check — two routes rather than one with a flag, so
+  neither can change the other by accident. `EmployeeDocumentResource` decides
+  `preview_as` (`image` / `pdf` / `text` / `null`) from the **stored mime type**,
+  not the filename, and a `null` offers download only — a viewer that renders a
+  blank frame for a `.docx` is worse than no viewer. Employee *photos* stay
+  public so avatars don't cost a PHP request per row.
 - **`ilike` is Postgres-only.** Tests run on SQLite — pick the operator from
   `getDriverName()`, as `Employee::scopeSearch` does.
 - **Factory sequences.** Batch `create()` runs every `definition()` before the
