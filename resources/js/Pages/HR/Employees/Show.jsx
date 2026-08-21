@@ -1,12 +1,16 @@
 import { Link, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
+import axios from 'axios';
 import {
     ArrowLeft,
+    CheckCircle2,
     Download,
     FileText,
     History,
+    Loader2,
     Pencil,
     Plus,
+    ScanLine,
     Trash2,
     TriangleAlert,
 } from 'lucide-react';
@@ -88,6 +92,61 @@ export default function Show({ employee, subordinates, audits, can }) {
         file: null,
     });
 
+    // What the scanner proposed, kept beside the form rather than merged into
+    // it — HR needs to see that a value was read rather than typed, and see
+    // the name check, before saving.
+    const [scan, setScan] = useState(null);
+    const [scanning, setScanning] = useState(false);
+
+    /**
+     * Reads the picked file and fills the form. Nothing is saved here; the
+     * Upload button below still does that, so every field stays editable.
+     * A failed scan is silent by design — the form simply stays empty and
+     * HR types it, exactly as before this existed.
+     */
+    const scanDocument = async (file) => {
+        if (!can.scanDocuments || !file?.type?.startsWith('image/')) return;
+
+        setScanning(true);
+        setScan(null);
+
+        try {
+            const body = new FormData();
+            body.append('file', file);
+
+            const { data } = await axios.post(
+                `/hr/employees/${record.id}/documents/scan`,
+                body,
+            );
+
+            if (!data.scanned) return;
+
+            setScan(data.fields);
+
+            // Only fill what came back. A null from the scanner means "not
+            // legible" — overwriting a field with it would erase a correction
+            // HR had already typed.
+            const filled = {};
+            if (data.fields.type) filled.type = data.fields.type;
+            if (data.fields.title) filled.title = data.fields.title;
+            if (data.fields.issued_at) filled.issued_at = data.fields.issued_at;
+            if (data.fields.expires_at) filled.expires_at = data.fields.expires_at;
+
+            upload.setData((current) => ({ ...current, ...filled }));
+        } catch {
+            // Network or server trouble: leave the form alone.
+        } finally {
+            setScanning(false);
+        }
+    };
+
+    // The scan panel describes one file, so it has to go whenever the form
+    // does — otherwise reopening shows the previous document's reading.
+    const closeUpload = () => {
+        setUploadOpen(false);
+        setScan(null);
+    };
+
     const submitDocument = (event) => {
         event.preventDefault();
 
@@ -95,7 +154,7 @@ export default function Show({ employee, subordinates, audits, can }) {
             forceFormData: true,
             onSuccess: () => {
                 upload.reset();
-                setUploadOpen(false);
+                closeUpload();
             },
         });
     };
@@ -619,7 +678,7 @@ export default function Show({ employee, subordinates, audits, can }) {
             {/* Upload document */}
             <Modal
                 show={uploadOpen}
-                onClose={() => setUploadOpen(false)}
+                onClose={closeUpload}
                 title="Upload Document"
                 description={`Attach a file to ${record.full_name}'s 201 file.`}
                 maxWidth="lg"
@@ -706,16 +765,101 @@ export default function Show({ employee, subordinates, audits, can }) {
                                 id={id}
                                 type="file"
                                 accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                                onChange={(event) =>
-                                    upload.setData('file', event.target.files[0] ?? null)
-                                }
+                                onChange={(event) => {
+                                    const file = event.target.files[0] ?? null;
+                                    upload.setData('file', file);
+                                    scanDocument(file);
+                                }}
                                 className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-xs file:font-medium file:text-secondary-foreground hover:file:bg-secondary/70"
                             />
                         )}
                     </Field>
 
+                    {scanning && (
+                        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                            Reading the document…
+                        </p>
+                    )}
+
+                    {/* What was read, shown separately from the fields it
+                        filled — HR has to be able to tell a scanned value from
+                        a typed one before saving. */}
+                    {scan && !scanning && (
+                        <div className="rounded-lg border border-border bg-secondary/40 p-3">
+                            <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                                <ScanLine className="h-3.5 w-3.5" aria-hidden="true" />
+                                Read from the document — check before saving
+                            </p>
+
+                            <dl className="space-y-1 text-xs">
+                                {scan.name_on_document && (
+                                    <div className="flex gap-2">
+                                        <dt className="w-28 shrink-0 text-muted-foreground">
+                                            Name
+                                        </dt>
+                                        <dd className="text-foreground">
+                                            {scan.name_on_document}
+                                        </dd>
+                                    </div>
+                                )}
+                                {scan.document_number && (
+                                    <div className="flex gap-2">
+                                        <dt className="w-28 shrink-0 text-muted-foreground">
+                                            Number
+                                        </dt>
+                                        <dd className="font-mono text-foreground">
+                                            {scan.document_number}
+                                        </dd>
+                                    </div>
+                                )}
+                                {scan.expires_at && (
+                                    <div className="flex gap-2">
+                                        <dt className="w-28 shrink-0 text-muted-foreground">
+                                            Expires
+                                        </dt>
+                                        <dd className="text-foreground">
+                                            {formatDate(scan.expires_at)}
+                                        </dd>
+                                    </div>
+                                )}
+                            </dl>
+
+                            {/* The check that catches filing a document under
+                                the wrong person. */}
+                            {scan.name_matches === false && (
+                                <p className="mt-2 flex items-start gap-1.5 text-xs text-destructive">
+                                    <TriangleAlert
+                                        className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                                        aria-hidden="true"
+                                    />
+                                    This document names {scan.name_on_document}, not{' '}
+                                    {record.full_name}. Check you are filing it under the right
+                                    employee.
+                                </p>
+                            )}
+
+                            {scan.name_matches === true && (
+                                <p className="mt-2 flex items-center gap-1.5 text-xs text-success">
+                                    <CheckCircle2
+                                        className="h-3.5 w-3.5 shrink-0"
+                                        aria-hidden="true"
+                                    />
+                                    Name matches this employee.
+                                </p>
+                            )}
+
+                            {scan.confidence !== 'high' && (
+                                <p className="mt-2 text-xs text-warning">
+                                    {scan.note ??
+                                        'The scan was not fully legible — check every field.'}
+                                </p>
+                            )}
+                        </div>
+                    )}
+
                     <div className="flex justify-end gap-2 pt-2">
-                        <Button variant="outline" onClick={() => setUploadOpen(false)}>
+                        <Button variant="outline" onClick={closeUpload}>
                             Cancel
                         </Button>
                         <Button type="submit" loading={upload.processing}>

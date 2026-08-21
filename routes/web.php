@@ -71,6 +71,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::post('employees/{employee}/documents', [EmployeeController::class, 'storeDocument'])
             ->name('employees.documents.store');
+        // Reads a scan and proposes the fields. Saves nothing — the upload
+        // above is still what commits, after the human has checked them.
+        Route::post('employees/{employee}/documents/scan', [EmployeeController::class, 'scanDocument'])
+            ->name('employees.documents.scan');
         Route::get('employees/{employee}/documents/{document}/download', [EmployeeController::class, 'downloadDocument'])
             ->name('employees.documents.download');
         Route::delete('employees/{employee}/documents/{document}', [EmployeeController::class, 'destroyDocument'])

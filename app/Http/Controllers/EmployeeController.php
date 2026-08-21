@@ -10,7 +10,9 @@ use App\Models\Department;
 use App\Models\Employee;
 use App\Models\EmployeeDocument;
 use App\Models\Position;
+use App\Services\DocumentScanner;
 use App\Services\EmployeeService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -129,6 +131,10 @@ class EmployeeController extends Controller
                 'delete' => $request->user()->can('delete', $employee),
                 'manageDocuments' => $request->user()->can('manageDocuments', $employee),
                 'viewSensitive' => $request->user()->can('viewSensitive', $employee),
+                // Without a configured API key the Scan button is not drawn
+                // at all, rather than offered and then failing.
+                'scanDocuments' => app(DocumentScanner::class)->isEnabled()
+                    && $request->user()->can('manageDocuments', $employee),
             ],
         ]);
     }
@@ -168,6 +174,36 @@ class EmployeeController extends Controller
         $this->employees->storeDocument($employee, $request->validated(), $request->file('file'));
 
         return back()->with('success', 'Document uploaded.');
+    }
+
+    /**
+     * Reads a scanned document and proposes the fields, without saving
+     * anything. Same gate as the upload it precedes — anyone who cannot file
+     * a document has no business spending a request reading one.
+     *
+     * Returns JSON rather than an Inertia response: this fills a form the
+     * user is still editing, so re-rendering the page would throw their
+     * half-typed input away.
+     */
+    public function scanDocument(
+        Request $request,
+        Employee $employee,
+        DocumentScanner $scanner,
+    ): JsonResponse {
+        Gate::authorize('manageDocuments', $employee);
+
+        abort_unless($scanner->isEnabled(), 404);
+
+        $request->validate([
+            'file' => ['required', 'file', 'max:10240', 'mimes:jpg,jpeg,png,webp'],
+        ]);
+
+        $result = $scanner->scan($request->file('file'), $employee);
+
+        return response()->json([
+            'scanned' => $result !== null,
+            'fields' => $result,
+        ]);
     }
 
     /**

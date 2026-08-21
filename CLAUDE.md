@@ -137,6 +137,36 @@ Light and dark both work because components reference tokens, not values.
 Replace the module's entry in `resources/js/config/navigation.js` (the route is
 already listed) and delete its `ModulePlaceholderController` method.
 
+## Document scanner (Module 1, AI)
+
+**The one AI feature in the system.** `DocumentScanner` reads a scanned 201-file
+upload — LTO licence, NBI clearance, PhilSys ID, medical certificate, contract —
+and proposes `type`, `title`, `issued_at`, and `expires_at` on the upload form.
+
+It exists because `CredentialExpiryScanner` is only as good as the `expires_at`
+someone typed: a licence keyed a year late is a driver the system believes is
+legal to dispatch.
+
+- **It never writes to the database.** It fills a form; HR corrects it; the
+  existing `StoreEmployeeDocumentRequest` validates the save exactly as it does
+  a hand-typed entry. Same shape as PayrollReadiness warning without blocking.
+- **Everything the model returns is untrusted input.** The type is checked
+  against `EmployeeDocument::TYPES` (a hallucinated type becomes `null`), dates
+  are re-parsed through Carbon, and **the name check runs in PHP, not in the
+  prompt** — catching a document filed under the wrong employee should not
+  depend on the thing being checked.
+- **A null is a valid answer.** The prompt says so explicitly, and the form
+  only fills fields that came back non-null — overwriting with a null would
+  erase a correction HR had already typed.
+- **No API key means the feature is dark**, not broken: `can.scanDocuments` is
+  false, the button is never drawn, and the endpoint 404s. Uploading by hand
+  works exactly as before. A failed API call is the same — logged, then silent.
+- Images only, ≤5 MB (`config/scanner.php`). A PDF or DOCX upload skips the
+  scanner rather than failing.
+- `DocumentScanner::read()` is `protected` for one reason: the SDK's
+  `MessagesService` is `final`, so tests stub that single method to exercise
+  every rule around it without a key or a network call.
+
 ## Credential expiry (Module 1)
 
 **Credentials** watches the `expires_at` already stored on every 201-file
