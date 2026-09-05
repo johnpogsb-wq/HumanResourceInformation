@@ -1,9 +1,23 @@
 import { Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
-import PrimePowerLogo from '@/Components/layout/PrimePowerLogo';
+import { ChevronDown, LogOut, PanelLeftClose } from 'lucide-react';
+import PrimePowerLogo, { LogoMark } from '@/Components/layout/PrimePowerLogo';
 import { NAV_GROUPS, isHrefActive, isItemActive, visibleGroups } from '@/config/navigation';
 import { cn, initials } from '@/lib/utils';
+
+/**
+ * What a nav entry's badge should read, or nothing.
+ *
+ * `badge` is a literal in the config; `badgeKey` names a shared Inertia prop
+ * and is resolved here. Zero returns null rather than "0" on purpose — a badge
+ * that is always lit stops being read within a week, which is the same reason
+ * the topbar's credential indicator hides itself at zero.
+ */
+function badgeFor(entry, props) {
+    const value = entry.badgeKey ? props[entry.badgeKey] : entry.badge;
+
+    return value > 0 || (typeof value === 'string' && value) ? value : null;
+}
 
 export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCloseMobile }) {
     const { props, url: currentUrl } = usePage();
@@ -61,16 +75,52 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                     mobileOpen ? 'translate-x-0' : '-translate-x-full',
                 )}
             >
-                {/* Logo */}
+                {/* Logo — and, when collapsed, the only toggle there is. */}
                 <div
                     className={cn(
                         'flex h-16 shrink-0 items-center border-b border-sidebar-border',
-                        collapsed ? 'justify-center px-2' : 'px-4',
+                        collapsed ? 'justify-center px-2' : 'justify-between px-4',
                     )}
                 >
-                    <Link href="/dashboard" className="min-w-0">
-                        <PrimePowerLogo collapsed={collapsed} />
-                    </Link>
+                    {collapsed ? (
+                        /* No separate button fits here collapsed: 64px of rail
+                           less 8px of padding each side leaves 48px for the
+                           40px mark (LOGO_SIZE in PrimePowerLogo.jsx), which is
+                           4px of slack and not room for a second icon beside
+                           it. So the mark *is* the control — click it to
+                           expand — rather than growing the rail to fit both.
+                           Not lg-gated like the button below: this is the
+                           brand mark first and a toggle second, and it must
+                           stay visible at every width the collapsed rail can
+                           reach, mobile included. */
+                        <button
+                            type="button"
+                            onClick={onToggleCollapsed}
+                            title="Expand sidebar"
+                            className="shrink-0 rounded-md p-1 transition-colors hover:bg-sidebar-accent/50"
+                        >
+                            <LogoMark />
+                        </button>
+                    ) : (
+                        <>
+                            <Link href="/dashboard" className="min-w-0">
+                                <PrimePowerLogo collapsed={collapsed} />
+                            </Link>
+
+                            {/* Desktop only: collapsing is a rail concept, and
+                                the mobile drawer has no rail state to collapse
+                                into — it only ever opens full and closes via
+                                the scrim. */}
+                            <button
+                                type="button"
+                                onClick={onToggleCollapsed}
+                                title="Collapse sidebar"
+                                className="hidden shrink-0 rounded-md p-1.5 text-sidebar-muted transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground lg:grid lg:place-items-center"
+                            >
+                                <PanelLeftClose className="h-4.5 w-4.5" aria-hidden="true" />
+                            </button>
+                        </>
+                    )}
                 </div>
 
                 {/* Nav */}
@@ -206,9 +256,15 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                                                         <span className="flex-1 truncate">
                                                                             {child.label}
                                                                         </span>
-                                                                        {child.badge && (
+                                                                        {badgeFor(
+                                                                            child,
+                                                                            props,
+                                                                        ) && (
                                                                             <span className="rounded-full bg-sidebar-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-sidebar-primary">
-                                                                                {child.badge}
+                                                                                {badgeFor(
+                                                                                    child,
+                                                                                    props,
+                                                                                )}
                                                                             </span>
                                                                         )}
                                                                     </Link>
@@ -225,29 +281,6 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                         </div>
                     ))}
                 </nav>
-
-                {/* Collapse toggle — desktop only */}
-                <div className="hidden shrink-0 px-3 pb-2 lg:block">
-                    <button
-                        type="button"
-                        onClick={onToggleCollapsed}
-                        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                        className={cn(
-                            'flex w-full items-center gap-2.5 rounded-lg py-2 text-[13px] font-medium text-sidebar-muted',
-                            'transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
-                            collapsed ? 'justify-center px-0' : 'px-2.5',
-                        )}
-                    >
-                        {collapsed ? (
-                            <PanelLeftOpen className="h-4.5 w-4.5" aria-hidden="true" />
-                        ) : (
-                            <>
-                                <PanelLeftClose className="h-4.5 w-4.5" aria-hidden="true" />
-                                <span>Collapse</span>
-                            </>
-                        )}
-                    </button>
-                </div>
 
                 {/* User card */}
                 <div className="shrink-0 border-t border-sidebar-border p-3">

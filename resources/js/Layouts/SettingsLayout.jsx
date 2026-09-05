@@ -1,19 +1,21 @@
-import { Link, usePage } from '@inertiajs/react';
 import {
     Bell,
     Database,
     Palette,
-    Plug,
     Settings as SettingsIcon,
     Shield,
+    Plug,
     Users,
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import { cn } from '@/lib/utils';
 
 /**
  * Settings sections. `admin` marks the ones that reconfigure the company rather
  * than the signed-in person.
+ *
+ * Kept exported because it is the single description of what Settings *is* —
+ * the sidebar's `settings` children mirror this list, and the two have to
+ * agree on both the labels and who may open each one.
  */
 export const SETTINGS_SECTIONS = [
     { label: 'General', href: '/settings/general', icon: SettingsIcon, admin: true },
@@ -26,77 +28,33 @@ export const SETTINGS_SECTIONS = [
 ];
 
 /**
- * Shell for every settings page: the section list on the left, the section
- * itself on the right.
+ * Shell for every settings page.
+ *
+ * The section list used to sit here, in a column beside the content. It has
+ * moved to the sidebar, where every other module keeps its screens, for a
+ * reason that only showed up in use: at 1024px the app sidebar took 260px and
+ * the section list another 224px, leaving the forms about 468px — squeezed at
+ * exactly the width where a two-column layout was supposed to start helping.
+ *
+ * With the list gone, a settings page is the same full-width canvas as every
+ * other screen, and the navigation lives in the one place a reader already
+ * looks for navigation.
  */
 export default function SettingsLayout({ title, description, children, actions }) {
-    const { url, props } = usePage();
-    const path = url.split('?')[0];
-    const role = props.auth?.user?.role ?? 'employee';
-
-    const isAdmin = role === 'admin';
-    const isHrAdmin = isAdmin || role === 'hr_staff';
-
-    const sections = SETTINGS_SECTIONS.filter((section) => {
-        if (section.admin) return isAdmin;
-        if (section.hr) return isHrAdmin;
-
-        return true;
-    });
-
     return (
         <AppLayout
             title="Settings"
             breadcrumbs={[{ label: 'Settings' }, { label: title }]}
             actions={actions}
         >
-            <div className="flex flex-col gap-6 lg:flex-row">
-                {/* Section nav */}
-                <nav
-                    aria-label="Settings sections"
-                    className="scrollbar-thin -mx-1 shrink-0 overflow-x-auto px-1 lg:w-56 lg:overflow-visible"
-                >
-                    <ul className="flex gap-1 lg:flex-col">
-                        {sections.map((section) => {
-                            const Icon = section.icon;
-                            const active = path === section.href;
-
-                            return (
-                                <li key={section.href}>
-                                    <Link
-                                        href={section.href}
-                                        aria-current={active ? 'page' : undefined}
-                                        className={cn(
-                                            'flex items-center gap-2.5 whitespace-nowrap rounded-lg border px-3 py-2 text-[13px] font-medium',
-                                            'transition-colors duration-150',
-                                            active
-                                                ? 'border-primary/30 bg-primary/10 text-primary'
-                                                : 'border-transparent text-muted-foreground hover:bg-secondary/60 hover:text-foreground',
-                                        )}
-                                    >
-                                        <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                                        {section.label}
-                                    </Link>
-                                </li>
-                            );
-                        })}
-                    </ul>
-                </nav>
-
-                {/* Section content */}
-                <div className="min-w-0 flex-1">
-                    <div className="mb-5">
-                        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-                        {description && (
-                            <p className="mt-0.5 text-sm text-muted-foreground">
-                                {description}
-                            </p>
-                        )}
-                    </div>
-
-                    <div className="space-y-5">{children}</div>
-                </div>
+            <div className="mb-5">
+                <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+                {description && (
+                    <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
+                )}
             </div>
+
+            <div className="space-y-5">{children}</div>
         </AppLayout>
     );
 }

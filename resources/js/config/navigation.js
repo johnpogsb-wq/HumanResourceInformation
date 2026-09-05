@@ -1,30 +1,35 @@
 import {
     BadgeCheck,
     Banknote,
+    Bell,
     Briefcase,
     Building2,
     CalendarDays,
     CalendarRange,
     ClipboardList,
     Clock,
+    Database,
     DoorOpen,
     FileText,
     FileWarning,
     Gauge,
-    Gift,
     HandCoins,
+    Handshake,
     History,
     IdCard,
+    Inbox,
     LayoutDashboard,
     ListChecks,
+    Palette,
+    Plug,
     Receipt,
     Settings,
+    Shield,
     ShieldAlert,
     ShieldCheck,
     Target,
     TrendingUp,
     TriangleAlert,
-    UserPlus,
     Users,
     Wallet,
     Wallet2,
@@ -50,7 +55,7 @@ export const NAV_GROUPS = [
         ],
     },
     {
-        label: 'Human Resource',
+        label: 'Employee Management',
         items: [
             {
                 id: 'employee-info',
@@ -58,33 +63,42 @@ export const NAV_GROUPS = [
                 icon: IdCard,
                 children: [
                     {
+                        /*
+                         * The way into the workforce, so it sits above the
+                         * directory rather than under it.
+                         *
+                         * PrimePower does not hire into this system directly:
+                         * Core 1 recruits, sends the hire over the API, and
+                         * somebody here approves or declines it. That makes
+                         * this a work queue rather than a record screen, which
+                         * is why it is the only nav entry carrying a count.
+                         */
+                        id: 'employee-endorsements',
+                        label: 'New Hires',
+                        icon: Inbox,
+                        href: '/hr/endorsements',
+                        roles: ['admin', 'hr_staff'],
+                        // Filled from the shared prop of this name. Hidden at
+                        // zero — an always-lit badge stops being read, the
+                        // same rule the credential indicator follows.
+                        badgeKey: 'pendingEndorsements',
+                    },
+                    {
                         id: 'employee-list',
                         label: 'Employee Directory',
                         icon: Users,
                         href: '/hr/employees',
                     },
-                    {
-                        id: 'employee-create',
-                        label: 'Add Employee',
-                        icon: UserPlus,
-                        href: '/hr/employees/create',
-                        roles: ['admin', 'hr_staff'],
-                    },
-                    {
-                        id: 'employee-credentials',
-                        label: 'Credentials',
-                        icon: ShieldAlert,
-                        href: '/hr/credentials',
-                    },
-                    {
-                        id: 'employee-onboarding',
-                        label: '201 File Status',
-                        icon: FileWarning,
-                        href: '/hr/onboarding',
-                    },
                     // Master data. HR maintains the org structure while filing
                     // people, so it sits with the records rather than under
                     // Settings, where it used to live.
+                    {
+                        id: 'employee-clients',
+                        label: 'Clients',
+                        icon: Handshake,
+                        href: '/hr/clients',
+                        roles: ['admin', 'hr_staff'],
+                    },
                     {
                         id: 'employee-departments',
                         label: 'Departments',
@@ -101,6 +115,11 @@ export const NAV_GROUPS = [
                     },
                 ],
             },
+        ],
+    },
+    {
+        label: 'Time & Attendance',
+        items: [
             {
                 id: 'timekeeping',
                 label: 'Timekeeping & Attendance',
@@ -135,12 +154,6 @@ export const NAV_GROUPS = [
                         label: 'Reports',
                         icon: Gauge,
                         href: '/hr/timekeeping/reports',
-                    },
-                    {
-                        id: 'tk-exceptions',
-                        label: 'Exceptions',
-                        icon: TriangleAlert,
-                        href: '/hr/timekeeping/exceptions',
                     },
                     {
                         id: 'tk-history',
@@ -182,6 +195,11 @@ export const NAV_GROUPS = [
                     },
                 ],
             },
+        ],
+    },
+    {
+        label: 'Payroll & Performance',
+        items: [
             {
                 id: 'payroll',
                 label: 'Payroll & Compensation',
@@ -212,13 +230,6 @@ export const NAV_GROUPS = [
                         label: 'Allowances & Loans',
                         icon: HandCoins,
                         href: '/hr/payroll/compensation',
-                        roles: ['admin', 'hr_staff'],
-                    },
-                    {
-                        id: 'payroll-13th',
-                        label: '13th-Month Pay',
-                        icon: Gift,
-                        href: '/hr/payroll/13th-month',
                         roles: ['admin', 'hr_staff'],
                     },
                     {
@@ -264,6 +275,75 @@ export const NAV_GROUPS = [
             },
         ],
     },
+    /*
+     * The screens that read across modules rather than maintaining one.
+     *
+     * Everything else in the sidebar is a place records are *kept*; these are
+     * places records are *judged*. Each one runs a config-driven rule engine
+     * over data that already exists somewhere else — Credentials over document
+     * expiry, 201 File Status over what was never filed, Exceptions over the
+     * DTR, and Deployment Readiness over all three at once. None of them owns
+     * a table.
+     *
+     * That is also why they were scattered before: Credentials and 201 File
+     * Status sat under Employee Information and Exceptions under Timekeeping,
+     * as though each belonged to the module it happened to read from. Grouping
+     * them says what they actually are.
+     */
+    {
+        label: 'AI & Analytics',
+        items: [
+            {
+                id: 'analytics-deployment',
+                label: 'Deployment Readiness',
+                icon: ShieldCheck,
+                href: '/hr/deployment',
+            },
+            {
+                id: 'analytics-credentials',
+                label: 'Credentials',
+                icon: ShieldAlert,
+                href: '/hr/credentials',
+            },
+            {
+                id: 'analytics-onboarding',
+                label: '201 File Status',
+                icon: FileWarning,
+                href: '/hr/onboarding',
+            },
+            {
+                id: 'analytics-exceptions',
+                label: 'Attendance Exceptions',
+                icon: TriangleAlert,
+                href: '/hr/timekeeping/exceptions',
+            },
+            {
+                /*
+                 * Where the records disagree with each other. Beside the
+                 * other cross-module readers, and open to the same roles
+                 * as the directory it reads — a supervisor sees the
+                 * findings on their own reports.
+                 */
+                id: 'analytics-record-checks',
+                label: 'Record Checks',
+                icon: ShieldCheck,
+                href: '/hr/record-checks',
+            },
+            {
+                /*
+                 * How the scanner is performing, measured from what HR did
+                 * with its proposals. Same roles as the audit log it shares a
+                 * gate with — it is a record of what the system and its users
+                 * did, not an operational screen.
+                 */
+                id: 'analytics-scan-accuracy',
+                label: 'Scanner Accuracy',
+                icon: Gauge,
+                href: '/hr/scan-accuracy',
+                roles: ['admin', 'hr_staff'],
+            },
+        ],
+    },
     {
         label: 'System',
         items: [
@@ -271,22 +351,73 @@ export const NAV_GROUPS = [
                 id: 'settings',
                 label: 'Settings',
                 icon: Settings,
-                // One entry, not seven. Unlike Payroll or Timekeeping, this
-                // one has nowhere else to keep the sub-navigation — once
-                // inside, SettingsLayout already renders its own section list
-                // (SETTINGS_SECTIONS) beside the page — so a second, dropdown
-                // copy of the same seven links in the sidebar was pure
-                // duplication of a list that already exists one click in.
-                // Appearance is the target because it is the one section
-                // every role can open — General, Notifications, Users &
-                // Access, Data & Backup, and Integrations are admin-only, and
-                // this link has no `roles` restriction of its own.
-                href: '/settings/appearance',
-                // But the entry still has to stay lit on every other settings
-                // page, not just Appearance — see isItemActive(). Trailing
-                // slash so this can't also match some unrelated future
-                // `/settings-something` route by accident.
-                activePrefix: '/settings/',
+                /*
+                 * The seven sections live here, like every other module's
+                 * screens.
+                 *
+                 * They were briefly a single flat link instead, on the
+                 * reasoning that SettingsLayout already rendered the same
+                 * seven beside the page and a sidebar copy would duplicate
+                 * it. Living with it showed the duplication was the cheaper
+                 * problem: the in-page list cost the settings forms a column
+                 * of width they needed, and at 1024px left them squeezed into
+                 * about 468px. The list is gone from the page now, so this is
+                 * the only copy again — and the settings pages get the full
+                 * width every other screen has.
+                 *
+                 * Roles mirror SETTINGS_SECTIONS exactly. Appearance and
+                 * Security are the two any signed-in person may open; the
+                 * rest reconfigure the company rather than the person.
+                 */
+                children: [
+                    {
+                        id: 'settings-general',
+                        label: 'General',
+                        icon: Settings,
+                        href: '/settings/general',
+                        roles: ['admin'],
+                    },
+                    {
+                        id: 'settings-appearance',
+                        label: 'Appearance',
+                        icon: Palette,
+                        href: '/settings/appearance',
+                    },
+                    {
+                        id: 'settings-notifications',
+                        label: 'Notifications',
+                        icon: Bell,
+                        href: '/settings/notifications',
+                        roles: ['admin'],
+                    },
+                    {
+                        id: 'settings-users',
+                        label: 'Users & Access',
+                        icon: Users,
+                        href: '/settings/users',
+                        roles: ['admin'],
+                    },
+                    {
+                        id: 'settings-security',
+                        label: 'Security',
+                        icon: Shield,
+                        href: '/settings/security',
+                    },
+                    {
+                        id: 'settings-data',
+                        label: 'Data & Backup',
+                        icon: Database,
+                        href: '/settings/data',
+                        roles: ['admin'],
+                    },
+                    {
+                        id: 'settings-integrations',
+                        label: 'Integrations',
+                        icon: Plug,
+                        href: '/settings/integrations',
+                        roles: ['admin'],
+                    },
+                ],
             },
         ],
     },

@@ -16,7 +16,8 @@ export default function GuestLayout({ children }) {
     return (
         <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-10">
             <Link href="/" className="mb-6 flex items-center gap-2.5">
-                <LogoMark className="h-8 w-8" />
+                {/* Big enough for the artwork's own "PRIMEPOWER" to read, which it\n                            does not at sidebar size. */}
+                <LogoMark className="h-20 w-20" />
                 <span className="text-lg font-bold tracking-tight text-logo-primary">
                     {name.toUpperCase()}
                 </span>

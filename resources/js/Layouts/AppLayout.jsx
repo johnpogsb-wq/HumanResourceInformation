@@ -2,6 +2,7 @@ import { Head, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 import Sidebar from '@/Components/layout/Sidebar';
 import Topbar from '@/Components/layout/Topbar';
+import IdleTimeout from '@/Components/layout/IdleTimeout';
 import Toast from '@/Components/ui/Toast';
 import { cn } from '@/lib/utils';
 
@@ -59,6 +60,12 @@ export default function AppLayout({ title, breadcrumbs, actions, children }) {
             </div>
 
             <Toast flash={flash} />
+
+            {/* Signs the session out after `config('session.lifetime')` minutes
+                of nobody being here. Mounted in the shell rather than per page
+                so the countdown survives navigation, and only here — a guest on
+                the login screen has no session to lose. */}
+            <IdleTimeout />
         </div>
     );
 }

@@ -1,25 +1,71 @@
+import { Link } from '@inertiajs/react';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export function Card({ className, children, ...props }) {
+/**
+ * With an `href` the card becomes a link to the screen its figure came from.
+ *
+ * Done here rather than in each tile so every card built on this one — StatCard,
+ * MeterCard, SplitStatCard — gains it from a single place, and so a clickable
+ * card is a real `<a>`: middle-click opens a tab, the status bar shows where it
+ * goes, and a keyboard reaches it. Wrapping the tile in a `<div onClick>` would
+ * have looked identical and been none of those things.
+ *
+ * `floating` is the dashboard's own look — a deeper resting shadow and a
+ * bigger radius, and on a clickable card a lift on hover rather than the
+ * flatter tint every other list screen's card uses. Opt-in and kept out of the
+ * base classes on purpose: every table screen in the system (Departments,
+ * Positions, Payroll…) builds on this same component, and a global shadow
+ * change would restyle all of them for a request that was about one page.
+ */
+export function Card({ className, href, floating = false, children, ...props }) {
+    const classes = cn(
+        'rounded-lg border border-border bg-card text-card-foreground shadow-sm transition-shadow duration-200',
+        floating &&
+            'rounded-xl border-border/60 shadow-[0_2px_10px_-2px_hsl(var(--foreground)/0.08)]',
+        href &&
+            (floating
+                ? 'block transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_18px_30px_-12px_hsl(var(--foreground)/0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40'
+                : 'block transition-colors hover:border-primary/40 hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40'),
+        className,
+    );
+
+    if (href) {
+        return (
+            <Link href={href} className={classes} {...props}>
+                {children}
+            </Link>
+        );
+    }
+
     return (
-        <div
-            className={cn(
-                'rounded-lg border border-border bg-card text-card-foreground shadow-sm',
-                className,
-            )}
-            {...props}
-        >
+        <div className={classes} {...props}>
             {children}
         </div>
     );
 }
 
+/**
+ * A card's title row, and — on most list screens — the row its create button
+ * and filters sit in.
+ *
+ * **It stacks below `sm`, and that is not decoration.** The action slot holds
+ * real controls: Departments puts a 224px search box and a "New Department"
+ * button in it, which is about 382px of content. A 375px phone leaves 301px
+ * here once the page and card padding are taken off — so side by side, with
+ * the action refusing to shrink, the row overflowed the card and pushed the
+ * whole page sideways while truncating the title to nothing. Stacking is what
+ * gives the action its own full-width line.
+ *
+ * The action's own contents still have to cope with that line being narrow;
+ * the ones that hold two controls stack themselves the same way.
+ */
 export function CardHeader({ className, title, description, action, children, ...props }) {
     return (
         <div
             className={cn(
-                'flex items-start justify-between gap-4 border-b border-border px-5 py-4',
+                'flex flex-col gap-3 border-b border-border px-5 py-4',
+                'sm:flex-row sm:items-start sm:justify-between sm:gap-4',
                 className,
             )}
             {...props}
@@ -131,12 +177,14 @@ export function StatCard({
     hint,
     trend,
     tone = 'primary',
+    href,
+    floating = false,
     className,
 }) {
     const TrendIcon = trend?.direction === 'down' ? ArrowDown : ArrowUp;
 
     return (
-        <Card className={cn('p-4', className)}>
+        <Card href={href} floating={floating} className={cn('p-4', className)}>
             <div className="flex items-start justify-between gap-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     {label}
@@ -187,12 +235,14 @@ export function MeterCard({
     badge,
     tone,
     iconTone = 'primary',
+    href,
+    floating = false,
     className,
 }) {
     const clamped = Math.max(0, Math.min(100, percent ?? 0));
 
     return (
-        <Card className={cn('p-4', className)}>
+        <Card href={href} floating={floating} className={cn('p-4', className)}>
             <div className="flex items-start justify-between gap-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     {label}
@@ -245,12 +295,112 @@ export function MeterCard({
 }
 
 /**
+ * Filled backgrounds for a `StatTile`.
+ *
+ * A tint, not a block — the figure sits on it and has to stay readable, so
+ * these are the same /10 fills `Badge` uses rather than solid colour. `muted`
+ * is the resting state and is what a zero falls back to.
+ */
+const TILE_TONES = {
+    default: 'bg-secondary/60',
+    primary: 'bg-primary/10',
+    info: 'bg-info/10',
+    success: 'bg-success/10',
+    warning: 'bg-warning/10',
+    destructive: 'bg-destructive/10',
+    muted: 'bg-muted',
+};
+
+/**
+ * One figure in a tinted box — the unit the three summary cards are built
+ * from.
+ *
+ * Same rule as every other tile on the dashboard: a zero drops to grey. Three
+ * of these side by side is a count broken into its parts, so they are only
+ * meaningful together — a lone StatTile should be a StatCard instead.
+ */
+export function StatTile({ label, value, tone = 'default', className }) {
+    const isZero = value === 0 || value === '0';
+
+    return (
+        <div
+            className={cn(
+                'min-w-0 flex-1 rounded-lg px-2 py-2.5 text-center',
+                isZero ? TILE_TONES.muted : (TILE_TONES[tone] ?? TILE_TONES.default),
+                className,
+            )}
+        >
+            <p
+                className={cn(
+                    'truncate text-xl font-semibold tabular-nums leading-tight',
+                    isZero ? TEXT_TONES.muted : (TEXT_TONES[tone] ?? TEXT_TONES.default),
+                )}
+            >
+                {value}
+            </p>
+            <p className="mt-0.5 truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                {label}
+            </p>
+        </div>
+    );
+}
+
+/**
+ * The single most recent record beneath a row of `StatTile`s — what the counts
+ * above are counting, made concrete.
+ *
+ * One row, never a list: the summary cards are a glance, and the screen behind
+ * them is where the rest lives.
+ */
+export function TilePreview({ icon: Icon, tone = 'muted', title, subtitle, badge, empty }) {
+    if (!title) {
+        return (
+            <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
+                {empty ?? 'Nothing recorded yet.'}
+            </p>
+        );
+    }
+
+    return (
+        <div className="mt-3 flex items-center gap-2.5 border-t border-border pt-3">
+            {Icon && (
+                <span
+                    className={cn(
+                        'grid h-7 w-7 shrink-0 place-items-center rounded-md',
+                        ICON_TONES[tone] ?? ICON_TONES.muted,
+                    )}
+                >
+                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                </span>
+            )}
+
+            <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium text-foreground">{title}</p>
+                {subtitle && (
+                    <p className="truncate text-[11px] text-muted-foreground">{subtitle}</p>
+                )}
+            </div>
+
+            {badge && <div className="shrink-0">{badge}</div>}
+        </div>
+    );
+}
+
+/**
  * A tile holding two or three related counts, for figures that only mean
  * something beside each other.
  */
-export function SplitStatCard({ label, icon: Icon, stats = [], tone = 'primary', className }) {
+export function SplitStatCard({
+    label,
+    icon: Icon,
+    stats = [],
+    tone = 'primary',
+    href,
+    floating = false,
+    className,
+}) {
     return (
-        <Card className={cn('p-4', className)}>
+        <Card href={href} floating={floating} className={cn('p-4', className)}>
             <div className="flex items-start justify-between gap-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     {label}

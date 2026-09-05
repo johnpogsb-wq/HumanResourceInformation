@@ -1,5 +1,6 @@
-import { forwardRef, useId } from 'react';
-import { ChevronDown, Search } from 'lucide-react';
+import { forwardRef, useId, useRef, useState } from 'react';
+import { CalendarDays, ChevronDown, Search } from 'lucide-react';
+import DatePicker, { parseISO } from './DatePicker';
 import { cn } from '@/lib/utils';
 
 const FIELD_BASE =
@@ -29,6 +30,20 @@ export const Input = forwardRef(function Input({ className, error, ...props }, r
     return (
         <input
             ref={ref}
+            /*
+             * Off by default, because this is an HRIS.
+             *
+             * The browser remembers what was typed into a field and offers it
+             * back on every later form, so filing one employee leaves their
+             * nationality, address, and government numbers suggested while
+             * filing the next — someone else's data, on someone else's record,
+             * one careless Enter from being saved there.
+             *
+             * Declared before `{...props}` so a caller can still opt in: the
+             * auth screens pass `username` and `current-password` on purpose,
+             * and password managers depend on those.
+             */
+            autoComplete="off"
             className={cn(
                 FIELD_BASE,
                 'h-9 px-3 text-sm',
@@ -42,6 +57,89 @@ export const Input = forwardRef(function Input({ className, error, ...props }, r
     );
 });
 
+/**
+ * A date field with a calendar that matches the rest of the system.
+ *
+ * The browser's own picker was the thing being replaced, not the thing being
+ * styled: its look is fixed by the browser, and more importantly it has no
+ * year control — a date of birth is hundreds of clicks on the month arrow, and
+ * every 201 file needs one. {@link DatePicker} puts the month and the year in
+ * dropdowns, so any date is two clicks.
+ *
+ * The trigger shows a readable date rather than the browser's `dd/mm/yyyy`
+ * segments, so there is never a question whether 30/01 is the 30th of January
+ * or a mangled 1st of March.
+ */
+export const DateInput = forwardRef(function DateInput(
+    { className, error, value, onChange, min, max, id, disabled, ...props },
+    ref,
+) {
+    const [open, setOpen] = useState(false);
+    const parsed = parseISO(value);
+
+    // The calendar is portalled into <body> to escape the modal's
+    // `overflow-hidden`, so it needs the trigger's own node to position
+    // against — and to know that a click on the trigger is not "outside".
+    const triggerRef = useRef(null);
+
+    // Shaped like a real change event, so callers written for a plain <input>
+    // need no special case.
+    const emit = (next) => onChange?.({ target: { value: next } });
+
+    return (
+        <div className="relative">
+            <button
+                ref={(node) => {
+                    triggerRef.current = node;
+                    if (typeof ref === 'function') ref(node);
+                    else if (ref) ref.current = node;
+                }}
+                id={id}
+                type="button"
+                disabled={disabled}
+                onClick={() => setOpen((was) => !was)}
+                aria-haspopup="dialog"
+                aria-expanded={open}
+                className={cn(
+                    FIELD_BASE,
+                    'flex h-9 items-center justify-between gap-2 px-3 text-left text-sm',
+                    !parsed && 'text-muted-foreground/70',
+                    error &&
+                        'border-destructive focus:border-destructive focus:ring-destructive/30',
+                    className,
+                )}
+                aria-invalid={error ? 'true' : undefined}
+                {...props}
+            >
+                <span>
+                    {parsed
+                        ? parsed.toLocaleDateString('en-PH', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                          })
+                        : 'Select a date'}
+                </span>
+                <CalendarDays
+                    className="h-4 w-4 shrink-0 text-muted-foreground"
+                    aria-hidden="true"
+                />
+            </button>
+
+            {open && (
+                <DatePicker
+                    anchorRef={triggerRef}
+                    value={value}
+                    min={min}
+                    max={max}
+                    onSelect={emit}
+                    onClose={() => setOpen(false)}
+                />
+            )}
+        </div>
+    );
+});
+
 export const Textarea = forwardRef(function Textarea(
     { className, error, rows = 3, ...props },
     ref,
@@ -50,6 +148,7 @@ export const Textarea = forwardRef(function Textarea(
         <textarea
             ref={ref}
             rows={rows}
+            autoComplete="off"
             className={cn(
                 FIELD_BASE,
                 'px-3 py-2 text-sm',

@@ -10,6 +10,18 @@ export {
     StatCard,
     MeterCard,
     SplitStatCard,
+    StatTile,
+    TilePreview,
 } from './Card';
+export { TrendChart } from './Chart';
 export { Table, THead, TBody, TFoot, TR, TH, TD, TableEmpty } from './Table';
-export { Field, Input, InputError, Label, SearchInput, Select, Textarea } from './Form';
+export {
+    DateInput,
+    Field,
+    Input,
+    InputError,
+    Label,
+    SearchInput,
+    Select,
+    Textarea,
+} from './Form';

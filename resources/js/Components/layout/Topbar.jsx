@@ -1,6 +1,6 @@
 import { Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
-import { Bell, ChevronRight, Menu, Search, ShieldAlert } from 'lucide-react';
+import { Bell, Menu, Search, ShieldAlert } from 'lucide-react';
 import Dropdown from '@/Components/Dropdown';
 import ThemeToggle from '@/Components/layout/ThemeToggle';
 import { cn, initials } from '@/lib/utils';
@@ -12,7 +12,7 @@ const ROLE_LABELS = {
     employee: 'Employee',
 };
 
-export default function Topbar({ title, breadcrumbs = [], actions, onOpenMobile }) {
+export default function Topbar({ title, actions, onOpenMobile }) {
     const { auth, pendingApprovals = 0, expiringCredentials = 0 } = usePage().props;
     const user = auth?.user;
 
@@ -38,38 +38,6 @@ export default function Topbar({ title, breadcrumbs = [], actions, onOpenMobile 
                 </button>
 
                 <div className="min-w-0 flex-1">
-                    {breadcrumbs.length > 0 && (
-                        <nav aria-label="Breadcrumb" className="mb-0.5 hidden sm:block">
-                            <ol className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                                {breadcrumbs.map((crumb, index) => (
-                                    <li
-                                        key={`${crumb.label}-${index}`}
-                                        className="flex items-center gap-1"
-                                    >
-                                        {index > 0 && (
-                                            <ChevronRight
-                                                className="h-3 w-3 opacity-60"
-                                                aria-hidden="true"
-                                            />
-                                        )}
-                                        {crumb.href ? (
-                                            <Link
-                                                href={crumb.href}
-                                                className="transition-colors hover:text-foreground"
-                                            >
-                                                {crumb.label}
-                                            </Link>
-                                        ) : (
-                                            <span className="text-foreground/80">
-                                                {crumb.label}
-                                            </span>
-                                        )}
-                                    </li>
-                                ))}
-                            </ol>
-                        </nav>
-                    )}
-
                     {title && (
                         <h1 className="truncate text-base font-semibold leading-tight text-foreground">
                             {title}
