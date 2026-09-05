@@ -116,20 +116,16 @@ class LeaveService
         });
     }
 
-    public function approveBySupervisor(LeaveRequest $request, User $approver, ?string $remarks = null): LeaveRequest
-    {
-        $request->update([
-            'status' => LeaveRequest::STATUS_SUPERVISOR_APPROVED,
-            'supervisor_id' => $approver->id,
-            'supervisor_acted_at' => now(),
-            'supervisor_remarks' => $remarks,
-        ]);
-
-        return $request->refresh();
-    }
-
-    /** Final step — this is where credits actually move. */
-    public function approveByHr(LeaveRequest $request, User $approver, ?string $remarks = null): LeaveRequest
+    /**
+     * Approves a request and spends the credits.
+     *
+     * One step. It was two — a supervisor endorsed, then HR confirmed — and
+     * only ever the second one moved credits; the first bought a delay rather
+     * than a decision. Requests still sitting in `supervisor_approved` from
+     * before that change are approved through here too, which is why the
+     * status is not gone from the model.
+     */
+    public function approve(LeaveRequest $request, User $approver, ?string $remarks = null): LeaveRequest
     {
         return DB::transaction(function () use ($request, $approver, $remarks) {
             $request->update([
@@ -182,19 +178,27 @@ class LeaveService
     }
 
     /** Requests this user is the next approver for. Drives the topbar badge. */
+    /**
+     * How many requests are waiting on *this* user — the topbar bell.
+     *
+     * Only HR sees a count now. Supervisors used to be counted here for the
+     * requests of their own reports, and that was right while endorsing was
+     * a step they took; with the decision HR's alone, a badge they cannot act
+     * on is a badge that teaches them to ignore the bell.
+     *
+     * Both open statuses count. `supervisor_approved` no longer happens, but
+     * a row left in it is somebody still waiting.
+     */
     public function pendingApprovalsFor(User $user): int
     {
-        if ($user->isHrAdmin()) {
-            return LeaveRequest::where('status', LeaveRequest::STATUS_SUPERVISOR_APPROVED)->count();
+        if (! $user->isHrAdmin()) {
+            return 0;
         }
 
-        if ($user->isSupervisor() && $user->employee) {
-            return LeaveRequest::where('status', LeaveRequest::STATUS_PENDING)
-                ->whereHas('employee', fn (Builder $q) => $q->where('supervisor_id', $user->employee->id))
-                ->count();
-        }
-
-        return 0;
+        return LeaveRequest::whereIn('status', [
+            LeaveRequest::STATUS_PENDING,
+            LeaveRequest::STATUS_SUPERVISOR_APPROVED,
+        ])->count();
     }
 
     public function summary(Builder $query): array

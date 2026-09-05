@@ -95,92 +95,106 @@ export default function Calendar({
                 </div>
 
                 <CardBody>
-                    {/* Weekday header — Monday first, matching ISO weekdays. */}
-                    <div className="mb-2 grid grid-cols-7 gap-1.5">
-                        {WEEKDAYS.map((day) => (
-                            <div
-                                key={day}
-                                className="px-1 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
-                            >
-                                {day}
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="grid grid-cols-7 gap-1.5">
-                        {cells.map((day, index) => {
-                            if (day === null) {
-                                return (
+                    {/* A month is seven columns wide whatever the screen is.
+                        On a 375px phone that leaves about 38px a day — narrower
+                        than the pill naming who is off, so every entry would
+                        truncate to nothing and the grid would stop being a
+                        calendar. Scrolling it keeps a day wide enough to read;
+                        the negative margin lets the scroll run to the card's
+                        edge rather than stopping inside its padding. */}
+                    <div className="scrollbar-thin -mx-5 overflow-x-auto px-5">
+                        <div className="min-w-[560px]">
+                            {/* Weekday header — Monday first, matching ISO weekdays. */}
+                            <div className="mb-2 grid grid-cols-7 gap-1.5">
+                                {WEEKDAYS.map((day) => (
                                     <div
-                                        key={`blank-${index}`}
-                                        className="min-h-24 rounded-md"
-                                    />
-                                );
-                            }
+                                        key={day}
+                                        className="px-1 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+                                    >
+                                        {day}
+                                    </div>
+                                ))}
+                            </div>
 
-                            const key = dateKey(day);
-                            const dayEntries = entries[key] ?? [];
-                            const isToday = key === today;
-                            const isWeekend = index % 7 >= 5;
+                            <div className="grid grid-cols-7 gap-1.5">
+                                {cells.map((day, index) => {
+                                    if (day === null) {
+                                        return (
+                                            <div
+                                                key={`blank-${index}`}
+                                                className="min-h-24 rounded-md"
+                                            />
+                                        );
+                                    }
 
-                            return (
-                                <div
-                                    key={key}
-                                    className={cn(
-                                        'min-h-24 rounded-md border p-1.5 transition-colors',
-                                        isToday
-                                            ? 'border-primary bg-primary/5'
-                                            : 'border-border bg-card',
-                                        isWeekend && !isToday && 'bg-secondary/40',
-                                    )}
-                                >
-                                    <div className="mb-1 flex items-center justify-between">
-                                        <span
+                                    const key = dateKey(day);
+                                    const dayEntries = entries[key] ?? [];
+                                    const isToday = key === today;
+                                    const isWeekend = index % 7 >= 5;
+
+                                    return (
+                                        <div
+                                            key={key}
                                             className={cn(
-                                                'text-xs font-medium tabular-nums',
+                                                'min-h-24 rounded-md border p-1.5 transition-colors',
                                                 isToday
-                                                    ? 'text-primary'
-                                                    : 'text-muted-foreground',
+                                                    ? 'border-primary bg-primary/5'
+                                                    : 'border-border bg-card',
+                                                isWeekend && !isToday && 'bg-secondary/40',
                                             )}
                                         >
-                                            {day}
-                                        </span>
-                                        {dayEntries.length > 2 && (
-                                            <span className="text-[10px] text-muted-foreground">
-                                                {dayEntries.length}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    <div className="space-y-1">
-                                        {dayEntries.slice(0, 2).map((entry, entryIndex) => (
-                                            <span
-                                                key={`${entry.id}-${entryIndex}`}
-                                                title={`${entry.employee} — ${entry.type_name}${
-                                                    entry.status === 'supervisor_approved'
-                                                        ? ' (awaiting HR)'
-                                                        : ''
-                                                }`}
-                                                className={cn(
-                                                    'block truncate rounded px-1.5 py-0.5 text-[10px] font-medium',
-                                                    entry.status === 'approved'
-                                                        ? 'bg-primary/15 text-primary'
-                                                        : 'bg-warning/15 text-warning',
+                                            <div className="mb-1 flex items-center justify-between">
+                                                <span
+                                                    className={cn(
+                                                        'text-xs font-medium tabular-nums',
+                                                        isToday
+                                                            ? 'text-primary'
+                                                            : 'text-muted-foreground',
+                                                    )}
+                                                >
+                                                    {day}
+                                                </span>
+                                                {dayEntries.length > 2 && (
+                                                    <span className="text-[10px] text-muted-foreground">
+                                                        {dayEntries.length}
+                                                    </span>
                                                 )}
-                                            >
-                                                {entry.type_code} · {entry.employee}
-                                            </span>
-                                        ))}
+                                            </div>
 
-                                        {dayEntries.length > 2 && (
-                                            <p className="px-1.5 text-[10px] text-muted-foreground">
-                                                +{dayEntries.length - 2} more
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
+                                            <div className="space-y-1">
+                                                {dayEntries
+                                                    .slice(0, 2)
+                                                    .map((entry, entryIndex) => (
+                                                        <span
+                                                            key={`${entry.id}-${entryIndex}`}
+                                                            title={`${entry.employee} — ${entry.type_name}${
+                                                                entry.status ===
+                                                                'supervisor_approved'
+                                                                    ? ' (awaiting HR)'
+                                                                    : ''
+                                                            }`}
+                                                            className={cn(
+                                                                'block truncate rounded px-1.5 py-0.5 text-[10px] font-medium',
+                                                                entry.status === 'approved'
+                                                                    ? 'bg-primary/15 text-primary'
+                                                                    : 'bg-warning/15 text-warning',
+                                                            )}
+                                                        >
+                                                            {entry.type_code} · {entry.employee}
+                                                        </span>
+                                                    ))}
+
+                                                {dayEntries.length > 2 && (
+                                                    <p className="px-1.5 text-[10px] text-muted-foreground">
+                                                        +{dayEntries.length - 2} more
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </div>
 
                     {Object.keys(entries).length === 0 && (

@@ -1,6 +1,6 @@
-import { router, useForm } from '@inertiajs/react';
+import { useForm } from '@inertiajs/react';
 import { useState } from 'react';
-import { FileText, Paperclip, Pencil, Plus, Trash2 } from 'lucide-react';
+import { FileText, Paperclip, Plus } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
@@ -34,41 +34,26 @@ const BLANK_TYPE = {
 };
 
 export default function Types({ types, can }) {
-    const [editing, setEditing] = useState(null); // null | 'new' | type
-    const [pendingDelete, setPendingDelete] = useState(null);
+    const [creating, setCreating] = useState(false);
 
     const form = useForm(BLANK_TYPE);
 
-    const open = (type) => {
+    const open = () => {
         form.clearErrors();
-        form.setData(
-            type === 'new'
-                ? BLANK_TYPE
-                : {
-                      ...BLANK_TYPE,
-                      ...type,
-                      max_consecutive_days: type.max_consecutive_days ?? '',
-                  },
-        );
-        setEditing(type);
+        form.setData(BLANK_TYPE);
+        setCreating(true);
     };
 
     const submit = (event) => {
         event.preventDefault();
 
-        const done = {
+        form.post('/hr/leave/types', {
             preserveScroll: true,
             onSuccess: () => {
                 form.reset();
-                setEditing(null);
+                setCreating(false);
             },
-        };
-
-        if (editing === 'new') {
-            form.post('/hr/leave/types', done);
-        } else {
-            form.put(`/hr/leave/types/${editing.id}`, done);
-        }
+        });
     };
 
     const toggles = [
@@ -93,7 +78,7 @@ export default function Types({ types, can }) {
                     description="The catalogue employees file against, and the entitlement each one carries."
                     action={
                         can.manage && (
-                            <Button size="sm" onClick={() => open('new')}>
+                            <Button size="sm" onClick={open}>
                                 <Plus className="h-4 w-4" />
                                 New Type
                             </Button>
@@ -110,14 +95,13 @@ export default function Types({ types, can }) {
                             <TH className="text-right">Notice</TH>
                             <TH className="text-right">Filed</TH>
                             <TH>Flags</TH>
-                            {can.manage && <TH className="text-right">Actions</TH>}
                         </TR>
                     </THead>
 
                     <TBody>
                         {types.length === 0 ? (
                             <TableEmpty
-                                colSpan={can.manage ? 7 : 6}
+                                colSpan={6}
                                 icon={FileText}
                                 title="No leave types"
                                 description="Add at least one type before employees can file leave."
@@ -174,29 +158,6 @@ export default function Types({ types, can }) {
                                             )}
                                         </div>
                                     </TD>
-
-                                    {can.manage && (
-                                        <TD>
-                                            <div className="flex items-center justify-end gap-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => open(type)}
-                                                    aria-label={`Edit ${type.name}`}
-                                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                                                >
-                                                    <Pencil className="h-4 w-4" />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPendingDelete(type)}
-                                                    aria-label={`Delete ${type.name}`}
-                                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </button>
-                                            </div>
-                                        </TD>
-                                    )}
                                 </TR>
                             ))
                         )}
@@ -206,9 +167,9 @@ export default function Types({ types, can }) {
 
             {/* Type form */}
             <Modal
-                show={Boolean(editing)}
-                onClose={() => setEditing(null)}
-                title={editing === 'new' ? 'New Leave Type' : 'Edit Leave Type'}
+                show={creating}
+                onClose={() => setCreating(false)}
+                title="New Leave Type"
                 maxWidth="2xl"
             >
                 <form onSubmit={submit} className="space-y-4">
@@ -346,7 +307,7 @@ export default function Types({ types, can }) {
                     </div>
 
                     <div className="flex justify-end gap-2 pt-2">
-                        <Button variant="outline" onClick={() => setEditing(null)}>
+                        <Button variant="outline" onClick={() => setCreating(false)}>
                             Cancel
                         </Button>
                         <Button type="submit" loading={form.processing}>
@@ -354,38 +315,6 @@ export default function Types({ types, can }) {
                         </Button>
                     </div>
                 </form>
-            </Modal>
-
-            {/* Delete confirmation */}
-            <Modal
-                show={Boolean(pendingDelete)}
-                onClose={() => setPendingDelete(null)}
-                title="Delete this leave type?"
-                maxWidth="md"
-                footer={
-                    <>
-                        <Button variant="outline" onClick={() => setPendingDelete(null)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            variant="destructive"
-                            onClick={() =>
-                                router.delete(`/hr/leave/types/${pendingDelete.id}`, {
-                                    preserveScroll: true,
-                                    onFinish: () => setPendingDelete(null),
-                                })
-                            }
-                        >
-                            Delete
-                        </Button>
-                    </>
-                }
-            >
-                <p className="text-sm text-muted-foreground">
-                    <span className="font-medium text-foreground">{pendingDelete?.name}</span>{' '}
-                    will be deleted. If any leave has been filed against it, or any balance
-                    exists, it is deactivated instead so history stays readable.
-                </p>
             </Modal>
         </AppLayout>
     );

@@ -54,8 +54,16 @@ class StoreLeaveRequestRequest extends FormRequest
                 return;
             }
 
-            // Employees file for themselves; HR files on anyone's behalf.
-            if (! $user->isHrAdmin() && $employee->user_id !== $user->id) {
+            /*
+             * Everybody files their own, HR included.
+             *
+             * The exemption that used to sit here — `! $user->isHrAdmin() &&`
+             * — let HR file on anybody's behalf, which made HR both the filer
+             * and the sole approver of the same request. That is the one thing
+             * the rest of this module is built to prevent, and it survived
+             * removing the button because the button was never the rule.
+             */
+            if ($employee->user_id !== $user->id) {
                 $validator->errors()->add('employee_id', 'You can only file leave for yourself.');
 
                 return;

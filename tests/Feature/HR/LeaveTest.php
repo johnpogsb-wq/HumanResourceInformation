@@ -42,7 +42,7 @@ class LeaveTest extends TestCase
         // 2026-04-06 to 2026-04-10 is Mon–Fri; the 9th is Araw ng Kagitingan.
         Holiday::create(['name' => 'Araw ng Kagitingan', 'date' => '2026-04-09', 'type' => 'regular']);
 
-        $this->actingAs($this->hr())->post('/hr/leave', [
+        $this->actingAs($employee->user)->post('/hr/leave', [
             'employee_id' => $employee->id,
             'leave_type_id' => $type->id,
             'start_date' => '2026-04-06',
@@ -67,7 +67,7 @@ class LeaveTest extends TestCase
         ]);
 
         // 2026-04-10 is a Friday; the 11th and 12th are the weekend.
-        $this->actingAs($this->hr())->post('/hr/leave', [
+        $this->actingAs($employee->user)->post('/hr/leave', [
             'employee_id' => $employee->id,
             'leave_type_id' => $type->id,
             'start_date' => '2026-04-10',
@@ -82,7 +82,7 @@ class LeaveTest extends TestCase
     {
         [$employee, $type] = $this->employeeWithCredits(15);
 
-        $this->actingAs($this->hr())->post('/hr/leave', [
+        $this->actingAs($employee->user)->post('/hr/leave', [
             'employee_id' => $employee->id,
             'leave_type_id' => $type->id,
             'start_date' => '2026-04-06',
@@ -99,7 +99,7 @@ class LeaveTest extends TestCase
     {
         [$employee, $type] = $this->employeeWithCredits(2);
 
-        $this->actingAs($this->hr())->post('/hr/leave', [
+        $this->actingAs($employee->user)->post('/hr/leave', [
             'employee_id' => $employee->id,
             'leave_type_id' => $type->id,
             'start_date' => '2026-04-06',
@@ -113,9 +113,8 @@ class LeaveTest extends TestCase
     public function test_open_requests_hold_credits_so_they_cannot_be_filed_twice(): void
     {
         [$employee, $type] = $this->employeeWithCredits(3);
-        $hr = $this->hr();
 
-        $this->actingAs($hr)->post('/hr/leave', [
+        $this->actingAs($employee->user)->post('/hr/leave', [
             'employee_id' => $employee->id,
             'leave_type_id' => $type->id,
             'start_date' => '2026-04-06',
@@ -124,7 +123,7 @@ class LeaveTest extends TestCase
         ])->assertRedirect();
 
         // Three credits are now spoken for even though none are spent yet.
-        $this->actingAs($hr)->post('/hr/leave', [
+        $this->actingAs($employee->user)->post('/hr/leave', [
             'employee_id' => $employee->id,
             'leave_type_id' => $type->id,
             'start_date' => '2026-04-20',
@@ -138,9 +137,8 @@ class LeaveTest extends TestCase
     public function test_overlapping_dates_are_rejected(): void
     {
         [$employee, $type] = $this->employeeWithCredits(20);
-        $hr = $this->hr();
 
-        $this->actingAs($hr)->post('/hr/leave', [
+        $this->actingAs($employee->user)->post('/hr/leave', [
             'employee_id' => $employee->id,
             'leave_type_id' => $type->id,
             'start_date' => '2026-04-06',
@@ -148,7 +146,7 @@ class LeaveTest extends TestCase
             'reason' => 'Planned family leave.',
         ])->assertRedirect();
 
-        $this->actingAs($hr)->post('/hr/leave', [
+        $this->actingAs($employee->user)->post('/hr/leave', [
             'employee_id' => $employee->id,
             'leave_type_id' => $type->id,
             'start_date' => '2026-04-07',
@@ -159,10 +157,10 @@ class LeaveTest extends TestCase
 
     public function test_unpaid_leave_ignores_the_credit_ledger(): void
     {
-        $employee = Employee::factory()->create();
+        $employee = Employee::factory()->create(['user_id' => User::factory()->create()->id]);
         $type = LeaveType::factory()->unpaid()->create();
 
-        $this->actingAs($this->hr())->post('/hr/leave', [
+        $this->actingAs($employee->user)->post('/hr/leave', [
             'employee_id' => $employee->id,
             'leave_type_id' => $type->id,
             'start_date' => '2026-04-06',
@@ -175,7 +173,7 @@ class LeaveTest extends TestCase
 
     public function test_a_type_requiring_an_attachment_refuses_a_request_without_one(): void
     {
-        $employee = Employee::factory()->create();
+        $employee = Employee::factory()->create(['user_id' => User::factory()->create()->id]);
         $type = LeaveType::factory()->requiringAttachment()->create();
         LeaveBalance::create([
             'employee_id' => $employee->id,
@@ -184,7 +182,7 @@ class LeaveTest extends TestCase
             'credits_earned' => 15,
         ]);
 
-        $this->actingAs($this->hr())->post('/hr/leave', [
+        $this->actingAs($employee->user)->post('/hr/leave', [
             'employee_id' => $employee->id,
             'leave_type_id' => $type->id,
             'start_date' => '2026-04-06',
@@ -210,39 +208,54 @@ class LeaveTest extends TestCase
 
     // --- Approval workflow ------------------------------------------------
 
-    public function test_the_workflow_runs_supervisor_then_hr(): void
+    public function test_hr_approves_in_one_step_and_the_credits_move(): void
     {
         [$employee, $type, $request] = $this->pendingRequest();
 
-        $supervisorUser = User::factory()->supervisor()->create();
-        $supervisor = Employee::factory()->create(['user_id' => $supervisorUser->id]);
-        $employee->update(['supervisor_id' => $supervisor->id]);
-
-        // Step one: the supervisor endorses.
-        $this->actingAs($supervisorUser)
-            ->post("/hr/leave/{$request->id}/approve", ['remarks' => 'Coverage arranged.'])
-            ->assertRedirect();
-
-        $this->assertSame(LeaveRequest::STATUS_SUPERVISOR_APPROVED, $request->fresh()->status);
-        $this->assertEquals(0, (float) $this->balance($employee, $type)->credits_used);
-
-        // Step two: HR confirms and the credits move.
+        // One signature, not two. The supervisor endorsement that used to
+        // come first never decided anything on its own — only HR's step ever
+        // moved credits — so it bought a delay rather than a decision.
         $this->actingAs($this->hr())
-            ->post("/hr/leave/{$request->id}/approve")
+            ->post("/hr/leave/{$request->id}/approve", ['remarks' => 'Coverage arranged.'])
             ->assertRedirect();
 
         $this->assertSame(LeaveRequest::STATUS_APPROVED, $request->fresh()->status);
         $this->assertEquals(2.0, (float) $this->balance($employee, $type)->credits_used);
     }
 
-    public function test_hr_cannot_confirm_a_request_the_supervisor_has_not_endorsed(): void
+    public function test_a_supervisor_can_no_longer_approve_their_own_report(): void
     {
-        [, , $request] = $this->pendingRequest();
+        [$employee, , $request] = $this->pendingRequest();
 
-        // HR *can* act on a pending request, but that acts as the endorsement.
-        $this->actingAs($this->hr())->post("/hr/leave/{$request->id}/approve")->assertRedirect();
+        $supervisorUser = User::factory()->supervisor()->create();
+        $supervisor = Employee::factory()->create(['user_id' => $supervisorUser->id]);
+        $employee->update(['supervisor_id' => $supervisor->id]);
 
-        $this->assertSame(LeaveRequest::STATUS_SUPERVISOR_APPROVED, $request->fresh()->status);
+        // Deciding is HR's alone. A supervisor still *sees* their reports'
+        // leave — that is `view`, and it is untouched.
+        $this->actingAs($supervisorUser)
+            ->post("/hr/leave/{$request->id}/approve")
+            ->assertForbidden();
+
+        $this->assertSame(LeaveRequest::STATUS_PENDING, $request->fresh()->status);
+    }
+
+    /**
+     * Rows left in `supervisor_approved` when the rule changed are real
+     * requests somebody is still waiting on, which is why the status is not
+     * gone from the model.
+     */
+    public function test_a_request_left_mid_workflow_can_still_be_approved(): void
+    {
+        [$employee, $type, $request] = $this->pendingRequest();
+        $request->update(['status' => LeaveRequest::STATUS_SUPERVISOR_APPROVED]);
+
+        $this->actingAs($this->hr())
+            ->post("/hr/leave/{$request->id}/approve")
+            ->assertRedirect();
+
+        $this->assertSame(LeaveRequest::STATUS_APPROVED, $request->fresh()->status);
+        $this->assertEquals(2.0, (float) $this->balance($employee, $type)->credits_used);
     }
 
     public function test_nobody_can_approve_their_own_leave(): void
@@ -265,7 +278,7 @@ class LeaveTest extends TestCase
         $this->actingAs($user)->post("/hr/leave/{$request->id}/approve")->assertForbidden();
     }
 
-    public function test_an_unrelated_supervisor_cannot_endorse(): void
+    public function test_an_unrelated_supervisor_cannot_approve_either(): void
     {
         [, , $request] = $this->pendingRequest();
 
@@ -291,7 +304,7 @@ class LeaveTest extends TestCase
         [$employee, $type, $request] = $this->pendingRequest();
         $hr = $this->hr();
 
-        $this->actingAs($hr)->post("/hr/leave/{$request->id}/approve");
+        // One approval, not two: the supervisor step is gone.
         $this->actingAs($hr)->post("/hr/leave/{$request->id}/approve");
 
         $this->assertEquals(2.0, (float) $this->balance($employee, $type)->credits_used);
@@ -334,17 +347,23 @@ class LeaveTest extends TestCase
         $report = Employee::factory()->create(['supervisor_id' => $supervisor->id]);
 
         LeaveRequest::factory()->count(2)->create(['employee_id' => $report->id]);
-        LeaveRequest::factory()->create();                    // someone else's report
-        LeaveRequest::factory()->endorsed()->create();        // already with HR
+        LeaveRequest::factory()->create();                    // somebody else's report
+        LeaveRequest::factory()->endorsed()->create();        // left mid-workflow
 
+        /*
+         * Nothing for a supervisor any more. They were counted here while
+         * endorsing was a step they took; with the decision HR's alone, a
+         * badge they cannot act on only teaches them to ignore the bell.
+         */
         $this->actingAs($supervisorUser)
             ->get('/hr/leave')
-            ->assertInertia(fn (Assert $page) => $page->where('pendingApprovals', 2));
+            ->assertInertia(fn (Assert $page) => $page->where('pendingApprovals', 0));
 
-        // HR is the next approver only once a supervisor has endorsed.
+        // HR sees every request awaiting a decision — including the one left
+        // in `supervisor_approved` before the rule changed.
         $this->actingAs($this->hr())
             ->get('/hr/leave')
-            ->assertInertia(fn (Assert $page) => $page->where('pendingApprovals', 1));
+            ->assertInertia(fn (Assert $page) => $page->where('pendingApprovals', 4));
     }
 
     public function test_guests_are_redirected_to_login(): void
@@ -359,7 +378,7 @@ class LeaveTest extends TestCase
         Storage::fake('local');
         Storage::fake('public');
 
-        $employee = Employee::factory()->create();
+        $employee = Employee::factory()->create(['user_id' => User::factory()->create()->id]);
         $type = LeaveType::factory()->requiringAttachment()->create();
         LeaveBalance::create([
             'employee_id' => $employee->id,
@@ -368,7 +387,7 @@ class LeaveTest extends TestCase
             'credits_earned' => 15,
         ]);
 
-        $this->actingAs($this->hr())->post('/hr/leave', [
+        $this->actingAs($employee->user)->post('/hr/leave', [
             'employee_id' => $employee->id,
             'leave_type_id' => $type->id,
             'start_date' => '2026-04-06',
@@ -405,10 +424,21 @@ class LeaveTest extends TestCase
         return app(LeaveService::class)->balanceFor($employee, $type, 2026);
     }
 
-    /** @return array{0: Employee, 1: LeaveType} */
+    /**
+     * An employee with credits, a login, and nobody else's leave to file.
+     *
+     * The login is the point: everybody files their own leave now, HR
+     * included, so a test that files has to act as the person the leave is
+     * for. It used to act as HR and name any employee, which is exactly the
+     * door that was closed.
+     *
+     * @return array{0: Employee, 1: LeaveType}
+     */
     private function employeeWithCredits(float $credits): array
     {
-        $employee = Employee::factory()->create();
+        $employee = Employee::factory()->create([
+            'user_id' => User::factory()->create()->id,
+        ]);
         $type = LeaveType::factory()->create(['default_credits' => $credits]);
 
         LeaveBalance::create([

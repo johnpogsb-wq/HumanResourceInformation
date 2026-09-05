@@ -14,22 +14,24 @@ import {
     Badge,
     Button,
     Card,
+    DateInput,
     Field,
     Input,
     Modal,
     Pagination,
     Select,
+    MeterCard,
     StatCard,
+    Table,
+    TableEmpty,
     TBody,
     TD,
+    Textarea,
     TH,
     THead,
     TR,
-    Table,
-    TableEmpty,
-    Textarea,
 } from '@/Components/ui';
-import { formatDate, initials } from '@/lib/utils';
+import { formatDate, initials, withFilters } from '@/lib/utils';
 
 const titleCase = (value) =>
     String(value ?? '')
@@ -60,7 +62,8 @@ export default function Index({
     const [decision, setDecision] = useState(null); // { request, action }
 
     const form = useForm({
-        employee_id: can.fileForOthers ? '' : (ownEmployeeId ?? ''),
+        // You file your own leave now, so there is nothing to pick.
+        employee_id: ownEmployeeId ?? '',
         leave_type_id: '',
         start_date: '',
         end_date: '',
@@ -88,7 +91,13 @@ export default function Index({
     const applyFilter = (key, value) => {
         router.get(
             '/hr/leave',
-            { ...filters, [key]: value || undefined },
+            {
+                ...filters,
+                // The status dropdown drops the tile's  filter: the
+                // two narrow one axis, and leaving one behind ands them.
+                ...(key === 'status' ? { awaiting: undefined } : {}),
+                [key]: value || undefined,
+            },
             { preserveState: true, preserveScroll: true, replace: true },
         );
     };
@@ -101,7 +110,7 @@ export default function Index({
             preserveScroll: true,
             onSuccess: () => {
                 form.reset();
-                if (!can.fileForOthers) form.setData('employee_id', ownEmployeeId ?? '');
+                form.setData('employee_id', ownEmployeeId ?? '');
                 setFileOpen(false);
             },
         });
@@ -122,17 +131,12 @@ export default function Index({
     const rows = requests.data ?? [];
     const meta = requests.meta ?? {};
 
-    const stats = [
-        { label: 'Total Requests', value: summary.total, icon: CalendarDays },
-        { label: 'Awaiting Action', value: summary.pending, icon: Hourglass },
-        { label: 'Approved', value: summary.approved, icon: CheckCircle2 },
-        {
-            label: 'Approved Days',
-            value: summary.approved_days,
-            icon: CalendarCheck,
-            hint: 'Deducted from credits',
-        },
-    ];
+    // Clicking a figure opens the rows it counted. `status` and `awaiting`
+    // narrow the same axis, so setting either clears the other.
+    const drillTo = (changes) =>
+        withFilters('/hr/leave', filters, changes, ['status', 'awaiting']);
+
+    const approvalRate = summary.total > 0 ? (summary.approved / summary.total) * 100 : 0;
 
     return (
         <AppLayout
@@ -140,9 +144,51 @@ export default function Index({
             breadcrumbs={[{ label: 'Human Resource' }, { label: 'Leave & Absence' }]}
         >
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {stats.map((stat) => (
-                    <StatCard key={stat.label} {...stat} />
-                ))}
+                <StatCard
+                    label="Total Requests"
+                    value={summary.total}
+                    icon={CalendarDays}
+                    tone="primary"
+                    hint="filed in this range"
+                    href={drillTo({})}
+                />
+
+                {/* The work queue, and the only tile on this screen anybody
+                    has to act on — warning while it holds anything, grey the
+                    moment it is empty. */}
+                <StatCard
+                    label="Awaiting Action"
+                    value={summary.pending}
+                    icon={Hourglass}
+                    tone={summary.pending > 0 ? 'warning' : 'muted'}
+                    hint={summary.pending > 0 ? 'waiting on a decision' : 'nothing waiting'}
+                    /* `awaiting`, not `status=pending`: the tile counts rows
+                       left mid-workflow too. */
+                    href={drillTo({ awaiting: '1' })}
+                />
+
+                <MeterCard
+                    label="Approved"
+                    value={summary.approved}
+                    percent={approvalRate}
+                    badge={`${Math.round(approvalRate)}%`}
+                    icon={CheckCircle2}
+                    tone="success"
+                    iconTone="success"
+                    hint={`of ${summary.total} filed`}
+                    href={drillTo({ status: 'approved' })}
+                />
+
+                {/* Not a count of requests but of days off the ledger — the
+                    figure payroll and the balances screen both read. */}
+                <StatCard
+                    label="Approved Days"
+                    value={summary.approved_days}
+                    icon={CalendarCheck}
+                    tone={summary.approved_days > 0 ? 'info' : 'muted'}
+                    hint="deducted from credits"
+                    href={drillTo({ status: 'approved' })}
+                />
             </div>
 
             <Card>
@@ -290,7 +336,7 @@ export default function Index({
 
                                     <TD>
                                         <div className="flex items-center justify-end gap-1">
-                                            {(request.can.endorse || request.can.confirm) && (
+                                            {request.can.decide && (
                                                 <Button
                                                     size="sm"
                                                     variant="ghost"
@@ -302,9 +348,7 @@ export default function Index({
                                                     }
                                                 >
                                                     <CheckCircle2 className="h-4 w-4 text-success" />
-                                                    {request.can.endorse
-                                                        ? 'Endorse'
-                                                        : 'Approve'}
+                                                    Approve
                                                 </Button>
                                             )}
 
@@ -324,8 +368,7 @@ export default function Index({
                                                 </Button>
                                             )}
 
-                                            {!request.can.endorse &&
-                                                !request.can.confirm &&
+                                            {!request.can.decide &&
                                                 !request.can.reject &&
                                                 request.can.cancel && (
                                                     <Button
@@ -343,8 +386,7 @@ export default function Index({
                                                     </Button>
                                                 )}
 
-                                            {!request.can.endorse &&
-                                                !request.can.confirm &&
+                                            {!request.can.decide &&
                                                 !request.can.reject &&
                                                 !request.can.cancel && (
                                                     <span className="text-xs text-muted-foreground">
@@ -372,26 +414,6 @@ export default function Index({
             >
                 <form onSubmit={submit} className="space-y-4">
                     <div className="grid gap-4 sm:grid-cols-2">
-                        {can.fileForOthers && (
-                            <Field label="Employee" required error={form.errors.employee_id}>
-                                {({ id }) => (
-                                    <Select
-                                        id={id}
-                                        value={form.data.employee_id}
-                                        onChange={(event) =>
-                                            form.setData('employee_id', event.target.value)
-                                        }
-                                        placeholder="Select employee"
-                                        error={form.errors.employee_id}
-                                        options={employees.map((employee) => ({
-                                            value: employee.id,
-                                            label: employee.full_name,
-                                        }))}
-                                    />
-                                )}
-                            </Field>
-                        )}
-
                         <Field
                             label="Leave Type"
                             required
@@ -423,9 +445,8 @@ export default function Index({
                     <div className="grid gap-4 sm:grid-cols-2">
                         <Field label="Start Date" required error={form.errors.start_date}>
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={form.data.start_date}
                                     onChange={(event) => {
                                         form.setData((current) => ({
@@ -444,9 +465,8 @@ export default function Index({
 
                         <Field label="End Date" required error={form.errors.end_date}>
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={form.data.end_date}
                                     disabled={form.data.is_half_day}
                                     onChange={(event) =>
@@ -551,9 +571,7 @@ export default function Index({
                 title={
                     decision?.action === 'reject'
                         ? 'Reject this leave request?'
-                        : decision?.request.can.endorse
-                          ? 'Endorse to HR?'
-                          : 'Approve and deduct credits?'
+                        : 'Approve and deduct credits?'
                 }
                 maxWidth="md"
             >
@@ -565,7 +583,7 @@ export default function Index({
                         — {decision?.request.days_requested} day(s) of{' '}
                         {decision?.request.leave_type?.name} from{' '}
                         {formatDate(decision?.request.start_date)}.
-                        {decision?.action === 'approve' && decision?.request.can.confirm && (
+                        {decision?.action === 'approve' && (
                             <span className="mt-1 block">
                                 Approving deducts the credits from their balance.
                             </span>

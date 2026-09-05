@@ -36,7 +36,9 @@ class LeaveController extends Controller
     {
         Gate::authorize('viewAny', LeaveRequest::class);
 
-        $filters = $request->only(['status', 'leave_type_id', 'employee_id', 'from', 'to']);
+        // The `awaiting` key is set by the summary tile and matches the two
+        // statuses it counts — see LeaveRequest::scopeFilter.
+        $filters = $request->only(['status', 'leave_type_id', 'employee_id', 'from', 'to', 'awaiting']);
 
         $query = $this->leave->scopedQuery($request->user())->filter($filters);
 
@@ -59,7 +61,9 @@ class LeaveController extends Controller
             'myBalances' => $this->balancesForOwnEmployee($request),
             'can' => [
                 'create' => $request->user()->can('create', LeaveRequest::class),
-                'fileForOthers' => $request->user()->isHrAdmin(),
+                // Deciding is HR's alone now — the supervisor step is gone,
+                // and so is filing on somebody else's behalf.
+                'decide' => $request->user()->isHrAdmin(),
             ],
             'ownEmployeeId' => $request->user()->employee?->id,
         ]);
@@ -88,21 +92,13 @@ class LeaveController extends Controller
     /** Supervisor endorsement, then HR confirmation — decided by current status. */
     public function approve(Request $request, LeaveRequest $leaveRequest): RedirectResponse
     {
+        Gate::authorize('decide', $leaveRequest);
+
         $validated = $request->validate([
             'remarks' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        if ($leaveRequest->status === LeaveRequest::STATUS_PENDING) {
-            Gate::authorize('endorse', $leaveRequest);
-
-            $this->leave->approveBySupervisor($leaveRequest, $request->user(), $validated['remarks'] ?? null);
-
-            return back()->with('success', 'Endorsed — now awaiting HR confirmation.');
-        }
-
-        Gate::authorize('confirm', $leaveRequest);
-
-        $this->leave->approveByHr($leaveRequest, $request->user(), $validated['remarks'] ?? null);
+        $this->leave->approve($leaveRequest, $request->user(), $validated['remarks'] ?? null);
 
         return back()->with('success', 'Leave approved and credits deducted.');
     }

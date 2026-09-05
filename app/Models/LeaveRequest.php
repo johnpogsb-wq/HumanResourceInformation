@@ -73,6 +73,24 @@ class LeaveRequest extends Model
                 $filters['status'] ?? null,
                 fn (Builder $q, $value) => $q->where('status', $value),
             )
+            /*
+             * Everything still waiting on a decision, which is two statuses
+             * rather than one: `supervisor_approved` no longer happens, but
+             * rows left in it from before the endorsement step was removed are
+             * real requests somebody is waiting on — and
+             * `LeaveService::summary()` has always counted them together.
+             *
+             * It exists so the "Awaiting Action" tile can open the rows it
+             * counted. A tile reading 12 that opens a list of 9 is worse than
+             * a tile that does not open at all.
+             */
+            ->when(
+                filter_var($filters['awaiting'] ?? null, FILTER_VALIDATE_BOOLEAN),
+                fn (Builder $q) => $q->whereIn('status', [
+                    self::STATUS_PENDING,
+                    self::STATUS_SUPERVISOR_APPROVED,
+                ]),
+            )
             ->when(
                 $filters['leave_type_id'] ?? null,
                 fn (Builder $q, $value) => $q->where('leave_type_id', $value),

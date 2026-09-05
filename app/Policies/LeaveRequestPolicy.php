@@ -25,43 +25,60 @@ class LeaveRequestPolicy
         return $this->supervises($user, $request);
     }
 
+    /**
+     * Filing leave.
+     *
+     * You file your own, so you have to be somebody the roster knows — an
+     * account with no employee record has no credits, no rest days, and no
+     * supervisor, and there is nothing for a request from it to be costed
+     * against.
+     *
+     * HR is deliberately not exempt from that. It used to be: `isHrAdmin()`
+     * passed on its own, and the form let HR pick anybody to file for. That
+     * made HR both the filer and the approver of the same request, which is
+     * the one thing the rest of this module is built to prevent — and it put
+     * a "File Leave" button on a screen HR opens to *decide* on other
+     * people's leave. An HR staff member who is also on the roster still
+     * files their own leave here, like everybody else.
+     */
     public function create(User $user): bool
     {
-        return $user->isHrAdmin() || $user->employee !== null;
+        return $user->employee !== null;
     }
 
-    /** Step one: the employee's own supervisor endorses a pending request. */
-    public function endorse(User $user, LeaveRequest $request): bool
+    /**
+     * Approving or declining — one step, and HR's alone.
+     *
+     * This was two steps: the employee's supervisor endorsed, then HR
+     * confirmed, and only that second step moved credits. It is one step now
+     * because the second signature was the only one that ever decided
+     * anything, and asking a supervisor first bought a delay rather than a
+     * decision.
+     *
+     * `supervisor_approved` is still accepted here, and that is not dead
+     * code: rows sitting in it when the rule changed are real requests
+     * somebody is waiting on. No new row ever enters that status.
+     *
+     * Nobody signs off on their own leave, HR included.
+     */
+    public function decide(User $user, LeaveRequest $request): bool
     {
-        if ($request->status !== LeaveRequest::STATUS_PENDING) {
-            return false;
-        }
+        $awaiting = in_array($request->status, [
+            LeaveRequest::STATUS_PENDING,
+            LeaveRequest::STATUS_SUPERVISOR_APPROVED,
+        ], true);
 
-        if ($this->isOwn($user, $request)) {
-            return false;
-        }
-
-        return $user->isHrAdmin() || $this->supervises($user, $request);
-    }
-
-    /** Step two: HR confirms an endorsed request and credits are deducted. */
-    public function confirm(User $user, LeaveRequest $request): bool
-    {
-        if ($request->status !== LeaveRequest::STATUS_SUPERVISOR_APPROVED) {
-            return false;
-        }
-
-        if ($this->isOwn($user, $request)) {
+        if (! $awaiting || $this->isOwn($user, $request)) {
             return false;
         }
 
         return $user->isHrAdmin();
     }
 
-    /** A request can be turned down at either stage. */
+    /** Turning one down is the same decision, taken the other way. */
     public function reject(User $user, LeaveRequest $request): bool
     {
-        return $this->endorse($user, $request) || $this->confirm($user, $request);
+        return $this->decide($user, $request);
     }
 
     public function cancel(User $user, LeaveRequest $request): bool

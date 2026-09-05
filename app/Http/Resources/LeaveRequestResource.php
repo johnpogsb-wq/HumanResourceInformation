@@ -48,8 +48,10 @@ class LeaveRequestResource extends JsonResource
             'created_at' => $this->created_at?->toIso8601String(),
 
             'can' => [
-                'endorse' => $viewer?->can('endorse', $this->resource) ?? false,
-                'confirm' => $viewer?->can('confirm', $this->resource) ?? false,
+                // One decision, not two steps. `endorse` and `confirm` are
+                // gone: approving is HR's alone, and a supervisor endorsement
+                // never decided anything on its own.
+                'decide' => $viewer?->can('decide', $this->resource) ?? false,
                 'reject' => $viewer?->can('reject', $this->resource) ?? false,
                 'cancel' => $viewer?->can('cancel', $this->resource) ?? false,
             ],
