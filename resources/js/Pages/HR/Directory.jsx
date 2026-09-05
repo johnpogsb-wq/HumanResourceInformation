@@ -2,6 +2,7 @@ import { Link, router } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
 import {
     Building2,
+    ChevronDown,
     ChevronRight,
     Handshake,
     Mail,
@@ -136,51 +137,80 @@ function PersonRow({ person }) {
     );
 }
 
-/** A department, with its people grouped under the job each one holds. */
-function DepartmentBlock({ code, name, headcount, positions, icon: Icon = Building2 }) {
+/**
+ * A department, closed until somebody asks for it.
+ *
+ * The screen opens on the org chart — eight departments a reader can take in
+ * at once — rather than on forty-one people they have to scroll past to find
+ * the shape. Expanding is the question being asked: "who is in Operations?"
+ *
+ * The people are already on the page; this only draws them. A department is a
+ * dozen rows, and fetching them per click would put a network round trip in
+ * front of an answer the browser is already holding.
+ */
+function DepartmentBlock({
+    code,
+    name,
+    headcount,
+    positions,
+    icon: Icon = Building2,
+    open,
+    onToggle,
+}) {
     if (positions.length === 0) return null;
 
     return (
-        <Card className="mb-5">
-            <CardHeader>
-                <div className="flex min-w-0 items-center gap-2.5">
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                        <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
-                    </span>
-                    <div className="min-w-0">
-                        <h3 className="truncate text-sm font-semibold text-foreground">
-                            {name}
-                        </h3>
-                        {code && (
-                            <p className="font-mono text-[11px] text-muted-foreground">
-                                {code}
-                            </p>
-                        )}
-                    </div>
+        <Card className="mb-3">
+            <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={open}
+                className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-secondary/40"
+            >
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                    <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
+                </span>
+
+                <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-semibold text-foreground">{name}</h3>
+                    {code && (
+                        <p className="font-mono text-[11px] text-muted-foreground">{code}</p>
+                    )}
                 </div>
 
                 <Badge variant="muted">
                     {headcount} {headcount === 1 ? 'person' : 'people'}
                 </Badge>
-            </CardHeader>
 
-            {positions.map((position) => (
-                <div key={position.title} className="border-t border-border">
-                    {/* The job, not a heading for its own sake: somebody
-                        looking for "a driver" is walking down the org chart
-                        rather than reading 41 names. */}
-                    <p className="bg-secondary/40 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        {position.title}
-                        <span className="ml-1.5 font-normal normal-case tracking-normal">
-                            ({position.people.length})
-                        </span>
-                    </p>
+                {/* Which way the block will move, stated before the click
+                    rather than discovered by it. */}
+                <ChevronDown
+                    className={cn(
+                        'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
+                        open && 'rotate-180',
+                    )}
+                    aria-hidden="true"
+                />
+            </button>
 
-                    {position.people.map((person) => (
-                        <PersonRow key={person.id} person={person} />
-                    ))}
-                </div>
-            ))}
+            {open &&
+                positions.map((position) => (
+                    <div key={position.title} className="border-t border-border">
+                        {/* The job, not a heading for its own sake: somebody
+                            looking for "a driver" is walking down the org chart
+                            rather than reading 41 names. */}
+                        <p className="bg-secondary/40 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            {position.title}
+                            <span className="ml-1.5 font-normal normal-case tracking-normal">
+                                ({position.people.length})
+                            </span>
+                        </p>
+
+                        {position.people.map((person) => (
+                            <PersonRow key={person.id} person={person} />
+                        ))}
+                    </div>
+                ))}
         </Card>
     );
 }
@@ -208,6 +238,37 @@ export default function Directory({ departments, unassigned, filters, total }) {
 
         return () => clearTimeout(timer);
     }, [search]);
+
+    /*
+     * Which departments are open. Closed to begin with — the screen opens on
+     * the org chart, and expanding is the question being asked.
+     *
+     * More than one may be open at once. The sidebar is an accordion because
+     * only one module can be current; a directory is being *read*, and having
+     * one department close itself because somebody opened another would take
+     * away what they were halfway through.
+     */
+    const [expanded, setExpanded] = useState(() => new Set());
+
+    const toggle = (id) =>
+        setExpanded((current) => {
+            const next = new Set(current);
+            next.has(id) ? next.delete(id) : next.add(id);
+
+            return next;
+        });
+
+    /*
+     * A search opens everything it matched.
+     *
+     * Without this, searching a closed directory returns the right answer and
+     * shows an empty screen — the reader would conclude the search found
+     * nothing, which is the opposite of what happened. Clearing the box closes
+     * them again, so the screen returns to the shape it started in.
+     */
+    const searching = Boolean(filters.search);
+
+    const isOpen = (id) => searching || expanded.has(id);
 
     const shown = departments.reduce((sum, department) => sum + department.headcount, 0);
 
@@ -251,7 +312,7 @@ export default function Directory({ departments, unassigned, filters, total }) {
                     </div>
 
                     <p className="text-xs text-muted-foreground sm:ml-auto">
-                        {search
+                        {searching
                             ? `${shown + unassigned.headcount} matching`
                             : 'Names, roles, and work contacts only.'}
                     </p>
@@ -259,7 +320,12 @@ export default function Directory({ departments, unassigned, filters, total }) {
             </Card>
 
             {departments.map((department) => (
-                <DepartmentBlock key={department.id} {...department} />
+                <DepartmentBlock
+                    key={department.id}
+                    {...department}
+                    open={isOpen(department.id)}
+                    onToggle={() => toggle(department.id)}
+                />
             ))}
 
             {unassigned.headcount > 0 && (
@@ -269,6 +335,9 @@ export default function Directory({ departments, unassigned, filters, total }) {
                     headcount={unassigned.headcount}
                     positions={unassigned.positions}
                     icon={Users}
+                    // Not a real department, so it cannot key on an id.
+                    open={isOpen('unassigned')}
+                    onToggle={() => toggle('unassigned')}
                 />
             )}
 
@@ -276,10 +345,10 @@ export default function Directory({ departments, unassigned, filters, total }) {
                 <Card>
                     <CardBody className="py-14 text-center">
                         <p className="text-sm font-medium text-foreground">
-                            {search ? 'Nobody matches that search' : 'Nobody to list yet'}
+                            {searching ? 'Nobody matches that search' : 'Nobody to list yet'}
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                            {search
+                            {searching
                                 ? 'Try a surname, an employee number, or an email address.'
                                 : 'Active employees appear here once they are on the roster.'}
                         </p>
