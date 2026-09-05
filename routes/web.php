@@ -11,6 +11,7 @@ use App\Http\Controllers\CredentialController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\DeploymentController;
+use App\Http\Controllers\DirectoryController;
 use App\Http\Controllers\DocumentBatchController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EmployeeImportController;
@@ -94,6 +95,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('employees.verifyLicense');
 
         Route::resource('employees', EmployeeController::class);
+
+        /*
+         * The org directory — who works here, arranged the way the company is.
+         *
+         * Open to every signed-in user, unlike the HR directory beside it,
+         * because the fields narrow to match: a name, a job, a posting, and a
+         * work contact. See EmployeePolicy::viewDirectory — the widening and
+         * the narrowing are one decision.
+         */
+        Route::get('directory', [DirectoryController::class, 'index'])->name('directory');
 
         /*
          * The Core 1 inbox — proposed hires waiting on a decision here.

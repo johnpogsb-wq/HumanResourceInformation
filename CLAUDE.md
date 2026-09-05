@@ -885,6 +885,40 @@ config-driven and database-free, the same shape as `AttendanceExceptionScanner`.
   near-white on light mode's darker orange, near-black on dark mode's brighter
   amber, which would otherwise sit near 2.5:1.
 
+## The org directory (Module 1)
+
+**Org Directory (`/hr/directory`) is a colleague's screen, not HR's record.**
+It answers "who is in Operations, and how do I reach them" — a question
+everybody has and that the employee directory beside it refuses to answer for
+anybody but HR.
+
+- **The widening and the narrowing are one decision.** `EmployeePolicy::viewDirectory`
+  returns true for every signed-in user — a deliberate departure from
+  `viewAny`, where a supervisor sees only their reports and an employee only
+  themselves. That scoping is right for a screen carrying salary, government
+  numbers, and the 201 file; it is useless for a directory, which is a list
+  nobody can read if it holds one person. What makes the widening safe is that
+  the *fields* narrow to match, in `DirectoryController::card()`: a name, an
+  employee number, a position, a department, a client, and a work contact.
+  Widening the audience without narrowing the fields would be a leak;
+  narrowing the fields without widening the audience would be pointless.
+- **`DirectoryController` deliberately does not call `EmployeeService::scopedQuery()`.**
+  That service narrows by role because it feeds screens with sensitive fields.
+  Applying it here would give every non-HR user a directory of themselves. The
+  protection on this screen is the field list, not the row list — and
+  `DirectoryTest` asserts it by searching the whole rendered payload for a
+  salary, a TIN, an address, and a bank number.
+- **Grouped department → position → person**, because that is the shape of the
+  question: somebody looking for "a driver at Metro Fleet" is walking down the
+  org chart, not searching a flat list of 41 names. The grouping is built
+  server-side so the page does not re-derive it on every keystroke.
+- **Somebody with no department is still listed.** A new hire filed before
+  their department was decided is still a colleague to reach, and dropping
+  them would make the directory quietly wrong rather than visibly incomplete.
+- **Separated and inactive staff are not.** A directory is for reaching people
+  who are here; somebody who has left is a record, which is what the archive
+  and the employee screen are for.
+
 ## Master data (Module 1)
 
 **Departments** and **Positions** are the org structure every employee record

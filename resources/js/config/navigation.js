@@ -8,6 +8,7 @@ import {
     CalendarRange,
     ClipboardList,
     Clock,
+    Contact,
     Database,
     DoorOpen,
     FileText,
@@ -82,6 +83,20 @@ export const NAV_GROUPS = [
                         // zero — an always-lit badge stops being read, the
                         // same rule the credential indicator follows.
                         badgeKey: 'pendingEndorsements',
+                    },
+                    {
+                        /*
+                         * Who works here, arranged the way the company is —
+                         * a colleague's screen rather than HR's record. It
+                         * carries no `roles`, and that is deliberate: the
+                         * fields narrow to a name, a job, a posting, and a
+                         * work contact, which is what makes it safe for
+                         * everybody. See EmployeePolicy::viewDirectory.
+                         */
+                        id: 'employee-directory',
+                        label: 'Org Directory',
+                        icon: Contact,
+                        href: '/hr/directory',
                     },
                     {
                         id: 'employee-list',
