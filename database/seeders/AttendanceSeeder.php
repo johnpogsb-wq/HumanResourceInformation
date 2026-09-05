@@ -13,18 +13,38 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Gives every employee a weekday schedule and two weeks of realistic DTR
+ * Gives every employee a weekday schedule and 45 days of realistic DTR
  * history, so the Timekeeping screen has something to show.
+ *
+ * The window has to comfortably exceed a full month: payroll periods are
+ * semi-monthly, and a run whose period reaches past the earliest record does
+ * not fail — it quietly pays fewer hours than were worked, which reads as a
+ * calculation bug rather than as missing data.
  */
 class AttendanceSeeder extends Seeder
 {
-    private const DAYS_OF_HISTORY = 14;
+    private const DAYS_OF_HISTORY = 45;
 
     public function run(AttendanceCalculator $calculator): void
     {
-        if (AttendanceLog::exists()) {
-            return;
-        }
+        /*
+         * Fills the gaps rather than refusing to run.
+         *
+         * This used to bail out the moment any log existed, which meant a
+         * database seeded when the window was shorter could never be topped
+         * up — the only way to widen the history was to delete attendance
+         * that payroll had already been computed from. Skipping per
+         * employee-and-date instead makes the seeder safe to re-run and safe
+         * to widen, the same property LeaveAccrualService::accrue() has.
+         *
+         * Keyed off a normalised date string: `log_date` is date-cast and
+         * stores as "Y-m-d 00:00:00" on some drivers, so comparing raw column
+         * values would miss and insert a duplicate.
+         */
+        $existing = AttendanceLog::query()
+            ->get(['employee_id', 'log_date'])
+            ->map(fn ($log) => $log->employee_id.'|'.Carbon::parse($log->log_date)->toDateString())
+            ->flip();
 
         $dayShift = Shift::where('name', 'Day Shift')->first();
         $nightShift = Shift::where('name', 'Night Shift')->first();
@@ -35,7 +55,15 @@ class AttendanceSeeder extends Seeder
             return;
         }
 
-        $employees = Employee::where('status', 'active')->get();
+        /*
+         * `on_leave` is a state, not an exit — someone away this week still
+         * worked the weeks before it, and payroll reads their DTR for the
+         * period like anyone else's. Only `inactive` (separated) employees
+         * have no history to give. Filtering on 'active' alone left three
+         * people with no attendance at all, which reads as missing data
+         * rather than as leave.
+         */
+        $employees = Employee::where('status', '!=', 'inactive')->get();
         $holidays = Holiday::pluck('date')->map(fn ($date) => Carbon::parse($date)->toDateString())->all();
 
         $rows = [];
@@ -56,6 +84,11 @@ class AttendanceSeeder extends Seeder
             // populated the moment the seeder finishes.
             for ($back = self::DAYS_OF_HISTORY; $back >= 0; $back--) {
                 $date = Carbon::today()->subDays($back);
+
+                if ($existing->has($employee->id.'|'.$date->toDateString())) {
+                    continue;
+                }
+
                 $isWeekend = $date->dayOfWeekIso >= 6;
                 $isHoliday = in_array($date->toDateString(), $holidays, true);
 

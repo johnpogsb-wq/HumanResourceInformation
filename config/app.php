@@ -59,13 +59,21 @@ return [
     | Application Timezone
     |--------------------------------------------------------------------------
     |
-    | Here you may specify the default timezone for your application, which
-    | will be used by the PHP date and date-time functions. The timezone
-    | is set to "UTC" by default as it is suitable for most use cases.
+    | Manila, not the framework's UTC default, because this system reasons
+    | about *dates* constantly and a date is only meaningful in a timezone.
+    | Carbon::today() drives the DTR exception scan, the credential expiry
+    | window, leave accrual, the salary cache, and the dashboard; under UTC
+    | every one of them was eight hours behind, so between midnight and 8am
+    | Manila the whole system believed it was still yesterday — a 7am time-in
+    | was filed against the previous day.
+    |
+    | Payroll is a Philippine statutory system throughout: TRAIN withholding,
+    | RTWPB wage orders, PD 851. There is no deployment of it in another
+    | timezone, so this is a fact about the application rather than a setting.
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'Asia/Manila'),
 
     /*
     |--------------------------------------------------------------------------

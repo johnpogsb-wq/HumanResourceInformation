@@ -9,6 +9,15 @@ use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
+    /**
+     * Generated logins, keyed by email, printed once when the seed finishes.
+     *
+     * Only ever populated outside local and testing — see seededPassword().
+     *
+     * @var array<string, string>
+     */
+    private array $issued = [];
+
     public function run(): void
     {
         $this->call([
@@ -21,6 +30,12 @@ class DatabaseSeeder extends Seeder
         $this->seedEmployees();
         $this->seedSelfServiceUser();
 
+        // Needs employees: it creates the clients, then splits the workforce
+        // between the agency's own staff and its deployments. Safe to re-run,
+        // which is also what backfills a database seeded before clients
+        // existed.
+        $this->call(ClientSeeder::class);
+
         // Both need employees; leave also reads schedules to skip rest days.
         $this->call(AttendanceSeeder::class);
         $this->call(LeaveSeeder::class);
@@ -29,6 +44,69 @@ class DatabaseSeeder extends Seeder
         // Reads the attendance and leave the two seeders above just created.
         $this->call(PayrollSeeder::class);
         $this->call(PerformanceSeeder::class);
+
+        // Needs positions, clients, and an employee to point the approved one
+        // at — so it runs last.
+        $this->call(EndorsementSeeder::class);
+
+        $this->reportIssuedPasswords();
+    }
+
+    /**
+     * The password a seeded login is created with.
+     *
+     * `password` on a development machine is deliberate, not an oversight: the
+     * seed accounts exist so the system can be signed into without looking
+     * anything up, and CLAUDE.md lists them by name.
+     *
+     * Anywhere else it is indefensible. This is coursework in a repository
+     * people read, so a seeded deployment would be publishing its own
+     * administrator account — the password is not merely weak, it is already
+     * written down in public. Outside local and testing every login therefore
+     * gets its own generated password, printed once by
+     * reportIssuedPasswords(), and is flagged must_change_password so the
+     * console output stops being a working credential the moment it is used.
+     */
+    private function seededPassword(string $email): string
+    {
+        if (app()->environment('local', 'testing')) {
+            return 'password';
+        }
+
+        return $this->issued[$email] ??= User::generatePassword();
+    }
+
+    /**
+     * Whether a seeded login has to replace its password before it can do
+     * anything. False on a development machine, where forcing the change
+     * would defeat the point of having fixed seed accounts at all.
+     */
+    private function passwordIsProvisional(): bool
+    {
+        return ! app()->environment('local', 'testing');
+    }
+
+    /**
+     * Prints the generated passwords once, to the console only.
+     *
+     * Nowhere else can: they are hashed on the way into the database, so this
+     * is the single moment they exist in readable form. Whoever ran the seed
+     * is the only person who sees them, and each one is spent on first use.
+     */
+    private function reportIssuedPasswords(): void
+    {
+        if ($this->issued === []) {
+            return;
+        }
+
+        $this->command?->newLine();
+        $this->command?->warn('Seeded logins — shown once, and each must be changed at first sign-in:');
+
+        foreach ($this->issued as $email => $password) {
+            $this->command?->line(sprintf('  %-34s %s', $email, $password));
+        }
+
+        $this->command?->newLine();
     }
 
     private function seedAdminUsers(): void
@@ -44,9 +122,10 @@ class DatabaseSeeder extends Seeder
                 [
                     'name' => $account['name'],
                     'role' => $account['role'],
-                    'password' => 'password',
+                    'password' => $this->seededPassword($account['email']),
                     'is_active' => true,
                     'email_verified_at' => now(),
+                    'must_change_password' => $this->passwordIsProvisional(),
                 ],
             );
         }
@@ -87,9 +166,10 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => $employee->full_name,
                 'role' => User::ROLE_EMPLOYEE,
-                'password' => 'password',
+                'password' => $this->seededPassword('employee@primepower.test'),
                 'is_active' => true,
                 'email_verified_at' => now(),
+                'must_change_password' => $this->passwordIsProvisional(),
             ],
         );
 
@@ -121,9 +201,10 @@ class DatabaseSeeder extends Seeder
                 'name' => $employee->full_name,
                 'email' => $employee->email,
                 'role' => User::ROLE_SUPERVISOR,
-                'password' => 'password',
+                'password' => $this->seededPassword($employee->email),
                 'is_active' => true,
                 'email_verified_at' => now(),
+                'must_change_password' => $this->passwordIsProvisional(),
             ]);
 
             $employee->update(['user_id' => $user->id]);

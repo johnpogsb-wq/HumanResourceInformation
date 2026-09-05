@@ -9,7 +9,6 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -75,7 +74,7 @@ class UserAccessController extends Controller
         ]);
 
         // Handed to the administrator once; the account holder changes it after.
-        $password = Str::password(12);
+        $password = User::generatePassword();
 
         $user = User::create([
             'name' => $validated['name'],
@@ -84,6 +83,9 @@ class UserAccessController extends Controller
             'password' => $password,
             'is_active' => true,
             'email_verified_at' => now(),
+            // See RequirePasswordChange: a password the administrator has read
+            // is not the account holder's password yet.
+            'must_change_password' => true,
         ]);
 
         if ($validated['employee_id'] ?? null) {
@@ -136,9 +138,12 @@ class UserAccessController extends Controller
     {
         Gate::authorize('manageUsers', Setting::class);
 
-        $password = Str::password(12);
+        $password = User::generatePassword();
 
-        $user->update(['password' => $password]);
+        $user->update([
+            'password' => $password,
+            'must_change_password' => true,
+        ]);
         $user->tokens()->delete();
 
         return back()->with('success', "New password for {$user->email}: {$password}");
