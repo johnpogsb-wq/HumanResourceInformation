@@ -32,7 +32,35 @@ return [
     |
     */
 
-    'lifetime' => (int) env('SESSION_LIFETIME', 120),
+    /*
+     * Ten minutes of no activity signs somebody out.
+     *
+     * This is the whole enforcement, and it is server-side on purpose: the
+     * countdown on the screen is a courtesy, but a browser tab left open on a
+     * shared machine has no countdown running that anybody can trust. Laravel
+     * refreshes `last_activity` on every request, so `lifetime` is a true idle
+     * window rather than a fixed expiry.
+     *
+     * Deliberately short. This is an HRIS on office machines that get walked
+     * away from, and what sits on the screen is salary, government numbers,
+     * and 201 files — the same data `EmployeePolicy::viewSensitive` guards on
+     * the way in, left visible to whoever sits down next.
+     *
+     * API tokens are untouched by this. They are unattended credentials on
+     * biometric devices with nobody at the other end to sign in again, and
+     * `lifetime` only reaches session auth — the same line RequirePasswordChange
+     * draws.
+     */
+    'lifetime' => (int) env('SESSION_LIFETIME', 10),
+
+    /*
+     * How long before that the screen warns, in seconds.
+     *
+     * A silent sign-out costs whatever was half-typed on the form, and reading
+     * a long payslip is not activity — so the warning is the difference
+     * between being signed out and being interrupted. Zero disables it.
+     */
+    'idle_warning' => (int) env('SESSION_IDLE_WARNING', 60),
 
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 

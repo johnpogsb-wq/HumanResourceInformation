@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
+use App\Listeners\RecordAuthenticationEvents;
 use App\Models\AuditLog;
 use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rules\Password;
@@ -50,23 +52,21 @@ class SecurityController extends Controller
             // Recent activity on this account, so a user can spot what they did
             // not do. HR sees the whole log.
             'auditLog' => $canViewAudit
-                ? AuditLog::with('user:id,name')
-                    ->latest('id')
-                    ->limit(50)
-                    ->get()
-                    ->map(fn (AuditLog $entry) => [
-                        'id' => $entry->id,
-                        'event' => $entry->event,
-                        'subject' => class_basename($entry->auditable_type),
-                        'subject_id' => $entry->auditable_id,
-                        'user' => $entry->user?->name ?? 'System',
-                        'changed' => array_keys($entry->new_values ?? []),
-                        'ip_address' => $entry->ip_address,
-                        'created_at' => $entry->created_at?->toIso8601String(),
-                    ])
+                ? $this->auditLog($this->auditFilter($request))
                 : [],
 
+            'auditFilter' => $this->auditFilter($request),
             'canViewAudit' => $canViewAudit,
+
+            // Whether the name is theirs to change. Read from the same
+            // ability the update enforces, so a field can never be drawn
+            // for somebody whose save would then drop it.
+            'canRename' => Gate::allows('renameSelf', Setting::class),
+
+            // Why the user is on this screen when they asked for another one.
+            // RequirePasswordChange sent them here silently; without this the
+            // page reads as a broken link rather than as a step to complete.
+            'mustChangePassword' => (bool) $user->must_change_password,
         ]);
     }
 
@@ -81,7 +81,25 @@ class SecurityController extends Controller
             'current_password.current_password' => 'That is not your current password.',
         ]);
 
-        $request->user()->update(['password' => $validated['password']]);
+        $user = $request->user();
+
+        // Clearing the flag here rather than anywhere else is what makes this
+        // the only way out of RequirePasswordChange: the hold is lifted by the
+        // act that removes the reason for it, not by a separate "done" button
+        // somebody could reach without changing anything.
+        $wasForced = (bool) $user->must_change_password;
+
+        $user->update([
+            'password' => $validated['password'],
+            'must_change_password' => false,
+        ]);
+
+        // A token issued while the shared password was live was issued to
+        // whoever held that password. Rotating one and leaving the other is
+        // half a rotation.
+        if ($wasForced) {
+            $user->tokens()->delete();
+        }
 
         return back()->with('success', 'Password updated.');
     }
@@ -92,13 +110,34 @@ class SecurityController extends Controller
 
         $user = $request->user();
 
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+        /*
+         * Whether the name is theirs to change decides the rules, not just
+         * whether the field is drawn.
+         *
+         * Hiding the input and validating it anyway would make the rule
+         * cosmetic — anyone who can post a form could rename themselves, and
+         * the drift it creates against their employee record is caught by
+         * nothing: no check in this system compares a login name to the 201
+         * file it is meant to match.
+         *
+         * A submitted name from someone not allowed one is dropped rather
+         * than refused: nothing wrong is stored either way, and refusing
+         * would fail an email change over a field the person cannot see.
+         */
+        $mayRename = Gate::allows('renameSelf', Setting::class);
+
+        $rules = [
             'email' => [
                 'required', 'email', 'max:255',
                 'unique:users,email,'.$user->id,
             ],
-        ]);
+        ];
+
+        if ($mayRename) {
+            $rules['name'] = ['required', 'string', 'max:255'];
+        }
+
+        $validated = $request->validate($rules);
 
         $emailChanged = $validated['email'] !== $user->email;
 
@@ -158,5 +197,48 @@ class SecurityController extends Controller
         $request->session()->regenerateToken();
 
         return redirect('/');
+    }
+
+    /**
+     * Sign-ins and record changes share one table but are read for different
+     * reasons, and there are far more of the former. Unfiltered, a busy
+     * morning's logins would push every edit off the 50-row window — so the
+     * log defaults to changes, and sign-ins are asked for.
+     */
+    private function auditFilter(Request $request): string
+    {
+        $filter = (string) $request->query('audit', 'changes');
+
+        return in_array($filter, ['changes', 'auth', 'all'], true) ? $filter : 'changes';
+    }
+
+    private function auditLog(string $filter): Collection
+    {
+        return AuditLog::with('user:id,name')
+            ->when(
+                $filter === 'auth',
+                fn ($query) => $query->whereIn('event', RecordAuthenticationEvents::EVENTS),
+            )
+            ->when(
+                $filter === 'changes',
+                fn ($query) => $query->whereNotIn('event', RecordAuthenticationEvents::EVENTS),
+            )
+            ->latest('id')
+            ->limit(50)
+            ->get()
+            ->map(fn (AuditLog $entry) => [
+                'id' => $entry->id,
+                'event' => $entry->event,
+                'is_auth' => in_array($entry->event, RecordAuthenticationEvents::EVENTS, true),
+                'subject' => class_basename($entry->auditable_type),
+                'subject_id' => $entry->auditable_id,
+                'user' => $entry->user?->name ?? 'System',
+                'changed' => array_keys($entry->new_values ?? []),
+                // For a failed sign-in this is the whole point of the row: the
+                // account has no id to show when the address is not one of ours.
+                'attempted_email' => $entry->new_values['email'] ?? null,
+                'ip_address' => $entry->ip_address,
+                'created_at' => $entry->created_at?->toIso8601String(),
+            ]);
     }
 }

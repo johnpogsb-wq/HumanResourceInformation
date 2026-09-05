@@ -25,10 +25,12 @@ export default function Login({ status, canResetPassword }) {
     const brand = usePage().props.brand ?? {};
     const name = brand.name ?? 'PrimePower';
 
+    // `remember` is not sent at all, rather than sent as false: Fortify reads
+    // it off the request, and a key that is never there cannot be flipped on
+    // by anything the browser does.
     const { data, setData, post, processing, errors, reset } = useForm({
         email: '',
         password: '',
-        remember: false,
     });
 
     const submit = (event) => {
@@ -47,7 +49,8 @@ export default function Login({ status, canResetPassword }) {
                 {/* Form */}
                 <div className="px-6 py-10 sm:px-10">
                     <div className="mb-8 flex items-center justify-center gap-2.5">
-                        <LogoMark className="h-8 w-8" />
+                        {/* Big enough for the artwork's own "PRIMEPOWER" to read, which it\n                            does not at sidebar size. */}
+                        <LogoMark className="h-20 w-20" />
                         <span className="text-lg font-bold tracking-tight text-logo-primary">
                             {name.toUpperCase()}
                         </span>
@@ -114,17 +117,13 @@ export default function Login({ status, canResetPassword }) {
                             <InputError message={errors.password} />
                         </div>
 
-                        <label className="flex w-fit cursor-pointer items-center gap-2">
-                            <input
-                                type="checkbox"
-                                name="remember"
-                                checked={data.remember}
-                                onChange={(event) => setData('remember', event.target.checked)}
-                                className="h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-ring focus:ring-offset-0"
-                            />
-                            <span className="text-sm text-muted-foreground">Remember me</span>
-                        </label>
-
+                        {/* No "Remember me", and its absence is load-bearing.
+                            The box issued a long-lived cookie that signs the
+                            holder back in after the session cookie has gone —
+                            which is exactly what the ten-minute idle timeout
+                            exists to prevent. Left in, an unattended machine
+                            would sign itself back in on the next click and the
+                            timeout would be theatre. */}
                         <Button
                             type="submit"
                             size="lg"

@@ -33,6 +33,33 @@ class SettingPolicy
         return true;
     }
 
+    /**
+     * Renaming *yourself* — separate from `managePersonal`, which is about
+     * reaching the screen at all.
+     *
+     * Everyone but an administrator is held to the name on their employee
+     * record. `users.name` and `employees` are meant to name the same person
+     * and **nothing reconciles them** — no checker compares the two, and
+     * `RecordIntegrityChecker` does not either: its name check is about a
+     * scanned document naming the wrong employee, not about a login. So a
+     * drift here is silent and stays that way, which is the reason to prevent
+     * it rather than to detect it. HR maintains the employee record; the login
+     * name follows from it.
+     *
+     * An admin keeps it because an admin need not be an employee at all: a
+     * pure system account has no 201 file to be held to, and locking it would
+     * leave a wrong name with nowhere to be fixed.
+     *
+     * Email is deliberately *not* covered. It is a credential rather than a
+     * display name — it is what you sign in with and where a reset is sent —
+     * and changing one already forces re-verification. Password sits beside
+     * it for the same reason.
+     */
+    public function renameSelf(User $user): bool
+    {
+        return $user->isAdmin();
+    }
+
     public function viewAuditLog(User $user): bool
     {
         return $user->isHrAdmin();
