@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\EndorsementController;
+use App\Http\Controllers\Api\IntegrationController;
+use App\Http\Controllers\Api\LoanController;
 use App\Http\Controllers\Api\TimekeepingController;
 use Illuminate\Support\Facades\Route;
 
@@ -16,7 +19,13 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:6,1');
 
-    Route::middleware('auth:sanctum')->group(function () {
+    /*
+     * `throttle:api` is not on by default in Laravel 11 — the limiter has to
+     * be both defined and applied, and without this line every authenticated
+     * endpoint below would answer as fast as the server can, which is a scrape
+     * of the whole directory. Defined in AppServiceProvider::defineApiRateLimit.
+     */
+    Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
         Route::get('me', [AuthController::class, 'me']);
         Route::post('logout', [AuthController::class, 'logout']);
 
@@ -27,9 +36,62 @@ Route::prefix('v1')->group(function () {
 
         Route::apiResource('employees', EmployeeController::class);
 
+        /*
+         * --- The Core 1 handover ---
+         *
+         * Recruitment pushes a hire; HR decides on it in this system; Core 1
+         * reads the outcome back. Above the employee routes because it is the
+         * step before one exists.
+         *
+         * The lookup is by Core 1's own reference rather than by our id: their
+         * reference is the only identifier they hold if our response to the
+         * submission never arrived, which is precisely when they need to ask.
+         */
+        Route::post('endorsements', [EndorsementController::class, 'store']);
+        Route::get('endorsements/{reference}', [EndorsementController::class, 'show']);
+
         Route::get('employees/{employee}/documents', [EmployeeController::class, 'documents']);
         Route::post('employees/{employee}/documents', [EmployeeController::class, 'storeDocument']);
         Route::delete('employees/{employee}/documents/{document}', [EmployeeController::class, 'destroyDocument']);
+
+        /*
+        |------------------------------------------------------------------
+        | What Core 2 publishes to the rest of ISMERS
+        |------------------------------------------------------------------
+        | Grouped by who consumes each one, because that is the question a
+        | second team actually has. Every route is read-only and every figure
+        | comes from the service that already computes it for our own screens —
+        | if a consumer and one of our screens disagreed about the same driver,
+        | one of them would be running its own copy of the rules.
+        |
+        | The two inbound doors are `POST /endorsements` (Core 1 proposes a
+        | hire) and `POST /loans` (Core 3 posts something for payroll to
+        | deduct). Nothing else may write into this system over the wire.
+        */
+
+        // Fleet & Transportation — who may lawfully drive what, and when.
+        Route::get('drivers', [IntegrationController::class, 'drivers']);
+
+        // Core 1 (Deployment & Job Order) and Fleet — who can be sent out.
+        Route::get('deployment-readiness', [IntegrationController::class, 'deploymentReadiness']);
+
+        // Financial Management — the disbursement register.
+        Route::get('payroll/runs', [IntegrationController::class, 'payrollRuns']);
+        Route::get('payroll/runs/{run}/register', [IntegrationController::class, 'payrollRegister']);
+
+        // Core 3 (Government Contribution & Compliance) — what to remit.
+        Route::get('payroll/runs/{run}/contributions', [IntegrationController::class, 'contributions']);
+
+        // Core 4 (Reports & Dashboards) and BI — aggregates, never people.
+        Route::get('analytics/workforce', [IntegrationController::class, 'workforce']);
+
+        /*
+         * Core 3 (Benefits and Loans) — the second inbound door. They approve
+         * the loan; only this system can take it off a payslip.
+         */
+        Route::post('loans', [LoanController::class, 'store']);
+        Route::get('loans/{reference}', [LoanController::class, 'show']);
+        Route::get('employees/{employee}/loans', [LoanController::class, 'forEmployee']);
 
         // --- Module 2: Timekeeping & Attendance ---
         Route::get('attendance/summary', [TimekeepingController::class, 'summary']);
