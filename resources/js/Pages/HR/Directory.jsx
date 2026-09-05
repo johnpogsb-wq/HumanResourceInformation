@@ -56,40 +56,63 @@ function PersonRow({ person }) {
             {/* Where they are posted. For a manpower agency that is half of
                 "who are you" — an internal clerk and a driver on a client site
                 are different people to reach. */}
-            <div className="hidden min-w-0 shrink-0 sm:block sm:w-44">
-                {person.employment_category === 'external' && person.client ? (
-                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Handshake className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                        <span className="truncate">{person.client}</span>
-                    </span>
-                ) : (
-                    <span className="text-xs text-muted-foreground">Internal staff</span>
-                )}
+            {/* Both readings carry an icon, "Internal staff" included. One
+                line indented behind a symbol and the next starting flush left
+                is what made this column read as debris rather than as a
+                posting. */}
+            <div className="hidden min-w-0 shrink-0 sm:block sm:w-40">
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    {person.employment_category === 'external' && person.client ? (
+                        <>
+                            <Handshake
+                                className="h-3.5 w-3.5 shrink-0 opacity-60"
+                                aria-hidden="true"
+                            />
+                            <span className="truncate">{person.client}</span>
+                        </>
+                    ) : (
+                        <>
+                            <Building2
+                                className="h-3.5 w-3.5 shrink-0 opacity-60"
+                                aria-hidden="true"
+                            />
+                            <span className="truncate">Internal staff</span>
+                        </>
+                    )}
+                </span>
             </div>
 
             {/* A directory that cannot be used to reach anybody is a list.
+
+                Right-aligned with the icon trailing, so the two lines finish
+                against one edge. Left-aligned they stopped wherever the address
+                happened to end — a ragged margin two lines deep on every row,
+                which is what made the column look untidy rather than the sizes
+                did. The number is tabular so it lines up down the column as
+                well as beside the address.
+
                 Stopped from bubbling, so a mail link inside a row that is
                 itself a link opens the mail client rather than the record. */}
             <div
-                className="hidden shrink-0 lg:flex lg:w-64 lg:flex-col lg:gap-0.5"
+                className="hidden shrink-0 text-right lg:block lg:w-56"
                 onClick={(event) => event.stopPropagation()}
             >
                 {person.email && (
                     <a
                         href={`mailto:${person.email}`}
-                        className="flex items-center gap-1.5 text-[11px] text-muted-foreground transition-colors hover:text-primary"
+                        className="flex items-center justify-end gap-1.5 text-xs text-muted-foreground transition-colors hover:text-primary"
                     >
-                        <Mail className="h-3 w-3 shrink-0" aria-hidden="true" />
                         <span className="truncate">{person.email}</span>
+                        <Mail className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden="true" />
                     </a>
                 )}
                 {person.mobile_number && (
                     <a
                         href={`tel:${person.mobile_number}`}
-                        className="flex items-center gap-1.5 text-[11px] text-muted-foreground transition-colors hover:text-primary"
+                        className="mt-0.5 flex items-center justify-end gap-1.5 font-mono text-xs tabular-nums text-muted-foreground transition-colors hover:text-primary"
                     >
-                        <Phone className="h-3 w-3 shrink-0" aria-hidden="true" />
                         {person.mobile_number}
+                        <Phone className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden="true" />
                     </a>
                 )}
             </div>
