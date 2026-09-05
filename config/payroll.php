@@ -24,6 +24,39 @@ return [
     'hours_per_day' => 8,
 
     /*
+    |----------------------------------------------------------------------
+    | Regional daily minimum wage
+    |----------------------------------------------------------------------
+    | There is no national minimum wage in the Philippines. Each region's
+    | Regional Tripartite Wages and Productivity Board issues its own wage
+    | order, so a driver deployed in Calabarzon and one deployed in Metro
+    | Manila are measured against different floors — which is what the
+    | agency's clients mean by a "provincial rate".
+    |
+    | Used to *flag*, never to enforce. PayrollCalculator pays the rate on
+    | the employee's record; this is the floor that rate is checked against,
+    | the same way a position's salary band flags an out-of-band rate without
+    | refusing it. A wage order is also not the whole story — an employee may
+    | sit above the floor for a dozen legitimate reasons, and one below it is
+    | a conversation for HR, not a blocked payroll.
+    |
+    | Figures below are non-agriculture daily rates and go stale every time a
+    | board issues an order. Treat them as this system's assumption, not as
+    | the law: check the current wage order before trusting a flag.
+    */
+    'default_wage_region' => env('PAYROLL_DEFAULT_REGION', 'NCR'),
+
+    'wage_regions' => [
+        'NCR' => ['label' => 'National Capital Region', 'daily_minimum' => 645.00],
+        'CAR' => ['label' => 'Cordillera Administrative Region', 'daily_minimum' => 450.00],
+        'R3' => ['label' => 'Region III — Central Luzon', 'daily_minimum' => 500.00],
+        'R4A' => ['label' => 'Region IV-A — Calabarzon', 'daily_minimum' => 520.00],
+        'R6' => ['label' => 'Region VI — Western Visayas', 'daily_minimum' => 480.00],
+        'R7' => ['label' => 'Region VII — Central Visayas', 'daily_minimum' => 501.00],
+        'R11' => ['label' => 'Region XI — Davao', 'daily_minimum' => 481.00],
+    ],
+
+    /*
     | Premium multipliers under the Labor Code. Overtime on an ordinary day is
     | +25%; night differential is +10% of the hourly rate for hours worked
     | between 22:00 and 06:00.
