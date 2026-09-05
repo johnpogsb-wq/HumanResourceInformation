@@ -31,9 +31,10 @@ class PerformanceReview extends Model
 
     protected $guarded = ['id'];
 
+    /** Same reason as Payslip::employee() — a finished review is history. */
     public function employee(): BelongsTo
     {
-        return $this->belongsTo(Employee::class);
+        return $this->belongsTo(Employee::class)->withTrashed();
     }
 
     public function reviewCycle(): BelongsTo

@@ -18,9 +18,22 @@ class Payslip extends Model
         return $this->belongsTo(PayrollRun::class, 'payroll_run_id');
     }
 
+    /**
+     * Kept readable after the employee is archived.
+     *
+     * A payslip is a financial record, and the one thing it may never forget
+     * is whose it is. Without `withTrashed()` the row still loads — the run
+     * screen joins `employees` directly, and a join ignores the soft-delete
+     * scope — while this relation came back null, so the page fataled on
+     * `$payslip->employee->full_name` and the SSS R-3 exported a line with
+     * money on it and no person attached to it.
+     *
+     * Filtering archived people *out* is the job of the query that lists
+     * them, not of the record's own memory of whose it is.
+     */
     public function employee(): BelongsTo
     {
-        return $this->belongsTo(Employee::class);
+        return $this->belongsTo(Employee::class)->withTrashed();
     }
 
     public function lines(): HasMany
