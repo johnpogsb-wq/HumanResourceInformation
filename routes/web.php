@@ -1,14 +1,20 @@
 <?php
 
+use App\Http\Controllers\ArchiveController;
 use App\Http\Controllers\AttendanceExceptionController;
 use App\Http\Controllers\AttendanceHistoryController;
 use App\Http\Controllers\AttendanceReportController;
+use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CompensationController;
 use App\Http\Controllers\ComplianceController;
 use App\Http\Controllers\CredentialController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DepartmentController;
+use App\Http\Controllers\DeploymentController;
+use App\Http\Controllers\DocumentBatchController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\EmployeeImportController;
+use App\Http\Controllers\EndorsementController;
 use App\Http\Controllers\HolidayController;
 use App\Http\Controllers\KpiController;
 use App\Http\Controllers\LeaveBalanceController;
@@ -21,8 +27,10 @@ use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\PositionController;
+use App\Http\Controllers\RecordIntegrityController;
 use App\Http\Controllers\ReviewCycleController;
 use App\Http\Controllers\SalaryController;
+use App\Http\Controllers\ScanAccuracyController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\SeparationController;
 use App\Http\Controllers\Settings\DataExportController;
@@ -46,15 +54,110 @@ Route::middleware(['auth', 'verified'])->group(function () {
     */
     Route::prefix('hr')->name('hr.')->group(function () {
         // Module 1 — Employee Information Management
+        /*
+         * Above the resource route, so /hr/employees/import is not swallowed
+         * by the {employee} wildcard — the same reason the compliance export
+         * sits above its own index.
+         */
+        /*
+         * Reads a paper 201 form and proposes the record it describes. Same
+         * gate as creating one by hand, and it writes nothing — it fills a
+         * form somebody then checks and saves.
+         */
+        Route::post('employees/scan-form', [EmployeeController::class, 'scanEmployeeForm'])
+            ->name('employees.scanForm');
+
+        /*
+         * A stack of scans off the glass, filed in one pass. Above the
+         * resource route with the others, or {employee} swallows it.
+         */
+        Route::get('employees/documents/batch', [DocumentBatchController::class, 'create'])
+            ->name('employees.documents.batch');
+        Route::post('employees/documents/batch/examine', [DocumentBatchController::class, 'examine'])
+            ->name('employees.documents.batch.examine');
+        Route::post('employees/documents/batch', [DocumentBatchController::class, 'store'])
+            ->name('employees.documents.batch.store');
+
+        Route::get('employees/import', [EmployeeImportController::class, 'create'])
+            ->name('employees.import');
+        Route::post('employees/import', [EmployeeImportController::class, 'store'])
+            ->name('employees.import.store');
+
+        /*
+         * Records that a person checked this licence on the LTMS portal.
+         *
+         * LTO publishes no API to call, so this stores a human's answer with
+         * their name and the date rather than pretending to ask the agency.
+         * Above the resource route with the others, or {employee} swallows it.
+         */
+        Route::post('employees/{employee}/verify-license', [EmployeeController::class, 'verifyLicense'])
+            ->name('employees.verifyLicense');
+
         Route::resource('employees', EmployeeController::class);
+
+        /*
+         * The Core 1 inbox — proposed hires waiting on a decision here.
+         *
+         * There is no `create` and no `store`: an endorsement is written by
+         * Core 1 over the API and never by hand on this side, which is what
+         * makes the queue a record of what recruitment actually sent rather
+         * than of what somebody here typed. Approving is not a route either —
+         * it opens the employee form at /hr/employees/create?endorsement=…,
+         * because accepting somebody *is* creating them and that has always
+         * gone through one place.
+         */
+        Route::get('endorsements', [EndorsementController::class, 'index'])
+            ->name('endorsements.index');
+        Route::get('endorsements/{endorsement}', [EndorsementController::class, 'show'])
+            ->name('endorsements.show');
+        Route::post('endorsements/{endorsement}/reject', [EndorsementController::class, 'reject'])
+            ->name('endorsements.reject');
 
         // 201-file documents inside their renewal window, or already lapsed.
         Route::get('credentials', [CredentialController::class, 'index'])->name('credentials');
 
+        /*
+         * AI & Analytics — how the scanner is actually performing, measured
+         * from what HR did with its proposals rather than from the model's
+         * opinion of itself.
+         */
+        Route::get('scan-accuracy', [ScanAccuracyController::class, 'index'])
+            ->name('scanAccuracy');
+
+        /*
+         * Where the records disagree with each other — a number on two
+         * people, a document naming somebody else, dates that cannot both
+         * be true. Regex and string comparison; no model behind it.
+         */
+        Route::get('record-checks', [RecordIntegrityController::class, 'index'])
+            ->name('recordChecks');
+
         // Which 201 files are still missing a requirement.
         Route::get('onboarding', [OnboardingController::class, 'index'])->name('onboarding');
 
+        // Who can be sent to a client today. Reads credentials, 201-file
+        // completeness, and employment standing together — no single one of
+        // them answers it.
+        Route::get('deployment', [DeploymentController::class, 'index'])->name('deployment');
+
+        // The master list of everything deleted, and the way back. Sits with
+        // Employee Information because that is where most of it is deleted from.
+        Route::get('archive', [ArchiveController::class, 'index'])->name('archive');
+        Route::post('archive/employees/{employee}/restore', [ArchiveController::class, 'restoreEmployee'])
+            ->name('archive.employees.restore');
+        Route::post('archive/clients/{client}/restore', [ArchiveController::class, 'restoreClient'])
+            ->name('archive.clients.restore');
+
         // Master data — the org structure employee records are filed against.
+        // In a manpower agency that includes the clients staff are deployed to,
+        // which is why this sits beside departments rather than under Payroll.
+        Route::get('clients', [ClientController::class, 'index'])->name('clients');
+        Route::post('clients', [ClientController::class, 'store'])->name('clients.store');
+        Route::put('clients/{client}', [ClientController::class, 'update'])
+            ->name('clients.update');
+        Route::delete('clients/{client}', [ClientController::class, 'destroy'])
+            ->name('clients.destroy');
+
         Route::get('departments', [DepartmentController::class, 'index'])->name('departments');
         Route::post('departments', [DepartmentController::class, 'store'])->name('departments.store');
         Route::put('departments/{department}', [DepartmentController::class, 'update'])

@@ -1,9 +1,11 @@
-import { router, useForm } from '@inertiajs/react';
+import { Link, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import {
     ArrowLeft,
     BadgeCheck,
     Banknote,
+    Building2,
+    Handshake,
     Play,
     Receipt,
     Send,
@@ -15,9 +17,11 @@ import {
     Badge,
     Button,
     Card,
+    CardHeader,
     Field,
     Modal,
     Pagination,
+    MeterCard,
     StatCard,
     TBody,
     TD,
@@ -36,7 +40,7 @@ const titleCase = (value) =>
         .replace(/[_-]/g, ' ')
         .replace(/\b\w/g, (character) => character.toUpperCase());
 
-export default function Run({ run, payslips, readiness, can }) {
+export default function Run({ run, payslips, readiness, breakdown, filters, can }) {
     const [action, setAction] = useState(null); // 'approve' | 'cancel'
 
     const form = useForm({ remarks: '' });
@@ -55,21 +59,11 @@ export default function Run({ run, payslips, readiness, can }) {
 
     const rows = payslips.data ?? [];
 
-    const stats = [
-        {
-            label: 'Employees',
-            value: run.employee_count,
-            icon: Receipt,
-            hint: run.period.name,
-        },
-        { label: 'Gross Pay', value: formatCurrency(run.total_gross), icon: Wallet },
-        {
-            label: 'Deductions',
-            value: formatCurrency(run.total_deductions),
-            icon: TriangleAlert,
-        },
-        { label: 'Net Pay', value: formatCurrency(run.total_net), icon: Banknote },
-    ];
+    // What proportion of the gross is being withheld. Contributions and tax
+    // are the bulk of it, and a run whose deductions look wrong looks wrong
+    // here first — before anybody opens a payslip.
+    const deductionShare =
+        run.total_gross > 0 ? (run.total_deductions / run.total_gross) * 100 : 0;
 
     return (
         <AppLayout
@@ -156,9 +150,43 @@ export default function Run({ run, payslips, readiness, can }) {
             </div>
 
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {stats.map((stat) => (
-                    <StatCard key={stat.label} {...stat} />
-                ))}
+                <StatCard
+                    label="Employees"
+                    value={run.employee_count}
+                    icon={Receipt}
+                    tone={run.employee_count > 0 ? 'primary' : 'muted'}
+                    hint={run.period.name}
+                />
+
+                <StatCard
+                    label="Gross Pay"
+                    value={formatCurrency(run.total_gross)}
+                    icon={Wallet}
+                    tone="info"
+                    hint="before contributions and tax"
+                />
+
+                {/* As a share of gross. The figure on its own says nothing —
+                    ₱400,000 withheld is unremarkable against ₱2m and alarming
+                    against ₱600k, and this is the screen where that is caught. */}
+                <MeterCard
+                    label="Deductions"
+                    value={formatCurrency(run.total_deductions)}
+                    percent={deductionShare}
+                    badge={`${Math.round(deductionShare)}%`}
+                    icon={TriangleAlert}
+                    tone={deductionShare > 40 ? 'warning' : 'info'}
+                    iconTone="warning"
+                    hint="of gross — SSS, PhilHealth, Pag-IBIG, tax, loans"
+                />
+
+                <StatCard
+                    label="Net Pay"
+                    value={formatCurrency(run.total_net)}
+                    icon={Banknote}
+                    tone="success"
+                    hint="what lands in the bank"
+                />
             </div>
 
             <ReadinessPanel readiness={readiness} />
@@ -198,7 +226,106 @@ export default function Run({ run, payslips, readiness, can }) {
                 </div>
             </Card>
 
+            {/* What the run costs per client — the figure the agency bills
+                out. Clients first, the agency's own overhead last. */}
+            {breakdown.length > 1 && (
+                <Card className="mb-5">
+                    <CardHeader
+                        title="Cost by Client"
+                        description="One statutory run, split by who it is billed to."
+                    />
+                    <Table>
+                        <THead>
+                            <TR>
+                                <TH>Billed To</TH>
+                                <TH className="text-right">Staff</TH>
+                                <TH className="text-right">Gross</TH>
+                                <TH className="text-right">Deductions</TH>
+                                <TH className="text-right">Net Pay</TH>
+                                <TH className="text-right" />
+                            </TR>
+                        </THead>
+
+                        <TBody>
+                            {breakdown.map((row) => (
+                                <TR key={row.client_id ?? 'internal'}>
+                                    <TD>
+                                        <span className="flex items-center gap-2">
+                                            {row.client_id ? (
+                                                <Handshake
+                                                    className="h-4 w-4 shrink-0 text-primary"
+                                                    aria-hidden="true"
+                                                />
+                                            ) : (
+                                                <Building2
+                                                    className="h-4 w-4 shrink-0 text-muted-foreground"
+                                                    aria-hidden="true"
+                                                />
+                                            )}
+                                            <span className="font-medium text-foreground">
+                                                {row.label}
+                                            </span>
+                                            {row.code && (
+                                                <span className="font-mono text-xs text-muted-foreground">
+                                                    {row.code}
+                                                </span>
+                                            )}
+                                        </span>
+                                    </TD>
+                                    <TD className="text-right tabular-nums">
+                                        {row.employee_count}
+                                    </TD>
+                                    <TD className="text-right tabular-nums text-muted-foreground">
+                                        {formatCurrency(row.gross)}
+                                    </TD>
+                                    <TD className="text-right tabular-nums text-muted-foreground">
+                                        {formatCurrency(row.deductions)}
+                                    </TD>
+                                    <TD className="text-right font-medium tabular-nums text-foreground">
+                                        {formatCurrency(row.net)}
+                                    </TD>
+                                    <TD className="text-right">
+                                        <Link
+                                            href={`/hr/payroll/runs/${run.id}?${
+                                                row.client_id
+                                                    ? `client_id=${row.client_id}`
+                                                    : 'employment_category=internal'
+                                            }`}
+                                            className="text-xs font-medium text-primary hover:underline"
+                                        >
+                                            View payslips
+                                        </Link>
+                                    </TD>
+                                </TR>
+                            ))}
+                        </TBody>
+                    </Table>
+                </Card>
+            )}
+
             <Card>
+                {(filters.client_id || filters.employment_category) && (
+                    <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
+                        <p className="text-sm text-muted-foreground">
+                            Showing{' '}
+                            <span className="font-medium text-foreground">
+                                {breakdown.find(
+                                    (row) =>
+                                        String(row.client_id ?? '') ===
+                                        String(filters.client_id ?? ''),
+                                )?.label ?? 'a filtered set'}
+                            </span>{' '}
+                            only.
+                        </p>
+                        <Link
+                            href={`/hr/payroll/runs/${run.id}`}
+                            className="text-xs font-medium text-primary hover:underline"
+                        >
+                            Show everyone
+                        </Link>
+                    </div>
+                )}
+
                 <Table>
                     <THead>
                         <TR>

@@ -51,8 +51,17 @@ class EmployeeResource extends JsonResource
                 'bank_account_number' => $this->bank_account_number,
             ]),
 
+            'employment_category' => $this->employment_category,
+            'client_id' => $this->client_id,
+            'wage_region' => $this->wage_region,
             'department_id' => $this->department_id,
             'position_id' => $this->position_id,
+
+            'client' => $this->whenLoaded('client', fn () => $this->client === null ? null : [
+                'id' => $this->client->id,
+                'code' => $this->client->code,
+                'name' => $this->client->name,
+            ]),
             'supervisor_id' => $this->supervisor_id,
             'department' => $this->whenLoaded('department', fn () => [
                 'id' => $this->department->id,
@@ -75,7 +84,8 @@ class EmployeeResource extends JsonResource
             'separation_reason' => $this->separation_reason,
 
             'drivers_license_number' => $this->drivers_license_number,
-            'license_restriction_codes' => $this->license_restriction_codes,
+            'license_dl_codes' => $this->license_dl_codes,
+            'license_conditions' => $this->license_conditions,
             'license_expiry' => $this->license_expiry?->toDateString(),
 
             'photo_url' => $this->photo_path ? asset('storage/'.$this->photo_path) : null,

@@ -4,6 +4,7 @@ namespace Tests\Feature\HR;
 
 use App\Models\Department;
 use App\Models\Employee;
+use App\Models\EmployeeEndorsement;
 use App\Models\Position;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -102,6 +103,7 @@ class EmployeeManagementTest extends TestCase
             'first_name' => 'Juan',
             'last_name' => 'Dela Cruz',
             'department_id' => $department->id,
+            'employment_category' => 'internal',
             'employment_status' => 'probationary',
         ]);
     }
@@ -262,9 +264,16 @@ class EmployeeManagementTest extends TestCase
     private function payload(array $overrides = []): array
     {
         return array_merge([
+            // Employees are created by approving a Core 1 endorsement — the
+            // form has no other way in. A fresh one per call, because one
+            // endorsement becomes one employee and a decided one is closed.
+            'endorsement_id' => EmployeeEndorsement::factory()->create()->id,
             'first_name' => 'Juan',
             'last_name' => 'Dela Cruz',
             'nationality' => 'Filipino',
+            // Required now that the agency splits its workforce; a create with
+            // no category is rejected rather than silently filed as internal.
+            'employment_category' => 'internal',
             'employment_status' => 'probationary',
             'employment_type' => 'full_time',
             'date_hired' => '2026-01-15',

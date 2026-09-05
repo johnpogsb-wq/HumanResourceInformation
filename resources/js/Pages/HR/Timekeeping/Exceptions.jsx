@@ -4,17 +4,19 @@ import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
     Card,
+    DateInput,
     Field,
     Input,
     Select,
+    MeterCard,
     StatCard,
+    Table,
+    TableEmpty,
     TBody,
     TD,
     TH,
     THead,
     TR,
-    Table,
-    TableEmpty,
 } from '@/Components/ui';
 import { formatDate, initials } from '@/lib/utils';
 
@@ -27,31 +29,9 @@ export default function Exceptions({ exceptions, summary, filters, departments, 
         );
     };
 
-    const stats = [
-        {
-            label: 'Flagged Records',
-            value: summary.total,
-            icon: TriangleAlert,
-            hint: `${summary.employees_flagged} employee(s) involved`,
-        },
-        {
-            label: 'Critical',
-            value: summary.critical,
-            icon: AlertTriangle,
-            hint: 'Missing punches, frequent absence',
-        },
-        {
-            label: 'Warning',
-            value: summary.warning,
-            icon: ShieldCheck,
-            hint: 'Worth a second look',
-        },
-        {
-            label: 'Employees Flagged',
-            value: summary.employees_flagged,
-            icon: Users,
-        },
-    ];
+    // How much of the backlog is the hard kind. A screen showing 40 findings
+    // reads very differently at 2 critical than at 30.
+    const criticalShare = summary.total > 0 ? (summary.critical / summary.total) * 100 : 0;
 
     return (
         <AppLayout
@@ -63,18 +43,59 @@ export default function Exceptions({ exceptions, summary, filters, departments, 
             ]}
         >
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {stats.map((stat) => (
-                    <StatCard key={stat.label} {...stat} />
-                ))}
+                {/* Grey at zero, because a clean DTR is the outcome this
+                    screen exists to confirm — not an empty table. */}
+                <StatCard
+                    label="Flagged Records"
+                    value={summary.total}
+                    icon={TriangleAlert}
+                    tone={summary.total > 0 ? 'warning' : 'muted'}
+                    hint="days worth a second look"
+                />
+
+                {/* Critical as a share, because the same 40 findings mean
+                    different mornings at 2 critical and at 30. */}
+                <MeterCard
+                    label="Critical"
+                    value={summary.critical}
+                    percent={criticalShare}
+                    badge={summary.total > 0 ? `${Math.round(criticalShare)}%` : undefined}
+                    icon={AlertTriangle}
+                    tone="destructive"
+                    iconTone={summary.critical > 0 ? 'destructive' : 'muted'}
+                    hint="missing punches, frequent absence"
+                />
+
+                <StatCard
+                    label="Warning"
+                    value={summary.warning}
+                    icon={ShieldCheck}
+                    tone={summary.warning > 0 ? 'warning' : 'muted'}
+                    hint="inside a threshold, not past it"
+                />
+
+                {/* People, not records — the same driver can account for a
+                    dozen findings, and "40 flags" over 3 people is a different
+                    problem from 40 over 40. */}
+                <StatCard
+                    label="Employees Flagged"
+                    value={summary.employees_flagged}
+                    icon={Users}
+                    tone={summary.employees_flagged > 0 ? 'info' : 'muted'}
+                    hint={
+                        summary.employees_flagged > 0
+                            ? `${(summary.total / summary.employees_flagged).toFixed(1)} findings each`
+                            : 'nobody flagged'
+                    }
+                />
             </div>
 
             <Card>
                 <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:flex-wrap lg:items-end">
                     <Field label="From" className="w-full sm:w-40">
                         {({ id }) => (
-                            <Input
+                            <DateInput
                                 id={id}
-                                type="date"
                                 value={filters.from ?? ''}
                                 onChange={(event) => applyFilter('from', event.target.value)}
                             />
@@ -83,9 +104,8 @@ export default function Exceptions({ exceptions, summary, filters, departments, 
 
                     <Field label="To" className="w-full sm:w-40">
                         {({ id }) => (
-                            <Input
+                            <DateInput
                                 id={id}
-                                type="date"
                                 value={filters.to ?? ''}
                                 onChange={(event) => applyFilter('to', event.target.value)}
                             />

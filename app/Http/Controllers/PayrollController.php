@@ -103,15 +103,25 @@ class PayrollController extends Controller
 
         $payrollRun->load(['period', 'processor:id,name', 'approver:id,name']);
 
+        $clientFilter = $request->integer('client_id') ?: null;
+        $categoryFilter = $request->string('employment_category')->trim()->value() ?: null;
+
         $payslips = $payrollRun->payslips()
-            ->with('employee:id,employee_number,first_name,middle_name,last_name,suffix')
+            ->with('employee:id,employee_number,first_name,middle_name,last_name,suffix,client_id,employment_category')
             ->join('employees', 'employees.id', '=', 'payslips.employee_id')
+            ->when($clientFilter, fn ($query, $id) => $query->where('employees.client_id', $id))
+            ->when($categoryFilter, fn ($query, $value) => $query->where('employees.employment_category', $value))
             ->orderBy('employees.last_name')
             ->select('payslips.*')
             ->paginate(25)
             ->withQueryString();
 
         return Inertia::render('HR/Payroll/Run', [
+            'breakdown' => $this->breakdownByClient($payrollRun),
+            'filters' => [
+                'client_id' => $clientFilter,
+                'employment_category' => $categoryFilter,
+            ],
             'run' => [
                 'id' => $payrollRun->id,
                 'period_id' => $payrollRun->payroll_period_id,
@@ -232,6 +242,54 @@ class PayrollController extends Controller
         $this->payroll->cancel($payrollRun, $validated['remarks'] ?? null);
 
         return back()->with('success', 'Payroll run cancelled.');
+    }
+
+    /**
+     * What this run costs per client, plus the agency's own staff.
+     *
+     * The figure a manpower agency actually needs from a payroll run: each
+     * client is billed for the people deployed to them, and internal staff are
+     * PrimePower's own overhead. One row per group rather than a separate run
+     * per client — the run is still one statutory filing, and splitting it
+     * would mean four SSS remittances for one month.
+     *
+     * Grouped in SQL rather than over a loaded collection: a run holds a row
+     * per employee, and this screen already paginates them for that reason.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function breakdownByClient(PayrollRun $payrollRun): array
+    {
+        $rows = $payrollRun->payslips()
+            ->join('employees', 'employees.id', '=', 'payslips.employee_id')
+            ->leftJoin('clients', 'clients.id', '=', 'employees.client_id')
+            ->groupBy('employees.client_id', 'clients.name', 'clients.code')
+            ->selectRaw('employees.client_id')
+            ->selectRaw('clients.name as client_name')
+            ->selectRaw('clients.code as client_code')
+            ->selectRaw('count(*) as employee_count')
+            ->selectRaw('coalesce(sum(payslips.gross_pay), 0) as gross')
+            ->selectRaw('coalesce(sum(payslips.deductions_total), 0) as deductions')
+            ->selectRaw('coalesce(sum(payslips.net_pay), 0) as net')
+            ->get();
+
+        return $rows
+            ->map(fn ($row) => [
+                'client_id' => $row->client_id,
+                // A null client is internal staff — labelled here rather than
+                // left as "—", because "who is this cost for" is the question
+                // the row exists to answer.
+                'label' => $row->client_name ?? 'Internal Staff (PrimePower)',
+                'code' => $row->client_code,
+                'employee_count' => (int) $row->employee_count,
+                'gross' => (float) $row->gross,
+                'deductions' => (float) $row->deductions,
+                'net' => (float) $row->net,
+            ])
+            // Internal staff last: the client rows are what gets billed out.
+            ->sortBy(fn (array $row) => [$row['client_id'] === null ? 1 : 0, $row['label']])
+            ->values()
+            ->all();
     }
 
     /**

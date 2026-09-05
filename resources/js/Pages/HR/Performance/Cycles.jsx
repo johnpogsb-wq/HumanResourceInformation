@@ -7,18 +7,19 @@ import {
     Button,
     Card,
     CardHeader,
+    DateInput,
     Field,
     Input,
     Modal,
     Select,
+    Table,
+    TableEmpty,
     TBody,
     TD,
+    Textarea,
     TH,
     THead,
     TR,
-    Table,
-    TableEmpty,
-    Textarea,
 } from '@/Components/ui';
 import { formatDate } from '@/lib/utils';
 
@@ -279,9 +280,8 @@ export default function Cycles({ cycles, types, can }) {
                     <div className="grid gap-4 sm:grid-cols-3">
                         <Field label="Period Start" required error={form.errors.period_start}>
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={form.data.period_start}
                                     onChange={(event) =>
                                         form.setData('period_start', event.target.value)
@@ -293,9 +293,8 @@ export default function Cycles({ cycles, types, can }) {
 
                         <Field label="Period End" required error={form.errors.period_end}>
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={form.data.period_end}
                                     onChange={(event) =>
                                         form.setData('period_end', event.target.value)
@@ -307,9 +306,8 @@ export default function Cycles({ cycles, types, can }) {
 
                         <Field label="Reviews Due" error={form.errors.review_due_date}>
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={form.data.review_due_date}
                                     onChange={(event) =>
                                         form.setData('review_due_date', event.target.value)

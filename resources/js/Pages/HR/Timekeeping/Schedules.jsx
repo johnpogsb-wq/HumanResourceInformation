@@ -1,24 +1,25 @@
-import { router, useForm } from '@inertiajs/react';
+import { useForm } from '@inertiajs/react';
 import { useState } from 'react';
-import { CalendarRange, Clock, Moon, Pencil, Plus, Trash2 } from 'lucide-react';
+import { CalendarRange, Clock, Moon, Plus } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
     Button,
     Card,
     CardHeader,
+    DateInput,
     Field,
     Input,
     Modal,
     Pagination,
     Select,
+    Table,
+    TableEmpty,
     TBody,
     TD,
     TH,
     THead,
     TR,
-    Table,
-    TableEmpty,
 } from '@/Components/ui';
 import { cn, formatDate, initials } from '@/lib/utils';
 
@@ -44,9 +45,8 @@ const BLANK_SHIFT = {
 };
 
 export default function Schedules({ shifts, schedules, employees, can }) {
-    const [shiftModal, setShiftModal] = useState(null); // null | 'new' | shift
+    const [shiftCreating, setShiftCreating] = useState(false);
     const [scheduleOpen, setScheduleOpen] = useState(false);
-    const [pendingDelete, setPendingDelete] = useState(null);
 
     const shiftForm = useForm(BLANK_SHIFT);
     const scheduleForm = useForm({
@@ -57,27 +57,21 @@ export default function Schedules({ shifts, schedules, employees, can }) {
         days_of_week: [1, 2, 3, 4, 5],
     });
 
-    const openShift = (shift) => {
-        shiftForm.setData(shift === 'new' ? BLANK_SHIFT : { ...BLANK_SHIFT, ...shift });
-        setShiftModal(shift);
+    const openShift = () => {
+        shiftForm.setData(BLANK_SHIFT);
+        setShiftCreating(true);
     };
 
     const submitShift = (event) => {
         event.preventDefault();
 
-        const done = {
+        shiftForm.post('/hr/timekeeping/shifts', {
             preserveScroll: true,
             onSuccess: () => {
                 shiftForm.reset();
-                setShiftModal(null);
+                setShiftCreating(false);
             },
-        };
-
-        if (shiftModal === 'new') {
-            shiftForm.post('/hr/timekeeping/shifts', done);
-        } else {
-            shiftForm.put(`/hr/timekeeping/shifts/${shiftModal.id}`, done);
-        }
+        });
     };
 
     const submitSchedule = (event) => {
@@ -117,7 +111,7 @@ export default function Schedules({ shifts, schedules, employees, can }) {
                     description="Start and end times drive every late, undertime, and overtime figure."
                     action={
                         can.manage && (
-                            <Button size="sm" onClick={() => openShift('new')}>
+                            <Button size="sm" onClick={openShift}>
                                 <Plus className="h-4 w-4" />
                                 New Shift
                             </Button>
@@ -134,14 +128,13 @@ export default function Schedules({ shifts, schedules, employees, can }) {
                             <TH className="text-right">Grace</TH>
                             <TH className="text-right">Assigned</TH>
                             <TH>Status</TH>
-                            {can.manage && <TH className="text-right">Actions</TH>}
                         </TR>
                     </THead>
 
                     <TBody>
                         {shifts.length === 0 ? (
                             <TableEmpty
-                                colSpan={can.manage ? 7 : 6}
+                                colSpan={6}
                                 icon={Clock}
                                 title="No shifts defined"
                                 description="Create a shift before assigning schedules."
@@ -189,34 +182,6 @@ export default function Schedules({ shifts, schedules, employees, can }) {
                                             status={shift.is_active ? 'active' : 'inactive'}
                                         />
                                     </TD>
-
-                                    {can.manage && (
-                                        <TD>
-                                            <div className="flex items-center justify-end gap-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openShift(shift)}
-                                                    aria-label={`Edit ${shift.name}`}
-                                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                                                >
-                                                    <Pencil className="h-4 w-4" />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        setPendingDelete({
-                                                            type: 'shift',
-                                                            item: shift,
-                                                        })
-                                                    }
-                                                    aria-label={`Delete ${shift.name}`}
-                                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </button>
-                                            </div>
-                                        </TD>
-                                    )}
                                 </TR>
                             ))
                         )}
@@ -246,14 +211,13 @@ export default function Schedules({ shifts, schedules, employees, can }) {
                             <TH>Shift</TH>
                             <TH>Working Days</TH>
                             <TH>Effective</TH>
-                            {can.manage && <TH className="text-right">Actions</TH>}
                         </TR>
                     </THead>
 
                     <TBody>
                         {schedules.data.length === 0 ? (
                             <TableEmpty
-                                colSpan={can.manage ? 5 : 4}
+                                colSpan={4}
                                 icon={CalendarRange}
                                 title="No schedules assigned"
                                 description="Without a schedule, attendance cannot derive rest days or lateness."
@@ -313,26 +277,6 @@ export default function Schedules({ shifts, schedules, employees, can }) {
                                             ? formatDate(schedule.effective_to)
                                             : 'ongoing'}
                                     </TD>
-
-                                    {can.manage && (
-                                        <TD>
-                                            <div className="flex justify-end">
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        setPendingDelete({
-                                                            type: 'schedule',
-                                                            item: schedule,
-                                                        })
-                                                    }
-                                                    aria-label="Remove schedule"
-                                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </button>
-                                            </div>
-                                        </TD>
-                                    )}
                                 </TR>
                             ))
                         )}
@@ -344,9 +288,9 @@ export default function Schedules({ shifts, schedules, employees, can }) {
 
             {/* Shift form */}
             <Modal
-                show={Boolean(shiftModal)}
-                onClose={() => setShiftModal(null)}
-                title={shiftModal === 'new' ? 'New Shift' : 'Edit Shift'}
+                show={shiftCreating}
+                onClose={() => setShiftCreating(false)}
+                title="New Shift"
                 description="An end time at or before the start means the shift runs past midnight."
                 maxWidth="lg"
             >
@@ -464,7 +408,7 @@ export default function Schedules({ shifts, schedules, employees, can }) {
                     </div>
 
                     <div className="flex justify-end gap-2 pt-2">
-                        <Button variant="outline" onClick={() => setShiftModal(null)}>
+                        <Button variant="outline" onClick={() => setShiftCreating(false)}>
                             Cancel
                         </Button>
                         <Button type="submit" loading={shiftForm.processing}>
@@ -532,9 +476,8 @@ export default function Schedules({ shifts, schedules, employees, can }) {
                             error={scheduleForm.errors.effective_from}
                         >
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={scheduleForm.data.effective_from}
                                     onChange={(event) =>
                                         scheduleForm.setData(
@@ -553,9 +496,8 @@ export default function Schedules({ shifts, schedules, employees, can }) {
                             error={scheduleForm.errors.effective_to}
                         >
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={scheduleForm.data.effective_to}
                                     onChange={(event) =>
                                         scheduleForm.setData('effective_to', event.target.value)
@@ -606,61 +548,6 @@ export default function Schedules({ shifts, schedules, employees, can }) {
                         </Button>
                     </div>
                 </form>
-            </Modal>
-
-            {/* Delete confirmation */}
-            <Modal
-                show={Boolean(pendingDelete)}
-                onClose={() => setPendingDelete(null)}
-                title={
-                    pendingDelete?.type === 'shift'
-                        ? 'Delete this shift?'
-                        : 'Remove this schedule?'
-                }
-                maxWidth="md"
-                footer={
-                    <>
-                        <Button variant="outline" onClick={() => setPendingDelete(null)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            variant="destructive"
-                            onClick={() =>
-                                router.delete(
-                                    pendingDelete.type === 'shift'
-                                        ? `/hr/timekeeping/shifts/${pendingDelete.item.id}`
-                                        : `/hr/timekeeping/schedules/${pendingDelete.item.id}`,
-                                    {
-                                        preserveScroll: true,
-                                        onFinish: () => setPendingDelete(null),
-                                    },
-                                )
-                            }
-                        >
-                            {pendingDelete?.type === 'shift' ? 'Delete' : 'Remove'}
-                        </Button>
-                    </>
-                }
-            >
-                <p className="text-sm text-muted-foreground">
-                    {pendingDelete?.type === 'shift' ? (
-                        <>
-                            <span className="font-medium text-foreground">
-                                {pendingDelete?.item.name}
-                            </span>{' '}
-                            will be deleted. If any schedule or time record still points at it,
-                            it is deactivated instead so history stays intact.
-                        </>
-                    ) : (
-                        <>
-                            The schedule for{' '}
-                            <span className="font-medium text-foreground">
-                                {pendingDelete?.item.employee.full_name}
-                            </span>{' '}
-                            will be removed. Future attendance will no longer derive a shift.
-                        </>
-                    )}
-                </p>
             </Modal>
         </AppLayout>
     );

@@ -51,6 +51,35 @@ class EmployeePolicy
         return $user->isAdmin();
     }
 
+    /**
+     * The archive screen, which lists deleted employees *and* clients.
+     *
+     * Separate from `restore` because that one needs a record to judge, and
+     * this is asked before any record is in hand. Same answer — putting a
+     * deleted record back is an admin act — but it has to be askable of the
+     * class rather than of an instance.
+     */
+    public function viewArchive(User $user): bool
+    {
+        return $user->isAdmin();
+    }
+
+    /**
+     * Filing a batch of documents, before it is known whose they are.
+     *
+     * The same relationship `viewArchive` has to `restore`: `manageDocuments`
+     * judges one employee's file and needs that employee, and a batch is
+     * asked of the class because the scanner has not yet said who the stack
+     * belongs to. The answer must stay the same as `manageDocuments` — filing
+     * forty documents cannot be open to somebody who may not file one — so it
+     * is written as the same expression rather than a different rule that
+     * happens to agree today.
+     */
+    public function fileDocumentBatch(User $user): bool
+    {
+        return $user->isHrAdmin();
+    }
+
     public function manageDocuments(User $user, Employee $employee): bool
     {
         return $user->isHrAdmin();
@@ -60,10 +89,5 @@ class EmployeePolicy
     public function viewSensitive(User $user, Employee $employee): bool
     {
         return $user->isHrAdmin() || $employee->user_id === $user->id;
-    }
-
-    public function viewAudits(User $user): bool
-    {
-        return $user->isHrAdmin();
     }
 }

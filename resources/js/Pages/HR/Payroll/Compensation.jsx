@@ -7,17 +7,18 @@ import {
     Button,
     Card,
     CardHeader,
+    DateInput,
     Field,
     Input,
     Modal,
     Select,
+    Table,
+    TableEmpty,
     TBody,
     TD,
     TH,
     THead,
     TR,
-    Table,
-    TableEmpty,
 } from '@/Components/ui';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
@@ -360,9 +361,8 @@ export default function Compensation({ allowances, loans, employees, frequencies
                             error={allowanceForm.errors.effective_from}
                         >
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={allowanceForm.data.effective_from}
                                     onChange={(event) =>
                                         allowanceForm.setData(
@@ -381,9 +381,8 @@ export default function Compensation({ allowances, loans, employees, frequencies
                             error={allowanceForm.errors.effective_to}
                         >
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={allowanceForm.data.effective_to}
                                     onChange={(event) =>
                                         allowanceForm.setData(
@@ -484,9 +483,8 @@ export default function Compensation({ allowances, loans, employees, frequencies
 
                         <Field label="Start Date" required error={loanForm.errors.start_date}>
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={loanForm.data.start_date}
                                     onChange={(event) =>
                                         loanForm.setData('start_date', event.target.value)

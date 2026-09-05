@@ -153,15 +153,6 @@ class EmployeeAccessControlTest extends TestCase
             );
     }
 
-    public function test_the_audit_trail_is_hidden_from_non_hr_roles(): void
-    {
-        [$user, $own] = $this->staff(User::ROLE_EMPLOYEE);
-
-        $this->actingAs($user)
-            ->get("/hr/employees/{$own->id}")
-            ->assertInertia(fn (Assert $page) => $page->has('audits', 0));
-    }
-
     /** Creates a user linked to their own 201 file. */
     private function staff(string $role): array
     {

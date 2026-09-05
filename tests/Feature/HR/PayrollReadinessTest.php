@@ -179,6 +179,80 @@ class PayrollReadinessTest extends TestCase
         $this->assertDatabaseHas('payslips', ['employee_id' => $employee->id]);
     }
 
+    // --- The regional wage floor -------------------------------------------
+
+    /**
+     * There is no national minimum wage here — each region's RTWPB sets its
+     * own, which is what an agency's clients mean by a "provincial rate". The
+     * check has to resolve the region per employee, not compare everyone to
+     * one number.
+     */
+    public function test_a_rate_under_the_regions_floor_warns(): void
+    {
+        $period = $this->period();
+
+        // 5,000/mo is roughly 230/day against a 261-day factor — under every
+        // configured floor.
+        $employee = Employee::factory()->create(['basic_salary' => 5000]);
+        $this->workedFullDay($employee, '2026-08-03');
+
+        $readiness = $this->check($period);
+
+        $check = collect($readiness['checks'])->firstWhere('key', 'below_regional_minimum');
+
+        $this->assertNotNull($check, 'The wage floor check did not fire.');
+        // Never a blocker: refusing to run payroll would strand the very
+        // employee the floor exists to protect.
+        $this->assertSame(PayrollReadinessChecker::SEVERITY_WARNING, $check['severity']);
+        $this->assertContains($employee->full_name, $check['employees']);
+    }
+
+    public function test_a_rate_above_the_floor_is_silent(): void
+    {
+        $period = $this->period();
+        $this->workedFullDay($this->employee(), '2026-08-03');
+
+        $checks = collect($this->check($period)['checks']);
+
+        $this->assertNull($checks->firstWhere('key', 'below_regional_minimum'));
+    }
+
+    /**
+     * The floor follows where the work happens. A rate legal in Davao can sit
+     * under Metro Manila's order, so the same salary must warn in one place
+     * and not the other.
+     */
+    public function test_the_floor_follows_the_employees_region(): void
+    {
+        config([
+            'payroll.wage_regions' => [
+                'NCR' => ['label' => 'NCR', 'daily_minimum' => 645.00],
+                'R11' => ['label' => 'Davao', 'daily_minimum' => 481.00],
+            ],
+        ]);
+
+        $period = $this->period();
+
+        // ~536/day: above Davao's floor, under Metro Manila's.
+        $employee = Employee::factory()->create([
+            'basic_salary' => 11660,
+            'wage_region' => 'R11',
+        ]);
+        $this->workedFullDay($employee, '2026-08-03');
+
+        $this->assertNull(
+            collect($this->check($period)['checks'])->firstWhere('key', 'below_regional_minimum'),
+            'Legal in Davao — should not warn.',
+        );
+
+        $employee->update(['wage_region' => 'NCR']);
+
+        $this->assertNotNull(
+            collect($this->check($period)['checks'])->firstWhere('key', 'below_regional_minimum'),
+            'The same rate is under the Metro Manila floor and should warn.',
+        );
+    }
+
     /** @return array<string, mixed> */
     private function check(PayrollPeriod $period): array
     {

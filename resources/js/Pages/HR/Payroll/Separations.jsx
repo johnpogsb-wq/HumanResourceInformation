@@ -7,20 +7,21 @@ import {
     Button,
     Card,
     CardHeader,
+    DateInput,
     Field,
     Input,
     Modal,
     Pagination,
     Select,
     StatCard,
+    Table,
+    TableEmpty,
     TBody,
     TD,
+    Textarea,
     TH,
     THead,
     TR,
-    Table,
-    TableEmpty,
-    Textarea,
 } from '@/Components/ui';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
@@ -101,18 +102,31 @@ export default function Separations({
             ]}
         >
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
-                <StatCard label="Awaiting Release" value={pending.length} icon={DoorOpen} />
+                <StatCard
+                    label="Awaiting Release"
+                    value={pending.length}
+                    icon={DoorOpen}
+                    tone={pending.length > 0 ? 'warning' : 'muted'}
+                    hint={pending.length > 0 ? 'settlements still open' : 'nothing outstanding'}
+                />
+
+                {/* Past a statutory deadline, so destructive rather than
+                    warning: DOLE Labor Advisory 06-20 gives 30 days from the
+                    last day, and this is what turns the list into a queue. */}
                 <StatCard
                     label="Past the Deadline"
                     value={overdue.length}
                     icon={CalendarClock}
+                    tone={overdue.length > 0 ? 'destructive' : 'muted'}
                     hint={`${releaseWithinDays} days from the last day`}
                 />
+
                 <StatCard
                     label="Final Pay Payable"
                     value={formatCurrency(payable)}
                     icon={Wallet}
-                    hint="Across open settlements"
+                    tone={payable > 0 ? 'info' : 'muted'}
+                    hint="across open settlements"
                 />
             </div>
 
@@ -121,12 +135,12 @@ export default function Separations({
                     title="Separations"
                     description={`DOLE Labor Advisory 06-20 puts final pay within ${releaseWithinDays} days of the last day of employment.`}
                     action={
-                        <div className="flex gap-2">
+                        <div className="flex flex-col gap-2 sm:flex-row">
                             <Select
                                 value={filters.status ?? ''}
                                 onChange={(event) => filter('status', event.target.value)}
                                 aria-label="Filter by status"
-                                className="w-36"
+                                className="w-full sm:w-36"
                                 options={[
                                     { value: '', label: 'All statuses' },
                                     ...statuses.map((status) => ({
@@ -139,7 +153,7 @@ export default function Separations({
                                 value={filters.reason ?? ''}
                                 onChange={(event) => filter('reason', event.target.value)}
                                 aria-label="Filter by reason"
-                                className="w-40"
+                                className="w-full sm:w-40"
                                 options={[
                                     { value: '', label: 'All reasons' },
                                     ...reasons.map((reason) => ({
@@ -259,8 +273,7 @@ export default function Separations({
                     </Field>
 
                     <Field label="Last day of employment" required error={form.errors.last_day}>
-                        <Input
-                            type="date"
+                        <DateInput
                             value={form.data.last_day}
                             onChange={(event) => form.setData('last_day', event.target.value)}
                         />

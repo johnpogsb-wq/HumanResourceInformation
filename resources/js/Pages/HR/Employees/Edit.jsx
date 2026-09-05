@@ -41,6 +41,12 @@ export default function Edit({ employee, options }) {
         pagibig_number: text(record.pagibig_number),
         tin: text(record.tin),
 
+        employment_category: record.employment_category ?? 'internal',
+
+        client_id: text(record.client_id),
+
+        wage_region: text(record.wage_region),
+
         department_id: text(record.department_id),
         position_id: text(record.position_id),
         supervisor_id: text(record.supervisor_id),
@@ -57,7 +63,8 @@ export default function Edit({ employee, options }) {
         bank_account_number: text(record.bank_account_number),
 
         drivers_license_number: text(record.drivers_license_number),
-        license_restriction_codes: text(record.license_restriction_codes),
+        license_dl_codes: text(record.license_dl_codes),
+        license_conditions: text(record.license_conditions),
         license_expiry: text(record.license_expiry),
 
         status: text(record.status),

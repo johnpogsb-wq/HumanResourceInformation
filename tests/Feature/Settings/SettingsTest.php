@@ -170,13 +170,13 @@ class SettingsTest extends TestCase
         $this->actingAs($user)
             ->put('/settings/security/password', [
                 'current_password' => 'password',
-                'password' => 'a-much-longer-secret',
-                'password_confirmation' => 'a-much-longer-secret',
+                'password' => 'Much-L0nger-Secret',
+                'password_confirmation' => 'Much-L0nger-Secret',
             ])
             ->assertRedirect();
 
         $this->assertTrue(
-            Hash::check('a-much-longer-secret', $user->fresh()->password),
+            Hash::check('Much-L0nger-Secret', $user->fresh()->password),
         );
     }
 
@@ -185,8 +185,8 @@ class SettingsTest extends TestCase
         $this->actingAs(User::factory()->create())
             ->put('/settings/security/password', [
                 'current_password' => 'not-my-password',
-                'password' => 'a-much-longer-secret',
-                'password_confirmation' => 'a-much-longer-secret',
+                'password' => 'Much-L0nger-Secret',
+                'password_confirmation' => 'Much-L0nger-Secret',
             ])
             ->assertSessionHasErrors('current_password');
     }

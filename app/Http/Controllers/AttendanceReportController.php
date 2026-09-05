@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AttendanceLog;
 use App\Models\Department;
+use App\Services\DataAccessLogger;
 use App\Services\TimekeepingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -38,13 +39,21 @@ class AttendanceReportController extends Controller
     }
 
     /** Same report as the screen, streamed as CSV for payroll hand-off. */
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request, DataAccessLogger $access): StreamedResponse
     {
         Gate::authorize('viewAny', AttendanceLog::class);
 
         $filters = $this->filters($request);
         $query = $this->timekeeping->scopedQuery($request->user())->filter($filters);
         $rows = $this->timekeeping->employeeSummaries($query);
+
+        // The range is what makes this row answer anything: "someone exported
+        // attendance" is noise, "someone exported the whole of August" is not.
+        $access->exported('attendance-report', AttendanceLog::class, [
+            'from' => $filters['from'],
+            'to' => $filters['to'],
+            'employees' => $rows->count(),
+        ]);
 
         $filename = "attendance-{$filters['from']}-to-{$filters['to']}.csv";
 

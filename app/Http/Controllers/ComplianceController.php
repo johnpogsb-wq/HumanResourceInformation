@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PayrollRun;
 use App\Models\Payslip;
 use App\Services\ComplianceReportBuilder;
+use App\Services\DataAccessLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
@@ -63,7 +64,7 @@ class ComplianceController extends Controller
     }
 
     /** The same rows the screen shows, as a file an agency portal accepts. */
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request, DataAccessLogger $access): StreamedResponse
     {
         Gate::authorize('viewAny', PayrollRun::class);
 
@@ -75,6 +76,18 @@ class ComplianceController extends Controller
 
         $built = $this->builder->build($report, $this->payslips($run));
         $columns = $this->builder->columns($report);
+
+        /*
+         * The heaviest extract in the system: the alphalist carries every
+         * employee's TIN, the agency forms their SSS, PhilHealth, and Pag-IBIG
+         * numbers, and all of them carry pay. Without this row a full copy of
+         * the workforce's government numbers leaves no trace at all.
+         */
+        $access->exported("compliance:{$report}", Payslip::class, [
+            'run' => $run->run_number,
+            'period' => $run->period?->name,
+            'employees' => count($built['rows']),
+        ]);
 
         $filename = sprintf('%s-%s.csv', $report, $run->run_number);
 

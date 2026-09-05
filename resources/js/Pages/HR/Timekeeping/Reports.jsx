@@ -4,17 +4,18 @@ import AppLayout from '@/Layouts/AppLayout';
 import {
     Button,
     Card,
+    DateInput,
     Field,
     Input,
     Select,
     StatCard,
+    Table,
+    TableEmpty,
     TBody,
     TD,
     TH,
     THead,
     TR,
-    Table,
-    TableEmpty,
 } from '@/Components/ui';
 import { formatDate, initials } from '@/lib/utils';
 
@@ -101,9 +102,8 @@ export default function Reports({ rows, summary, filters, departments, periods }
                         <>
                             <Field label="From" className="w-full sm:w-40">
                                 {({ id }) => (
-                                    <Input
+                                    <DateInput
                                         id={id}
-                                        type="date"
                                         value={filters.from}
                                         onChange={(event) =>
                                             applyFilter('from', event.target.value)
@@ -114,9 +114,8 @@ export default function Reports({ rows, summary, filters, departments, periods }
 
                             <Field label="To" className="w-full sm:w-40">
                                 {({ id }) => (
-                                    <Input
+                                    <DateInput
                                         id={id}
-                                        type="date"
                                         value={filters.to}
                                         onChange={(event) =>
                                             applyFilter('to', event.target.value)
@@ -132,9 +131,8 @@ export default function Reports({ rows, summary, filters, departments, periods }
                             className="w-full sm:w-44"
                         >
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={filters.anchor}
                                     onChange={(event) =>
                                         applyFilter('anchor', event.target.value)

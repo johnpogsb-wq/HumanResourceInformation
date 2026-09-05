@@ -6,19 +6,20 @@ import {
     Badge,
     Button,
     Card,
-    Field,
     CardHeader,
+    DateInput,
+    Field,
     Input,
     Modal,
     Pagination,
     Select,
+    Table,
+    TableEmpty,
     TBody,
     TD,
     TH,
     THead,
     TR,
-    Table,
-    TableEmpty,
 } from '@/Components/ui';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
@@ -186,9 +187,8 @@ export default function Index({ periods, suggestion, can }) {
                     <div className="grid gap-4 sm:grid-cols-3">
                         <Field label="Start" required error={form.errors.start_date}>
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={form.data.start_date}
                                     onChange={(event) =>
                                         form.setData('start_date', event.target.value)
@@ -200,9 +200,8 @@ export default function Index({ periods, suggestion, can }) {
 
                         <Field label="End" required error={form.errors.end_date}>
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={form.data.end_date}
                                     onChange={(event) =>
                                         form.setData('end_date', event.target.value)
@@ -214,9 +213,8 @@ export default function Index({ periods, suggestion, can }) {
 
                         <Field label="Pay Date" required error={form.errors.pay_date}>
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={form.data.pay_date}
                                     onChange={(event) =>
                                         form.setData('pay_date', event.target.value)

@@ -16,20 +16,21 @@ import {
     Button,
     Card,
     CardHeader,
+    DateInput,
     Field,
     Input,
     Modal,
     Pagination,
     Select,
     StatCard,
+    Table,
+    TableEmpty,
     TBody,
     TD,
+    Textarea,
     TH,
     THead,
     TR,
-    Table,
-    TableEmpty,
-    Textarea,
 } from '@/Components/ui';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
@@ -144,21 +145,27 @@ export default function Salaries({ adjustments, filters, reasons, summary, emplo
                     label="Monthly Payroll"
                     value={formatCurrency(summary.payroll)}
                     icon={Wallet}
-                    tone="primary"
-                    hint="Basic salary across active employees"
+                    tone={summary.payroll > 0 ? 'primary' : 'muted'}
+                    hint="basic salary across active employees"
                 />
+
                 <StatCard
                     label="Adjustments This Year"
                     value={summary.this_year}
                     icon={Banknote}
-                    tone="info"
+                    tone={summary.this_year > 0 ? 'info' : 'muted'}
+                    hint="raises, corrections, and demotions"
                 />
+
+                {/* Not a warning — a future-dated raise is a decision already
+                    taken, waiting for its date. `salaries:apply-due` moves the
+                    cached rate when it arrives; money never waits on that. */}
                 <StatCard
                     label="Scheduled Ahead"
                     value={summary.scheduled}
                     icon={CalendarClock}
-                    tone="warning"
-                    hint="Take effect on their own date"
+                    tone={summary.scheduled > 0 ? 'info' : 'muted'}
+                    hint="take effect on their own date"
                 />
             </div>
 
@@ -167,19 +174,19 @@ export default function Salaries({ adjustments, filters, reasons, summary, emplo
                     title="Salary history"
                     description="Payroll reads the rate in force over the period it is paying, so a raise recorded late never rewrites a run that already closed."
                     action={
-                        <div className="flex gap-2">
+                        <div className="flex flex-col gap-2 sm:flex-row">
                             <Select
                                 value={filters.employee_id ?? ''}
                                 onChange={(event) => filter('employee_id', event.target.value)}
                                 aria-label="Filter by employee"
-                                className="w-48"
+                                className="w-full sm:w-48"
                                 options={[{ value: '', label: 'All employees' }, ...employees]}
                             />
                             <Select
                                 value={filters.reason ?? ''}
                                 onChange={(event) => filter('reason', event.target.value)}
                                 aria-label="Filter by reason"
-                                className="w-40"
+                                className="w-full sm:w-40"
                                 options={[{ value: '', label: 'All reasons' }, ...reasons]}
                             />
                             {can.create && (
@@ -328,8 +335,7 @@ export default function Salaries({ adjustments, filters, reasons, summary, emplo
                         error={form.errors.effective_date}
                         hint="A future date takes effect on its own."
                     >
-                        <Input
-                            type="date"
+                        <DateInput
                             value={form.data.effective_date}
                             onChange={(event) =>
                                 form.setData('effective_date', event.target.value)

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\Setting;
+use App\Services\DataAccessLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -17,9 +18,14 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class DataExportController extends Controller
 {
-    public function employees(Request $request): StreamedResponse
+    public function employees(Request $request, DataAccessLogger $access): StreamedResponse
     {
         Gate::authorize('manage', Setting::class);
+
+        // The whole directory in one file — the broadest extract there is.
+        $access->exported('employee-directory', Employee::class, [
+            'employees' => Employee::count(),
+        ]);
 
         $filename = 'employees-'.now()->toDateString().'.csv';
 

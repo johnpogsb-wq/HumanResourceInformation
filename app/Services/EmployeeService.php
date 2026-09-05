@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 /**
  * Business logic for Module 1 — shared by the Inertia controller and the REST API
@@ -31,7 +30,13 @@ class EmployeeService
      */
     public function scopedQuery(User $user): Builder
     {
-        $query = Employee::query()->with(['department:id,name', 'position:id,title']);
+        // `client` is eager-loaded for the directory's Assignment column —
+        // without it every deployed row costs its own query.
+        $query = Employee::query()->with([
+            'department:id,name',
+            'position:id,title',
+            'client:id,code,name',
+        ]);
 
         if ($user->isHrAdmin()) {
             return $query;
@@ -154,7 +159,7 @@ class EmployeeService
 
     private function provisionUserAccount(array $data, string $role): User
     {
-        $this->generatedPassword = Str::password(12);
+        $this->generatedPassword = User::generatePassword();
 
         return User::create([
             'name' => trim("{$data['first_name']} {$data['last_name']}"),
@@ -162,6 +167,10 @@ class EmployeeService
             'password' => $this->generatedPassword,
             'role' => $role,
             'is_active' => true,
+            // HR reads this password out to the employee, so two people know
+            // it before it is ever used. RequirePasswordChange holds the
+            // account on the Security screen until that stops being true.
+            'must_change_password' => true,
         ]);
     }
 

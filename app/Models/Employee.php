@@ -25,6 +25,19 @@ class Employee extends Model
 
     public const STATUSES = ['active', 'inactive', 'on_leave'];
 
+    /**
+     * PrimePower is a manpower agency, so an employee is one of two things.
+     *
+     * `internal` runs the agency itself and is filed against a department.
+     * `external` is deployed to a client — still PrimePower's employee and on
+     * PrimePower's payroll, but working at, and billed to, that client.
+     */
+    public const CATEGORY_INTERNAL = 'internal';
+
+    public const CATEGORY_EXTERNAL = 'external';
+
+    public const CATEGORIES = [self::CATEGORY_INTERNAL, self::CATEGORY_EXTERNAL];
+
     protected $guarded = ['id'];
 
     protected $appends = ['full_name'];
@@ -41,6 +54,12 @@ class Employee extends Model
         return $this->belongsTo(Department::class);
     }
 
+    /** Null for internal staff — they are deployed nowhere. */
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class);
+    }
+
     public function position(): BelongsTo
     {
         return $this->belongsTo(Position::class);
@@ -51,9 +70,27 @@ class Employee extends Model
         return $this->belongsTo(Employee::class, 'supervisor_id');
     }
 
+    /** Who last recorded an LTMS check against this licence. */
+    public function licenseVerifiedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'license_verified_by');
+    }
+
     public function subordinates(): HasMany
     {
         return $this->hasMany(Employee::class, 'supervisor_id');
+    }
+
+    /**
+     * Money still coming off this person's pay.
+     *
+     * Approved by Core 3 (Benefits and Loans), amortised here — the two
+     * systems own different halves of the same fact, and only this one can
+     * take money off a payslip.
+     */
+    public function loans(): HasMany
+    {
+        return $this->hasMany(EmployeeLoan::class);
     }
 
     public function documents(): HasMany
@@ -116,7 +153,35 @@ class Employee extends Model
             ->when(
                 $filters['status'] ?? null,
                 fn (Builder $q, $value) => $q->where('status', $value),
+            )
+            ->when(
+                $filters['employment_category'] ?? null,
+                fn (Builder $q, $value) => $q->where('employment_category', $value),
+            )
+            ->when(
+                $filters['client_id'] ?? null,
+                fn (Builder $q, $value) => $q->where('client_id', $value),
             );
+    }
+
+    /**
+     * The wage region this employee is measured against.
+     *
+     * Their own posting wins where it is set; otherwise the client's site.
+     * Internal staff fall back to the agency's own region in
+     * `config('payroll.wage_regions.default')` — they are not deployed
+     * anywhere, so there is no client to inherit from.
+     */
+    public function wageRegion(): string
+    {
+        return $this->wage_region
+            ?: $this->client?->wage_region
+            ?: config('payroll.default_wage_region', 'NCR');
+    }
+
+    public function isExternal(): bool
+    {
+        return $this->employment_category === self::CATEGORY_EXTERNAL;
     }
 
     /** Next sequential employee number, e.g. PPM-2026-0007. */
@@ -143,6 +208,9 @@ class Employee extends Model
             'date_regularized' => 'date',
             'date_separated' => 'date',
             'license_expiry' => 'date',
+            // A timestamp, not a date: the recorded LTMS check is a moment
+            // somebody acted, and the staleness window is counted from it.
+            'license_verified_at' => 'datetime',
             'basic_salary' => 'decimal:2',
         ];
     }

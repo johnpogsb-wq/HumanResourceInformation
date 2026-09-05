@@ -6,6 +6,7 @@ import {
     Card,
     Field,
     Select,
+    MeterCard,
     StatCard,
     TBody,
     TD,
@@ -15,7 +16,7 @@ import {
     Table,
     TableEmpty,
 } from '@/Components/ui';
-import { formatDate, initials } from '@/lib/utils';
+import { formatDate, initials, withFilters } from '@/lib/utils';
 
 export default function Onboarding({ rows, summary, filters, departments }) {
     const applyFilter = (key, value) =>
@@ -25,31 +26,12 @@ export default function Onboarding({ rows, summary, filters, departments }) {
             { preserveState: true, preserveScroll: true, replace: true },
         );
 
-    const stats = [
-        {
-            label: 'Incomplete Files',
-            value: summary.incomplete,
-            icon: Users,
-            hint: 'Missing at least one requirement',
-        },
-        {
-            label: 'Stops Deployment',
-            value: summary.blocking,
-            icon: OctagonAlert,
-            hint: 'Contract, ID, clearance, or licence',
-        },
-        {
-            label: 'Missing Documents',
-            value: summary.missing_documents,
-            icon: FileWarning,
-        },
-        {
-            label: 'Missing Gov’t Numbers',
-            value: summary.missing_numbers,
-            icon: IdCard,
-            hint: 'Cannot be included in a filing',
-        },
-    ];
+    const drillTo = (changes) => withFilters('/hr/onboarding', filters, changes, ['blocking']);
+
+    // How much of the backlog actually stops somebody working, rather than
+    // merely being untidy. That split is the reading.
+    const blockingShare =
+        summary.incomplete > 0 ? (summary.blocking / summary.incomplete) * 100 : 0;
 
     return (
         <AppLayout
@@ -61,9 +43,49 @@ export default function Onboarding({ rows, summary, filters, departments }) {
             ]}
         >
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {stats.map((stat) => (
-                    <StatCard key={stat.label} {...stat} />
-                ))}
+                {/* Grey at zero: an empty 201-file screen means every file is
+                    complete, which is the outcome, not an absence of data. */}
+                <StatCard
+                    label="Incomplete Files"
+                    value={summary.incomplete}
+                    icon={Users}
+                    tone={summary.incomplete > 0 ? 'warning' : 'muted'}
+                    hint="missing at least one requirement"
+                    href={drillTo({})}
+                />
+
+                {/* The hard half. A missing contract or licence is not untidy
+                    paperwork — it is somebody who cannot lawfully be sent out. */}
+                <MeterCard
+                    label="Stops Deployment"
+                    value={summary.blocking}
+                    percent={blockingShare}
+                    badge={summary.incomplete > 0 ? `${Math.round(blockingShare)}%` : undefined}
+                    icon={OctagonAlert}
+                    tone="destructive"
+                    iconTone={summary.blocking > 0 ? 'destructive' : 'muted'}
+                    hint={`of ${summary.incomplete} incomplete`}
+                    href={drillTo({ blocking: '1' })}
+                />
+
+                <StatCard
+                    label="Missing Documents"
+                    value={summary.missing_documents}
+                    icon={FileWarning}
+                    tone={summary.missing_documents > 0 ? 'warning' : 'muted'}
+                    hint="across every incomplete file"
+                />
+
+                {/* Non-blocking on purpose: a missing government number does
+                    not stop somebody working, it stops the company filing for
+                    them — which Compliance catches later, when it is dearer. */}
+                <StatCard
+                    label="Missing Gov’t Numbers"
+                    value={summary.missing_numbers}
+                    icon={IdCard}
+                    tone={summary.missing_numbers > 0 ? 'info' : 'muted'}
+                    hint="cannot be included in a filing"
+                />
             </div>
 
             <Card>

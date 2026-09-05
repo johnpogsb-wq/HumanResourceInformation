@@ -6,6 +6,7 @@ import {
     Card,
     Field,
     Select,
+    MeterCard,
     StatCard,
     TBody,
     TD,
@@ -15,7 +16,7 @@ import {
     Table,
     TableEmpty,
 } from '@/Components/ui';
-import { formatDate, initials } from '@/lib/utils';
+import { formatDate, initials, withFilters } from '@/lib/utils';
 
 /** "in 12 days" reads faster than a date the reader has to subtract from today. */
 function countdown(days) {
@@ -36,37 +37,29 @@ export default function Credentials({
     const applyFilter = (key, value) => {
         router.get(
             '/hr/credentials',
-            { ...filters, [key]: value || undefined },
+            {
+                ...filters,
+                // The status dropdown drops the tile's  filter: the
+                // two cross, and leaving one behind ands them together.
+                ...(key === 'status' ? { blocking: undefined } : {}),
+                [key]: value || undefined,
+            },
             { preserveState: true, preserveScroll: true, replace: true },
         );
     };
 
-    const stats = [
-        {
-            label: 'Needs Attention',
-            value: summary.total,
-            icon: CalendarClock,
-            hint: 'Lapsed or inside its renewal window',
-        },
-        {
-            label: 'Already Expired',
-            value: summary.expired,
-            icon: ShieldX,
-            hint: 'No longer valid',
-        },
-        {
-            label: 'Expiring Soon',
-            value: summary.expiring,
-            icon: ShieldAlert,
-            hint: 'Still time to renew',
-        },
-        {
-            label: 'Stops Work',
-            value: summary.blocking,
-            icon: ShieldX,
-            hint: "Licence or medical — can't legally work",
-        },
-    ];
+    /*
+     * Clicking a figure opens the rows it counted. `status` and `blocking`
+     * cross rather than nest — a blocking document can be either expired or
+     * expiring — so one is cleared before the other is set.
+     */
+    const drillTo = (changes) =>
+        withFilters('/hr/credentials', filters, changes, ['status', 'blocking']);
+
+    // How much of the backlog has already lapsed rather than merely
+    // approaching. The share is the reading: 4 expired out of 5 is a different
+    // morning from 4 out of 60.
+    const lapsedShare = summary.total > 0 ? (summary.expired / summary.total) * 100 : 0;
 
     return (
         <AppLayout
@@ -78,9 +71,52 @@ export default function Credentials({
             ]}
         >
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {stats.map((stat) => (
-                    <StatCard key={stat.label} {...stat} />
-                ))}
+                {/* The whole backlog. Grey at zero, because an empty
+                    credentials screen is the good outcome — everything on file
+                    is current. */}
+                <StatCard
+                    label="Needs Attention"
+                    value={summary.total}
+                    icon={CalendarClock}
+                    tone={summary.total > 0 ? 'warning' : 'muted'}
+                    hint="lapsed or inside its renewal window"
+                    href={drillTo({})}
+                />
+
+                {/* Already lapsed, as a share of the backlog — the split
+                    between "too late" and "still time" is the whole reading. */}
+                <MeterCard
+                    label="Already Expired"
+                    value={summary.expired}
+                    percent={lapsedShare}
+                    badge={summary.total > 0 ? `${Math.round(lapsedShare)}%` : undefined}
+                    icon={ShieldX}
+                    tone="destructive"
+                    iconTone={summary.expired > 0 ? 'destructive' : 'muted'}
+                    hint={`of ${summary.total} needing attention`}
+                    href={drillTo({ status: 'expired' })}
+                />
+
+                <StatCard
+                    label="Expiring Soon"
+                    value={summary.expiring}
+                    icon={ShieldAlert}
+                    tone={summary.expiring > 0 ? 'warning' : 'muted'}
+                    hint="still time to renew"
+                    href={drillTo({ status: 'expiring' })}
+                />
+
+                {/* The hardest flag on the screen: a lapsed licence is not
+                    untidy paperwork, it is a driver who may not lawfully be
+                    dispatched. Destructive, not warning. */}
+                <StatCard
+                    label="Stops Work"
+                    value={summary.blocking}
+                    icon={ShieldX}
+                    tone={summary.blocking > 0 ? 'destructive' : 'muted'}
+                    hint="licence or medical — cannot legally work"
+                    href={drillTo({ blocking: '1' })}
+                />
             </div>
 
             <Card>

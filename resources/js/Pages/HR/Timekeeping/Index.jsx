@@ -1,26 +1,38 @@
 import { router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
-import { CalendarX, Clock, Plus, Timer, TriangleAlert, Upload, UserCheck } from 'lucide-react';
+import {
+    CalendarX,
+    Clock,
+    Plus,
+    Timer,
+    TriangleAlert,
+    Upload,
+    UserCheck,
+    X,
+} from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
     Button,
     Card,
+    DateInput,
     Field,
     Input,
     Modal,
     Pagination,
     Select,
+    MeterCard,
+    SplitStatCard,
     StatCard,
+    Table,
+    TableEmpty,
     TBody,
     TD,
     TH,
     THead,
     TR,
-    Table,
-    TableEmpty,
 } from '@/Components/ui';
-import { formatDate, initials } from '@/lib/utils';
+import { cn, formatDate, initials } from '@/lib/utils';
 
 const titleCase = (value) =>
     String(value ?? '')
@@ -36,6 +48,41 @@ const duration = (minutes) => {
 
     return hours > 0 ? `${hours}h ${rest}m` : `${rest}m`;
 };
+
+/**
+ * 1296.18 -> "1,296"; 69.63 -> "69.6".
+ *
+ * The stored figures carry two decimals because they are sums of minutes
+ * divided by 60, not because anyone needs hundredths of an hour. Below ten
+ * the first decimal still says something — 8.5 hours is half a shift — and
+ * above it the thousands separator does more for legibility than any digit
+ * to the right of the point.
+ */
+const hours = (value) => {
+    const number = Number(value) || 0;
+
+    return number >= 100
+        ? Math.round(number).toLocaleString()
+        : number.toFixed(1).replace(/\.0$/, '');
+};
+
+/**
+ * Filters the tiles can set that the dropdowns cannot show.
+ *
+ * Each one counts something no single status names — `attended` is three
+ * statuses, `late` is a column rather than a status — which is exactly why
+ * each needs a chip: a list narrowed by a filter with no visible control is
+ * a list nobody can explain.
+ *
+ * They narrow the same axis as `status`, so setting any one clears the rest.
+ */
+const TILE_FILTERS = [
+    { key: 'attended', label: 'Days present only', tone: 'success' },
+    { key: 'late', label: 'Late days only', tone: 'warning' },
+];
+
+/** The keys that cannot be combined — see TILE_FILTERS. */
+const EXCLUSIVE = ['status', ...TILE_FILTERS.map(({ key }) => key)];
 
 const BLANK_ENTRY = {
     employee_id: '',
@@ -84,7 +131,16 @@ export default function Index({
     const applyFilter = (key, value) => {
         router.get(
             '/hr/timekeeping',
-            { ...filters, [key]: value || undefined },
+            {
+                ...filters,
+                // Touching one exclusive control clears the others, for the
+                // same reason drillTo does: they narrow one axis, and leaving
+                // one behind quietly ands them together.
+                ...(EXCLUSIVE.includes(key)
+                    ? Object.fromEntries(EXCLUSIVE.map((k) => [k, undefined]))
+                    : {}),
+                [key]: value || undefined,
+            },
             { preserveState: true, preserveScroll: true, replace: true },
         );
     };
@@ -104,31 +160,34 @@ export default function Index({
     const rows = logs.data ?? [];
     const meta = logs.meta ?? {};
 
-    const stats = [
-        {
-            label: 'Days Present',
-            value: summary.present,
-            icon: UserCheck,
-            hint: `${summary.records} record(s) in range`,
-        },
-        {
-            label: 'Absences',
-            value: summary.absent,
-            icon: CalendarX,
-        },
-        {
-            label: 'Late Instances',
-            value: summary.late,
-            icon: TriangleAlert,
-            hint: `${duration(summary.late_minutes)} total`,
-        },
-        {
-            label: 'Overtime Hours',
-            value: summary.overtime_hours,
-            icon: Timer,
-            hint: `${summary.total_hours} hours worked`,
-        },
-    ];
+    /*
+     * Clicking a figure opens the rows it counted, inside the same date range.
+     *
+     * Carrying the filters through is the whole point: a tile that counted 53
+     * late days in March and then opened an unfiltered list has not answered
+     * the question it raised, it has replaced it.
+     */
+    const drillTo = (extra) => {
+        const params = new URLSearchParams(
+            Object.entries({
+                ...filters,
+                /*
+                 * Every exclusive key is cleared before the tile sets its own.
+                 * Without this, drilling into Late and then into Absences
+                 * would ask for both at once and return the days somebody was
+                 * absent *and* late — which is none of them.
+                 */
+                ...Object.fromEntries(EXCLUSIVE.map((key) => [key, undefined])),
+                ...extra,
+            }).filter(([, value]) => Boolean(value)),
+        );
+
+        return `/hr/timekeeping?${params.toString()}`;
+    };
+
+    // 157 of 205 is the reading that means something; 157 on its own is a
+    // number whose scale the reader has to go and find.
+    const attendanceRate = summary.records > 0 ? (summary.present / summary.records) * 100 : 0;
 
     return (
         <AppLayout
@@ -136,18 +195,71 @@ export default function Index({
             breadcrumbs={[{ label: 'Human Resource' }, { label: 'Timekeeping & Attendance' }]}
         >
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {stats.map((stat) => (
-                    <StatCard key={stat.label} {...stat} />
-                ))}
+                {/* Attendance as a share, because that is the question — "157
+                    present" says nothing until you know whether the range held
+                    160 records or 400. The bar does the arithmetic. */}
+                <MeterCard
+                    label="Days Present"
+                    value={summary.present}
+                    percent={attendanceRate}
+                    badge={`${Math.round(attendanceRate)}%`}
+                    icon={UserCheck}
+                    tone={attendanceRate >= 90 ? 'success' : 'warning'}
+                    iconTone="success"
+                    hint={`of ${summary.records} record(s) in range`}
+                    href={drillTo({ attended: '1' })}
+                />
+
+                {/* Warning, and grey at zero — "0 absent" in amber reads as a
+                    problem when it is the opposite. */}
+                <StatCard
+                    label="Absences"
+                    value={summary.absent}
+                    icon={CalendarX}
+                    tone={summary.absent > 0 ? 'warning' : 'muted'}
+                    hint={
+                        summary.records > 0
+                            ? `${((summary.absent / summary.records) * 100).toFixed(1)}% of the range`
+                            : undefined
+                    }
+                    href={drillTo({ status: 'absent' })}
+                />
+
+                <StatCard
+                    label="Late Instances"
+                    value={summary.late}
+                    icon={TriangleAlert}
+                    tone={summary.late > 0 ? 'warning' : 'muted'}
+                    hint={`${duration(summary.late_minutes)} lost in total`}
+                    /* `late`, not `status=late`: the tile counts late minutes,
+                       and a day marked `undertime` can carry them too. */
+                    href={drillTo({ late: '1' })}
+                />
+
+                {/* Two figures that only mean something beside each other —
+                    70 overtime hours is a different story against 1,296 worked
+                    than against 200. */}
+                <SplitStatCard
+                    label="Hours Worked"
+                    icon={Timer}
+                    tone="info"
+                    stats={[
+                        { label: 'Total', value: hours(summary.total_hours) },
+                        {
+                            label: 'Overtime',
+                            value: hours(summary.overtime_hours),
+                            tone: 'warning',
+                        },
+                    ]}
+                />
             </div>
 
             <Card>
                 <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:flex-wrap lg:items-end">
                     <Field label="From" className="w-full sm:w-40">
                         {({ id }) => (
-                            <Input
+                            <DateInput
                                 id={id}
-                                type="date"
                                 value={filters.from ?? ''}
                                 onChange={(event) => applyFilter('from', event.target.value)}
                             />
@@ -156,9 +268,8 @@ export default function Index({
 
                     <Field label="To" className="w-full sm:w-40">
                         {({ id }) => (
-                            <Input
+                            <DateInput
                                 id={id}
-                                type="date"
                                 value={filters.to ?? ''}
                                 onChange={(event) => applyFilter('to', event.target.value)}
                             />
@@ -213,6 +324,31 @@ export default function Index({
                             />
                         )}
                     </Field>
+
+                    {/* The filters with no control of their own.
+                        Both are set by the tiles above and match something no
+                        single status names, so no dropdown here can show
+                        them — and a list silently narrowed by something
+                        invisible is the worst of both. These say the filter is
+                        on and give it an off switch. */}
+                    {TILE_FILTERS.filter(({ key }) => filters[key]).map(
+                        ({ key, label, tone }) => (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => applyFilter(key, '')}
+                                className={cn(
+                                    'flex h-9 shrink-0 items-center gap-1.5 self-end rounded-full border px-3 text-xs font-medium transition-colors',
+                                    tone === 'warning'
+                                        ? 'border-warning/30 bg-warning/10 text-warning hover:bg-warning/20'
+                                        : 'border-success/30 bg-success/10 text-success hover:bg-success/20',
+                                )}
+                            >
+                                {label}
+                                <X className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                        ),
+                    )}
 
                     {/* Actions end the filter row: `lg:ml-auto` pushes them
                         right of the last filter, and the row's `items-end`
@@ -387,9 +523,8 @@ export default function Index({
 
                         <Field label="Date" required error={entry.errors.log_date}>
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={entry.data.log_date}
                                     onChange={(event) =>
                                         entry.setData('log_date', event.target.value)

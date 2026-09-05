@@ -31,6 +31,18 @@ class CredentialController extends Controller
             'status' => $request->query('status'),
             'type' => $request->query('type'),
             'department_id' => $request->query('department_id'),
+
+            /*
+             * Set by the "Stops Work" tile, and not a status.
+             *
+             * A document blocks because of its *type* — a licence, a medical —
+             * and it can be either already expired or merely expiring, so the
+             * count crosses the status filter rather than sitting inside it.
+             * Without a key of its own the tile could not open the rows it
+             * counted, which is the only thing that makes a figure worth
+             * clicking.
+             */
+            'blocking' => $request->query('blocking'),
         ];
 
         $credentials = $this->scanner->scan($this->scopedQuery($request));
@@ -47,6 +59,10 @@ class CredentialController extends Controller
         $filtered = $credentials
             ->when($filters['status'], fn ($rows, $value) => $rows->where('status', $value))
             ->when($filters['type'], fn ($rows, $value) => $rows->where('type', $value))
+            ->when(
+                filter_var($filters['blocking'], FILTER_VALIDATE_BOOLEAN),
+                fn ($rows) => $rows->where('blocking', true),
+            )
             ->when(
                 $filters['department_id'],
                 fn ($rows, $value) => $rows->where(

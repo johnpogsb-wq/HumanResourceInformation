@@ -18,12 +18,27 @@ import {
     MeterCard,
     SplitStatCard,
     StatCard,
+    StatTile,
+    TilePreview,
+    TrendChart,
 } from '@/Components/ui';
 import { cn, formatCurrency, formatDate, initials } from '@/lib/utils';
 
 /** Fixed order, never cycled — the set is only validated for four slots. */
 const SERIES = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4'];
 const SERIES_TEXT = ['text-chart-1', 'text-chart-2', 'text-chart-3', 'text-chart-4'];
+
+/**
+ * First point to last, for the badge beside the trend chart.
+ *
+ * Null rather than zero when there is nothing to compare — a badge reading
+ * "+0" on a one-point series claims a stability that was never measured.
+ */
+function trendDelta(series) {
+    if (!Array.isArray(series) || series.length < 2) return null;
+
+    return (Number(series.at(-1).value) || 0) - (Number(series[0].value) || 0);
+}
 
 /**
  * Where a percentage sits on the good -> bad ramp.
@@ -190,24 +205,52 @@ function StatusDonut({ data }) {
 export default function Dashboard({
     statistics,
     headcountByDepartment,
+    headcountTrend,
     statusMix,
     recentHires,
     attendanceToday,
     approvals,
     payroll,
     leaveToday,
+    leaveSummary,
+    payrollSummary,
+    onboardingSummary,
+    can,
 }) {
+    const headcountChange = statistics.headcount_change ?? 0;
+
+    // Company-wide summaries arrive as null for a role that may not read them,
+    // so the card is never drawn empty — it is simply not there.
+    const companyCards = [leaveSummary, payrollSummary].filter(Boolean).length;
+
     return (
         <AppLayout title="Dashboard" breadcrumbs={[{ label: 'Overview' }]}>
             {/* Headline figures */}
-            <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mb-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+                {/* Each tile links to the screen its figure came from, so a
+                    number that raises a question is one click from its
+                    answer. */}
                 <StatCard
+                    floating
+                    href="/hr/employees"
                     label="Total Employees"
                     value={statistics.total}
                     icon={Users}
                     hint={`${statistics.active} active · ${statistics.probationary} probationary`}
+                    // Only shown when it moved — an arrow reading "0" every day
+                    // is a line the eye learns to skip.
+                    trend={
+                        headcountChange === 0
+                            ? undefined
+                            : {
+                                  direction: headcountChange > 0 ? 'up' : 'down',
+                                  label: `${headcountChange > 0 ? '+' : ''}${headcountChange} in the last 30 days`,
+                              }
+                    }
                 />
                 <StatCard
+                    floating
+                    href="/hr/timekeeping"
                     label="Present Today"
                     value={attendanceToday.present}
                     icon={UserCheck}
@@ -217,6 +260,8 @@ export default function Dashboard({
                 {/* Being on approved leave is not a fault, so this stays
                     informational rather than a warning. */}
                 <StatCard
+                    floating
+                    href="/hr/leave"
                     label="On Leave Today"
                     value={leaveToday.count}
                     icon={CalendarDays}
@@ -224,17 +269,28 @@ export default function Dashboard({
                     hint={leaveToday.count > 0 ? leaveToday.summary : 'Nobody is away'}
                 />
                 <StatCard
+                    floating
+                    href="/hr/payroll"
                     label="Latest Payroll"
-                    value={formatCurrency(payroll.total_net)}
+                    // The company's total net is HR's figure. An employee gets
+                    // the tile with an em dash rather than a tile that is
+                    // missing, so the grid keeps its four columns.
+                    value={can?.viewCompanyFigures ? formatCurrency(payroll.total_net) : '—'}
                     icon={Wallet}
                     tone="primary"
-                    hint={payroll.period ?? 'No payroll run yet'}
+                    hint={
+                        can?.viewCompanyFigures
+                            ? (payroll.period ?? 'No payroll run yet')
+                            : 'Visible to HR'
+                    }
                 />
             </div>
 
             {/* Operational detail */}
-            <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mb-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
                 <SplitStatCard
+                    floating
+                    href="/hr/timekeeping"
                     label="Today's Attendance"
                     icon={Clock}
                     tone="success"
@@ -246,6 +302,8 @@ export default function Dashboard({
                 />
 
                 <MeterCard
+                    floating
+                    href="/hr/timekeeping/reports"
                     label="Attendance Rate"
                     value={`${attendanceToday.rate}%`}
                     percent={attendanceToday.rate}
@@ -258,6 +316,8 @@ export default function Dashboard({
                 {/* The bar takes the band's own colour, so the meter and the
                     badge cannot disagree about how the score reads. */}
                 <MeterCard
+                    floating
+                    href="/hr/performance"
                     label="Avg Performance"
                     value={statistics.average_rating?.toFixed(2) ?? '—'}
                     percent={((statistics.average_rating ?? 0) / 5) * 100}
@@ -270,7 +330,13 @@ export default function Dashboard({
 
                 {/* Anything waiting on a decision is a warning, not a fault —
                     and each drops to grey at zero, so an empty queue is quiet. */}
+                {/* The one tile that spans three modules. Leave is where most
+                    of the queue sits and where an approver goes first, so it
+                    is the destination — the other two are a click further on
+                    rather than unreachable. */}
                 <SplitStatCard
+                    floating
+                    href="/hr/leave"
                     label="Awaiting Approval"
                     icon={CalendarClock}
                     tone="warning"
@@ -283,27 +349,228 @@ export default function Dashboard({
             </div>
 
             {/* Charts */}
-            <div className="mb-4 grid gap-4 lg:grid-cols-3">
-                <Card className="lg:col-span-2">
+            <div className="mb-5 grid gap-5 lg:grid-cols-3">
+                <Card floating className="lg:col-span-2">
                     <CardHeader
-                        title="Active Headcount by Department"
-                        description="Employees with an active record."
+                        title="Headcount Trend"
+                        description="Active employees at each month end."
+                        action={
+                            trendDelta(headcountTrend) === null ? undefined : (
+                                <Badge
+                                    variant={
+                                        trendDelta(headcountTrend) >= 0
+                                            ? 'success'
+                                            : 'destructive'
+                                    }
+                                >
+                                    {trendDelta(headcountTrend) >= 0 ? '+' : ''}
+                                    {trendDelta(headcountTrend)} over 12 months
+                                </Badge>
+                            )
+                        }
                     />
                     <CardBody>
-                        <HeadcountChart data={headcountByDepartment} />
+                        <TrendChart data={headcountTrend} valueLabel="Active headcount" />
                     </CardBody>
                 </Card>
 
-                <Card>
-                    <CardHeader title="Employment Status" description="Across all records." />
+                <Card floating>
+                    <CardHeader
+                        title="Employment Status"
+                        description="Across all records."
+                        action={
+                            <div className="text-right">
+                                <p className="text-xl font-semibold tabular-nums leading-none text-foreground">
+                                    {statistics.active}
+                                </p>
+                                <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                    Active
+                                </p>
+                            </div>
+                        }
+                    />
                     <CardBody>
                         <StatusDonut data={statusMix} />
                     </CardBody>
                 </Card>
             </div>
 
+            {/* Headcount by department keeps its own card — it is a different
+                question from the trend above (who, not when). */}
+            <div
+                className={cn(
+                    'mb-5 grid gap-5',
+                    companyCards === 0 ? 'lg:grid-cols-1' : 'lg:grid-cols-3',
+                )}
+            >
+                {leaveSummary && (
+                    <Card floating className="lg:col-span-1">
+                        <CardHeader
+                            title="Leave Requests"
+                            description="Filed this month."
+                            action={
+                                <Link
+                                    href="/hr/leave"
+                                    className="text-xs font-medium text-primary hover:underline"
+                                >
+                                    View all
+                                </Link>
+                            }
+                        />
+                        <CardBody>
+                            <div className="flex gap-2">
+                                <StatTile
+                                    label="Pending"
+                                    value={leaveSummary.pending}
+                                    tone="warning"
+                                />
+                                <StatTile
+                                    label="Approved"
+                                    value={leaveSummary.approved}
+                                    tone="success"
+                                />
+                                <StatTile
+                                    label="Rejected"
+                                    value={leaveSummary.rejected}
+                                    tone="destructive"
+                                />
+                            </div>
+
+                            <TilePreview
+                                icon={CalendarDays}
+                                tone="info"
+                                title={leaveSummary.latest?.title}
+                                subtitle={leaveSummary.latest?.subtitle}
+                                badge={
+                                    leaveSummary.latest && (
+                                        <Badge status={leaveSummary.latest.status} />
+                                    )
+                                }
+                                empty="No leave has been filed yet."
+                            />
+                        </CardBody>
+                    </Card>
+                )}
+
+                {payrollSummary && (
+                    <Card floating>
+                        <CardHeader
+                            title="Payroll"
+                            description="Runs by stage."
+                            action={
+                                <Link
+                                    href="/hr/payroll"
+                                    className="text-xs font-medium text-primary hover:underline"
+                                >
+                                    View all
+                                </Link>
+                            }
+                        />
+                        <CardBody>
+                            <div className="flex gap-2">
+                                <StatTile
+                                    label="Draft"
+                                    value={payrollSummary.draft}
+                                    tone="muted"
+                                />
+                                <StatTile
+                                    label="For Approval"
+                                    value={payrollSummary.for_approval}
+                                    tone="warning"
+                                />
+                                <StatTile
+                                    label="Released"
+                                    value={payrollSummary.released}
+                                    tone="success"
+                                />
+                            </div>
+
+                            <TilePreview
+                                icon={Wallet}
+                                tone="primary"
+                                title={payrollSummary.latest?.title}
+                                subtitle={payrollSummary.latest?.subtitle}
+                                badge={
+                                    payrollSummary.latest && (
+                                        <Badge status={payrollSummary.latest.status} />
+                                    )
+                                }
+                                empty="No payroll run yet."
+                            />
+                        </CardBody>
+                    </Card>
+                )}
+
+                <Card floating>
+                    <CardHeader
+                        title="201 File Health"
+                        description="What needs filing."
+                        action={
+                            <Link
+                                href="/hr/onboarding"
+                                className="text-xs font-medium text-primary hover:underline"
+                            >
+                                View all
+                            </Link>
+                        }
+                    />
+                    <CardBody>
+                        <div className="flex gap-2">
+                            <StatTile
+                                label="New Hires"
+                                value={onboardingSummary.new_hires}
+                                tone="info"
+                            />
+                            <StatTile
+                                label="Expiring"
+                                value={onboardingSummary.expiring}
+                                tone="warning"
+                            />
+                            <StatTile
+                                label="No Documents"
+                                value={onboardingSummary.without_documents}
+                                tone="destructive"
+                            />
+                        </div>
+
+                        <TilePreview
+                            icon={UserPlus}
+                            tone="success"
+                            title={onboardingSummary.latest?.title}
+                            subtitle={onboardingSummary.latest?.subtitle}
+                            badge={
+                                onboardingSummary.latest && (
+                                    <Badge status={onboardingSummary.latest.status} />
+                                )
+                            }
+                            empty="No employees on file yet."
+                        />
+                    </CardBody>
+                </Card>
+            </div>
+
+            <div className="mb-5">
+                <Card floating>
+                    <CardHeader
+                        title="Active Headcount by Department"
+                        description="Employees with an active record."
+                        action={
+                            <Link
+                                href="/hr/departments"
+                                className="text-xs font-medium text-primary hover:underline"
+                            >
+                                View departments
+                            </Link>
+                        }
+                    />
+                    <CardBody>
+                        <HeadcountChart data={headcountByDepartment} />
+                    </CardBody>
+                </Card>
+            </div>
+
             {/* Recent activity */}
-            <Card>
+            <Card floating>
                 <CardHeader
                     title="Recent Hires"
                     description="Latest five employees onboarded."

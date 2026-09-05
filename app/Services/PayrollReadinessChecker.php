@@ -52,6 +52,7 @@ class PayrollReadinessChecker
             $this->missingTimeOuts($period),
             $this->pendingOvertime($period),
             $this->employeesWithoutAttendance($period),
+            $this->ratesBelowRegionalMinimum(),
         ])->filter()->values();
 
         $blockers = $checks->where('severity', self::SEVERITY_BLOCKER)->count();
@@ -175,6 +176,67 @@ class PayrollReadinessChecker
      * @param  Collection<int, string|null>  $names
      * @return array<int, string>
      */
+    /**
+     * Daily rates sitting under the wage floor of the region the employee
+     * actually works in.
+     *
+     * There is no national minimum wage in the Philippines: each region's
+     * RTWPB issues its own order, which is what an agency's clients mean by a
+     * "provincial rate". A driver deployed in Davao is measured against Davao's
+     * floor, not Metro Manila's — so the check has to resolve the region per
+     * employee rather than compare everyone to one number.
+     *
+     * A **warning, never a blocker**, for two reasons. A rate can sit under a
+     * floor legitimately — a part-timer, an apprentice, a wage order the
+     * config has not caught up with — and the figures in `payroll.wage_regions`
+     * go stale the moment a board issues a new order. And refusing to run
+     * payroll over it would strand the very employees it is meant to protect
+     * unpaid, which is the wrong end of the problem.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function ratesBelowRegionalMinimum(): ?array
+    {
+        $regions = config('payroll.wage_regions', []);
+        $factor = (int) config('payroll.working_days_per_year', 261);
+
+        if ($regions === [] || $factor <= 0) {
+            return null;
+        }
+
+        $underpaid = Employee::query()
+            ->where('status', '!=', 'inactive')
+            ->where('basic_salary', '>', 0)
+            ->with('client:id,wage_region')
+            ->get()
+            ->filter(function (Employee $employee) use ($regions, $factor) {
+                $floor = $regions[$employee->wageRegion()]['daily_minimum'] ?? null;
+
+                if ($floor === null) {
+                    return false;
+                }
+
+                // The same derivation PayrollCalculator uses, so the two
+                // cannot disagree about what a monthly salary is per day.
+                return ((float) $employee->basic_salary * 12 / $factor) < (float) $floor;
+            });
+
+        if ($underpaid->isEmpty()) {
+            return null;
+        }
+
+        return $this->entry(
+            key: 'below_regional_minimum',
+            severity: self::SEVERITY_WARNING,
+            title: $underpaid->count().' below their regional wage floor',
+            detail: 'Their daily rate falls under the minimum wage for the region they work in. '
+                .'Check the current wage order — the rates in config/payroll.php go stale with every new one.',
+            actionLabel: 'Review salaries',
+            actionHref: '/hr/payroll/salaries',
+            employees: $this->names($underpaid->map(fn (Employee $employee) => $employee->full_name)),
+        );
+    }
+
     private function names(Collection $names): array
     {
         return $names->filter()->unique()->sort()->take(5)->values()->all();

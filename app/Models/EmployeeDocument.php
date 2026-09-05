@@ -15,6 +15,11 @@ class EmployeeDocument extends Model
         'resume',
         'government_id',
         'clearance',
+        // PSA civil registry: birth and marriage certificates, CENOMAR. Kept
+        // apart from `certificate`, which means a training or TESDA one — a
+        // birth certificate filed under that would sit in the wrong renewal
+        // window and read as a qualification.
+        'psa',
         'certificate',
         'medical',
         'drivers_license',

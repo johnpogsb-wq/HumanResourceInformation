@@ -74,6 +74,37 @@ class AttendanceLog extends Model
                 $filters['status'] ?? null,
                 fn (Builder $q, $value) => $q->where('status', $value),
             )
+            /*
+             * Days where somebody arrived late, which is *not* `status = late`.
+             * A record can be marked `undertime` and still carry late minutes —
+             * the status holds one label and the day can be two things at once.
+             *
+             * It exists so the "Late Instances" tile can link to the rows it
+             * counted: the summary counts `late_minutes > 0`, and a tile
+             * reading 53 that opens a list of 41 is worse than a tile that
+             * does not open at all.
+             */
+            ->when(
+                filter_var($filters['late'] ?? null, FILTER_VALIDATE_BOOLEAN),
+                fn (Builder $q) => $q->where('late_minutes', '>', 0),
+            )
+            /*
+             * Days somebody turned up, which is three statuses rather than one:
+             * arriving late or leaving early is still attendance, and
+             * `TimekeepingService::summary()` has always counted it that way.
+             *
+             * Without this the "Days Present" tile linked to `status=present`
+             * and opened 581 rows while reading 1,230 — the same class of
+             * mismatch as `late`, found the same way, by clicking it.
+             */
+            ->when(
+                filter_var($filters['attended'] ?? null, FILTER_VALIDATE_BOOLEAN),
+                fn (Builder $q) => $q->whereIn('status', [
+                    self::STATUS_PRESENT,
+                    self::STATUS_LATE,
+                    self::STATUS_UNDERTIME,
+                ]),
+            )
             ->when(
                 $filters['department_id'] ?? null,
                 fn (Builder $q, $value) => $q->whereHas(

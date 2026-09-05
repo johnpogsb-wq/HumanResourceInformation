@@ -39,6 +39,10 @@ class TimekeepingController extends Controller
             'employee_id' => $request->query('employee_id'),
             'department_id' => $request->query('department_id'),
             'status' => $request->query('status'),
+            // Set by the summary tiles, which count things no single status
+            // names — see AttendanceLog::scopeFilter for what each one means.
+            'late' => $request->query('late'),
+            'attended' => $request->query('attended'),
         ];
 
         $query = $this->timekeeping->scopedQuery($request->user())->filter($filters);

@@ -191,6 +191,25 @@ class AttendanceExceptionTest extends TestCase
         $this->get('/hr/timekeeping/exceptions')->assertRedirect('/login');
     }
 
+    /**
+     * Every test here files attendance a day or three back and then reads the
+     * screen with no date filter, which defaults to the current month
+     * (AttendanceExceptionController). On the 1st of a month "yesterday" is in
+     * the previous one, so the records land outside the range and the whole
+     * class goes red — for one day, on a system that is otherwise correct.
+     *
+     * It went unnoticed because it needs the calendar to catch it. Pinning
+     * "now" to mid-month removes the calendar from the equation; the tests
+     * still exercise the default range, they just no longer depend on which
+     * day the suite is run.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->travelTo(now()->startOfMonth()->addDays(14)->setTime(9, 0));
+    }
+
     private function hr(): User
     {
         return User::factory()->hrStaff()->create();

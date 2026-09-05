@@ -48,6 +48,26 @@ class StoreEmployeeRequest extends FormRequest
             'tin' => ['nullable', 'string', 'max:32'],
 
             // --- Employment ---
+            'employment_category' => ['required', Rule::in(Employee::CATEGORIES)],
+
+            /*
+             * An external employee is deployed somewhere by definition, and an
+             * internal one is deployed nowhere. Prohibited rather than merely
+             * ignored on internal staff: a stale client_id left behind when
+             * someone is brought in-house would keep them in that client's
+             * payroll grouping and on that client's headcount, which is a
+             * billing error nobody would think to look for.
+             */
+            'client_id' => [
+                Rule::requiredIf(fn () => $this->input('employment_category') === Employee::CATEGORY_EXTERNAL),
+                Rule::prohibitedIf(fn () => $this->input('employment_category') !== Employee::CATEGORY_EXTERNAL),
+                'nullable',
+                'exists:clients,id',
+            ],
+
+            // Overrides the client's own region for someone posted elsewhere.
+            'wage_region' => ['nullable', Rule::in(array_keys(config('payroll.wage_regions')))],
+
             'department_id' => ['nullable', 'exists:departments,id'],
             'position_id' => ['nullable', 'exists:positions,id'],
             'supervisor_id' => ['nullable', 'exists:employees,id'],
@@ -66,7 +86,13 @@ class StoreEmployeeRequest extends FormRequest
 
             // --- Fleet ---
             'drivers_license_number' => ['nullable', 'string', 'max:32'],
-            'license_restriction_codes' => ['nullable', 'string', 'max:32'],
+            // Checked against the card's own list rather than left free text —
+            // a DL code is the legal ceiling on what somebody may drive, so an
+            // invented one is a driver dispatched on a licence that does not
+            // cover the vehicle. LicenseVerifier reports the same thing on
+            // records that predate the rule.
+            'license_dl_codes' => ['nullable', 'string', 'max:32'],
+            'license_conditions' => ['nullable', 'string', 'max:32'],
             'license_expiry' => ['nullable', 'date'],
 
             'status' => ['required', Rule::in(Employee::STATUSES)],

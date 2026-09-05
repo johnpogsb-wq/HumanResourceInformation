@@ -1,6 +1,6 @@
-import { router, useForm } from '@inertiajs/react';
+import { useForm } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
-import { Pencil, Plus, Target, Trash2 } from 'lucide-react';
+import { Plus, Target } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
@@ -33,8 +33,7 @@ const BLANK = {
 };
 
 export default function Kpis({ kpis, departments, positions, can }) {
-    const [editing, setEditing] = useState(null);
-    const [pendingDelete, setPendingDelete] = useState(null);
+    const [creating, setCreating] = useState(false);
 
     const form = useForm(BLANK);
 
@@ -47,37 +46,22 @@ export default function Kpis({ kpis, departments, positions, can }) {
         );
     }, [positions, form.data.department_id]);
 
-    const open = (kpi) => {
+    const open = () => {
         form.clearErrors();
-        form.setData(
-            kpi === 'new'
-                ? BLANK
-                : {
-                      ...BLANK,
-                      ...kpi,
-                      department_id: kpi.department_id ?? '',
-                      position_id: kpi.position_id ?? '',
-                  },
-        );
-        setEditing(kpi);
+        form.setData(BLANK);
+        setCreating(true);
     };
 
     const submit = (event) => {
         event.preventDefault();
 
-        const done = {
+        form.post('/hr/performance/kpis', {
             preserveScroll: true,
             onSuccess: () => {
                 form.reset();
-                setEditing(null);
+                setCreating(false);
             },
-        };
-
-        if (editing === 'new') {
-            form.post('/hr/performance/kpis', done);
-        } else {
-            form.put(`/hr/performance/kpis/${editing.id}`, done);
-        }
+        });
     };
 
     return (
@@ -95,7 +79,7 @@ export default function Kpis({ kpis, departments, positions, can }) {
                     description="Scorecards are built from these. A KPI applies company-wide, to a department, or to a single position."
                     action={
                         can.manage && (
-                            <Button size="sm" onClick={() => open('new')}>
+                            <Button size="sm" onClick={open}>
                                 <Plus className="h-4 w-4" />
                                 New KPI
                             </Button>
@@ -112,14 +96,13 @@ export default function Kpis({ kpis, departments, positions, can }) {
                             <TH className="text-right">Default Weight</TH>
                             <TH className="text-right">In Use</TH>
                             <TH>Status</TH>
-                            {can.manage && <TH className="text-right">Actions</TH>}
                         </TR>
                     </THead>
 
                     <TBody>
                         {kpis.length === 0 ? (
                             <TableEmpty
-                                colSpan={can.manage ? 7 : 6}
+                                colSpan={6}
                                 icon={Target}
                                 title="No KPIs defined"
                                 description="Add KPIs before rolling out a review cycle — scorecards are built from this library."
@@ -168,29 +151,6 @@ export default function Kpis({ kpis, departments, positions, can }) {
                                     <TD>
                                         <Badge status={kpi.is_active ? 'active' : 'inactive'} />
                                     </TD>
-
-                                    {can.manage && (
-                                        <TD>
-                                            <div className="flex items-center justify-end gap-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => open(kpi)}
-                                                    aria-label={`Edit ${kpi.title}`}
-                                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                                                >
-                                                    <Pencil className="h-4 w-4" />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPendingDelete(kpi)}
-                                                    aria-label={`Delete ${kpi.title}`}
-                                                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </button>
-                                            </div>
-                                        </TD>
-                                    )}
                                 </TR>
                             ))
                         )}
@@ -199,9 +159,9 @@ export default function Kpis({ kpis, departments, positions, can }) {
             </Card>
 
             <Modal
-                show={Boolean(editing)}
-                onClose={() => setEditing(null)}
-                title={editing === 'new' ? 'New KPI' : 'Edit KPI'}
+                show={creating}
+                onClose={() => setCreating(false)}
+                title="New KPI"
                 description="Leave both department and position blank for a company-wide KPI."
                 maxWidth="2xl"
             >
@@ -341,7 +301,7 @@ export default function Kpis({ kpis, departments, positions, can }) {
                     </label>
 
                     <div className="flex justify-end gap-2 pt-2">
-                        <Button variant="outline" onClick={() => setEditing(null)}>
+                        <Button variant="outline" onClick={() => setCreating(false)}>
                             Cancel
                         </Button>
                         <Button type="submit" loading={form.processing}>
@@ -349,37 +309,6 @@ export default function Kpis({ kpis, departments, positions, can }) {
                         </Button>
                     </div>
                 </form>
-            </Modal>
-
-            <Modal
-                show={Boolean(pendingDelete)}
-                onClose={() => setPendingDelete(null)}
-                title="Delete this KPI?"
-                maxWidth="md"
-                footer={
-                    <>
-                        <Button variant="outline" onClick={() => setPendingDelete(null)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            variant="destructive"
-                            onClick={() =>
-                                router.delete(`/hr/performance/kpis/${pendingDelete.id}`, {
-                                    preserveScroll: true,
-                                    onFinish: () => setPendingDelete(null),
-                                })
-                            }
-                        >
-                            Delete
-                        </Button>
-                    </>
-                }
-            >
-                <p className="text-sm text-muted-foreground">
-                    <span className="font-medium text-foreground">{pendingDelete?.title}</span>{' '}
-                    will be deleted. If it already sits on a scorecard, it is deactivated
-                    instead so past reviews stay readable.
-                </p>
             </Modal>
         </AppLayout>
     );

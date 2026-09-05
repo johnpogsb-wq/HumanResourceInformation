@@ -6,12 +6,18 @@ use App\Http\Requests\StoreEmployeeDocumentRequest;
 use App\Http\Requests\StoreEmployeeRequest;
 use App\Http\Requests\UpdateEmployeeRequest;
 use App\Http\Resources\EmployeeResource;
+use App\Models\Client;
 use App\Models\Department;
+use App\Models\DocumentScan;
 use App\Models\Employee;
 use App\Models\EmployeeDocument;
+use App\Models\EmployeeEndorsement;
 use App\Models\Position;
+use App\Services\DataAccessLogger;
 use App\Services\DocumentScanner;
 use App\Services\EmployeeService;
+use App\Services\EndorsementService;
+use App\Services\LicenseVerifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -32,13 +38,19 @@ class EmployeeController extends Controller
         'date_hired', 'employment_status', 'status',
     ];
 
-    public function __construct(private readonly EmployeeService $employees) {}
+    public function __construct(
+        private readonly EmployeeService $employees,
+        private readonly EndorsementService $endorsements,
+    ) {}
 
     public function index(Request $request): Response
     {
         Gate::authorize('viewAny', Employee::class);
 
-        $filters = $request->only(['search', 'department_id', 'employment_status', 'status']);
+        $filters = $request->only([
+            'search', 'department_id', 'employment_status', 'status',
+            'employment_category', 'client_id',
+        ]);
 
         $sort = in_array($request->query('sort'), self::SORTABLE, true)
             ? $request->query('sort')
@@ -63,31 +75,117 @@ class EmployeeController extends Controller
                 ->append('data', 'id'),
             'statistics' => $this->employees->statistics($this->employees->scopedQuery($request->user())),
             'departments' => Department::orderBy('name')->get(['id', 'name']),
+            // Counted, not just listed: "how many are with this client" is the
+            // question the agency is actually asked, and putting it in the
+            // filter saves opening five screens to answer it.
+            'clients' => Client::withCount(['employees' => fn ($query) => $query->where('status', 'active')])
+                ->orderBy('name')
+                ->get(['id', 'name', 'code'])
+                ->map(fn (Client $client) => [
+                    'id' => $client->id,
+                    'name' => $client->name,
+                    'code' => $client->code,
+                    'employees_count' => $client->employees_count,
+                ]),
+            'categories' => Employee::CATEGORIES,
             'filters' => $filters,
             'sort' => ['key' => $sort, 'direction' => $direction],
             'can' => [
                 'create' => $request->user()->can('create', Employee::class),
+                'fileDocuments' => $request->user()->can('fileDocumentBatch', Employee::class),
             ],
         ]);
     }
 
-    public function create(Request $request): Response
+    /**
+     * The employee form — reached by accepting a Core 1 endorsement.
+     *
+     * There is no longer a free-standing "add anybody" door. PrimePower does
+     * not hire into this system directly: Core 1 recruits, sends the hire
+     * over, and somebody here approves it. Leaving the bare form reachable
+     * would have made that rule cosmetic — the endorsement queue would be one
+     * way in among two, and the second one keeps no record of who was accepted
+     * or why.
+     *
+     * Bulk import is the exception and stays open, because it is a different
+     * act: digitising a workforce that already exists is not hiring, and there
+     * is no endorsement for somebody who has worked here for six years.
+     */
+    public function create(Request $request): Response|RedirectResponse
     {
         Gate::authorize('create', Employee::class);
 
+        $endorsement = EmployeeEndorsement::find($request->integer('endorsement'));
+
+        if (! $endorsement) {
+            return redirect()
+                ->route('hr.endorsements.index')
+                ->with('info', 'New employees start from a Core 1 endorsement. Approve one here to open the form.');
+        }
+
+        // Re-asked at the form rather than trusted from the link: a decision
+        // already taken must not be re-taken, and the ability says so.
+        Gate::authorize('decide', $endorsement);
+
         return Inertia::render('HR/Employees/Create', [
             'options' => $this->formOptions(),
+
+            /*
+             * Read back from the row server-side. The link carries an id and
+             * nothing else about the person — the same shape as `scan_id` on a
+             * document upload, and for the same reason: a form must not be
+             * able to assert what it was given.
+             */
+            'endorsement' => [
+                'id' => $endorsement->id,
+                'reference' => $endorsement->reference,
+                'source' => $endorsement->source,
+                'full_name' => $endorsement->fullName(),
+                'position_title' => $endorsement->position_title,
+                'client_name' => $endorsement->client_name,
+            ],
+            'prefill' => $this->endorsements->formDefaults($endorsement),
+
+            'can' => [
+                // A dark feature is not a broken one: with no driver
+                // configured the button is never drawn and the endpoint 404s,
+                // exactly as on the document scanner.
+                'scanForm' => app(DocumentScanner::class)->isEnabled(),
+            ],
         ]);
     }
 
     public function store(StoreEmployeeRequest $request): RedirectResponse
     {
+        /*
+         * The endorsement being answered, re-read from the database and
+         * re-authorized. The form posts an id and nothing else about it, so
+         * what is approved is what this system stored at receipt rather than
+         * whatever the browser sends back — the same rule the document
+         * scanner's `scan_id` follows.
+         *
+         * Resolved *before* the employee is created so a stale or already
+         * decided endorsement fails here, rather than after a person has been
+         * put on the payroll with nothing to attach them to.
+         */
+        $endorsement = EmployeeEndorsement::find($request->integer('endorsement_id'));
+
+        if (! $endorsement) {
+            return redirect()
+                ->route('hr.endorsements.index')
+                ->with('info', 'New employees start from a Core 1 endorsement. Approve one here to open the form.');
+        }
+
+        Gate::authorize('decide', $endorsement);
+
         $employee = $this->employees->create(
             $request->validated(),
             $request->file('photo'),
         );
 
-        $message = "Employee {$employee->employee_number} created successfully.";
+        $this->endorsements->approve($endorsement, $employee, $request->user());
+
+        $message = "Employee {$employee->employee_number} created from endorsement {$endorsement->reference}.";
 
         if ($this->employees->generatedPassword) {
             $message .= " Temporary password: {$this->employees->generatedPassword}";
@@ -104,6 +202,7 @@ class EmployeeController extends Controller
 
         $employee->load([
             'department:id,name',
+            'client:id,code,name,wage_region',
             'position:id,title,department_id',
             'supervisor:id,first_name,middle_name,last_name,suffix',
             'documents.uploader:id,name',
@@ -111,21 +210,69 @@ class EmployeeController extends Controller
 
         return Inertia::render('HR/Employees/Show', [
             'employee' => new EmployeeResource($employee),
+            // Which document types the upload form should offer an expiry date
+            // for. Read from config rather than hard-coded in the component so
+            // the form and CredentialExpiryScanner cannot disagree about which
+            // documents are the ones that lapse.
+            'expiringTypes' => array_values(config('credentials.expiring_types', [])),
+            // The one list of document types. The upload form used to keep its
+            // own copy, which is a second place for `psa` to be forgotten.
+            'documentTypes' => EmployeeDocument::TYPES,
+
+            /*
+             * The types that carry no expiry at all, derived from the one
+             * place that states it rather than restated in the component. The
+             * scanner clears the field for these; this is what lets the panel
+             * say "Does not expire" instead of "Not found", which would read
+             * as a failed reading rather than as a fact about the document.
+             */
+            'neverExpires' => array_keys(array_filter(
+                config('scanner.type_cannot_have', []),
+                fn (array $fields) => in_array('expires_at', $fields, true),
+            )),
+            /*
+             * What can honestly be said about the licence.
+             *
+             * Split in two on purpose, and labelled as such on the screen:
+             * `checks` is structure this system verified itself, `verification`
+             * is a person's answer from the LTMS portal. LTO publishes no API
+             * to call, so the second half cannot be automated — and a green
+             * tick nobody can account for would be worse than none.
+             */
+            'licence' => [
+                'checks' => app(LicenseVerifier::class)->check($employee),
+                'verification' => array_merge(
+                    app(LicenseVerifier::class)->verificationState($employee),
+                    [
+                        'note' => $employee->license_verification_note,
+                        'at' => $employee->license_verified_at?->toDateString(),
+                        'by' => $employee->licenseVerifiedBy?->name,
+                    ],
+                ),
+                'dl_codes' => collect(app(LicenseVerifier::class)->dlCodes($employee))
+                    ->map(fn (string $code) => [
+                        'code' => $code,
+                        'label' => config("licenses.dl_codes.{$code}"),
+                    ])
+                    ->all(),
+                'conditions' => collect(explode(',', (string) $employee->license_conditions))
+                    ->map(fn (string $c) => trim($c))
+                    ->filter()
+                    ->map(fn (string $code) => [
+                        'code' => $code,
+                        'label' => config("licenses.conditions.{$code}"),
+                    ])
+                    ->values()
+                    ->all(),
+                'ltms_url' => config('licenses.ltms_url'),
+            ],
+
             'subordinates' => $employee->subordinates()
                 ->get(['id', 'first_name', 'middle_name', 'last_name', 'suffix', 'position_id'])
                 ->map(fn (Employee $sub) => [
                     'id' => $sub->id,
                     'full_name' => $sub->full_name,
                 ]),
-            'audits' => $request->user()->can('viewAudits', Employee::class)
-                ? $employee->audits()->with('user:id,name')->limit(20)->get()->map(fn ($audit) => [
-                    'id' => $audit->id,
-                    'event' => $audit->event,
-                    'user' => $audit->user?->name ?? 'System',
-                    'changes' => array_keys($audit->new_values ?? []),
-                    'created_at' => $audit->created_at->toIso8601String(),
-                ])
-                : [],
             'can' => [
                 'update' => $request->user()->can('update', $employee),
                 'delete' => $request->user()->can('delete', $employee),
@@ -171,7 +318,26 @@ class EmployeeController extends Controller
 
     public function storeDocument(StoreEmployeeDocumentRequest $request, Employee $employee): RedirectResponse
     {
-        $this->employees->storeDocument($employee, $request->validated(), $request->file('file'));
+        $document = $this->employees->storeDocument(
+            $employee,
+            $request->validated(),
+            $request->file('file'),
+        );
+
+        /*
+         * Close the measurement, if this upload answers one.
+         *
+         * Scoped to the employee whose record this is, so a scan id from
+         * somewhere else cannot attach a stranger's measurement to this
+         * document. Nothing about the proposal is taken from the request —
+         * only which row to complete.
+         */
+        if ($scanId = $request->integer('scan_id')) {
+            DocumentScan::where('employee_id', $employee->id)
+                ->whereNull('employee_document_id')
+                ->find($scanId)
+                ?->recordOutcome($document, $request->validated());
+        }
 
         return back()->with('success', 'Document uploaded.');
     }
@@ -198,11 +364,71 @@ class EmployeeController extends Controller
             'file' => ['required', 'file', 'max:10240', 'mimes:jpg,jpeg,png,webp'],
         ]);
 
+        $started = microtime(true);
         $result = $scanner->scan($request->file('file'), $employee);
+        $elapsed = (int) round((microtime(true) - $started) * 1000);
+
+        /*
+         * The proposal is recorded here, not when the upload succeeds.
+         *
+         * A scan the user then abandoned is a real outcome — usually the
+         * reading was poor enough to start over — and counting only the scans
+         * that ended in a filed document would flatter every figure on the
+         * accuracy screen. The row is written now and completed later, if
+         * there is a later.
+         *
+         * A failed call writes nothing: there is no proposal to measure, and
+         * a driver that is down is already logged where every other failure
+         * is.
+         */
+        $scan = $result === null ? null : DocumentScan::create([
+            'employee_id' => $employee->id,
+            'scanned_by' => $request->user()->id,
+            'driver' => (string) config('scanner.driver'),
+            'model' => (string) config('scanner.driver') === 'ollama'
+                ? config('scanner.ollama.model')
+                : config('scanner.'.config('scanner.driver').'.model', config('scanner.model')),
+            'duration_ms' => $elapsed,
+            'proposed' => $result,
+        ]);
 
         return response()->json([
             'scanned' => $result !== null,
             'fields' => $result,
+            // Returned so the upload that follows can say which proposal it
+            // is answering. It identifies a measurement, nothing more — the
+            // values themselves are read back from the row server-side, never
+            // from the form.
+            'scan_id' => $scan?->id,
+        ]);
+    }
+
+    /**
+     * Reads a filled-in paper 201 form and proposes the employee record.
+     *
+     * The counterpart to the CSV import: a spreadsheet arrives in bulk, a
+     * filing cabinet does not. Gated on `create` — proposing a record is a
+     * step towards creating one, and nothing else about it is privileged.
+     *
+     * Nothing is written. The Create form is filled, HR corrects it, and
+     * StoreEmployeeRequest validates the save exactly as it does a hand-typed
+     * one — the same shape as the document scanner it shares a driver with.
+     */
+    public function scanEmployeeForm(Request $request, DocumentScanner $scanner): JsonResponse
+    {
+        Gate::authorize('create', Employee::class);
+
+        abort_unless($scanner->isEnabled(), 404);
+
+        $request->validate([
+            'file' => ['required', 'file', 'max:10240', 'mimes:jpg,jpeg,png,webp'],
+        ]);
+
+        $fields = $scanner->scanEmployeeForm($request->file('file'));
+
+        return response()->json([
+            'scanned' => $fields !== null,
+            'fields' => $fields,
         ]);
     }
 
@@ -210,8 +436,11 @@ class EmployeeController extends Controller
      * Streams a 201-file document from the private disk after an authorization
      * check — these are never reachable by direct URL.
      */
-    public function downloadDocument(Employee $employee, EmployeeDocument $document): StreamedResponse
-    {
+    public function downloadDocument(
+        Employee $employee,
+        EmployeeDocument $document,
+        DataAccessLogger $access,
+    ): StreamedResponse {
         Gate::authorize('view', $employee);
 
         abort_if($document->employee_id !== $employee->id, 404);
@@ -219,6 +448,14 @@ class EmployeeController extends Controller
         $disk = Storage::disk(EmployeeService::DOCUMENT_DISK);
 
         abort_unless($disk->exists($document->file_path), 404);
+
+        // Logged after the checks, so a refused attempt is not recorded as an
+        // access — and before the stream, because a download that starts is a
+        // copy on someone's machine whether or not it finishes.
+        $access->accessed($document, 'download', [
+            'employee' => $employee->full_name,
+            'document' => $document->title,
+        ]);
 
         return $disk->download($document->file_path, $document->file_name);
     }
@@ -229,8 +466,11 @@ class EmployeeController extends Controller
      * link keeps forcing a download and neither can change the other by
      * accident. Behind the same `view` gate; these are still private files.
      */
-    public function previewDocument(Employee $employee, EmployeeDocument $document): StreamedResponse
-    {
+    public function previewDocument(
+        Employee $employee,
+        EmployeeDocument $document,
+        DataAccessLogger $access,
+    ): StreamedResponse {
         Gate::authorize('view', $employee);
 
         abort_if($document->employee_id !== $employee->id, 404);
@@ -238,6 +478,14 @@ class EmployeeController extends Controller
         $disk = Storage::disk(EmployeeService::DOCUMENT_DISK);
 
         abort_unless($disk->exists($document->file_path), 404);
+
+        // Recorded separately from a download: reading an ID on screen and
+        // taking a copy of it away are different acts, and the log should not
+        // flatten them into one word.
+        $access->accessed($document, 'preview', [
+            'employee' => $employee->full_name,
+            'document' => $document->title,
+        ]);
 
         return $disk->response($document->file_path, $document->file_name, [
             // Belt and braces: the stored mime type is what the browser is
@@ -259,6 +507,43 @@ class EmployeeController extends Controller
         return back()->with('success', 'Document deleted.');
     }
 
+    /**
+     * Records that somebody checked this licence on the LTMS portal.
+     *
+     * **LTO publishes no API an employer can call.** LTMS is citizen-facing —
+     * a holder signs in to manage their own licence — and the commercial
+     * "LTO verification APIs" that advertise otherwise are private wrappers
+     * whose data source the agency does not vouch for. So this endpoint does
+     * not verify anything itself; it records that a named person did, on a
+     * date, and what the portal told them.
+     *
+     * That is deliberately a weaker claim than a green tick, and a much
+     * stronger one than a green tick nobody can account for: the audit log
+     * carries who said it, and the note carries the portal's own words —
+     * "active", "suspended until March", and "no record found" are three
+     * different answers and only one of them is good news.
+     */
+    public function verifyLicense(Request $request, Employee $employee): RedirectResponse
+    {
+        Gate::authorize('update', $employee);
+
+        $validated = $request->validate([
+            'license_verification_note' => ['required', 'string', 'min:3', 'max:500'],
+        ], [
+            'license_verification_note.required' => 'Say what the LTMS portal showed.',
+        ]);
+
+        // Auditable records the change, so who checked and when survives on
+        // the row *and* in the log.
+        $employee->update([
+            'license_verified_at' => now(),
+            'license_verified_by' => $request->user()->id,
+            'license_verification_note' => $validated['license_verification_note'],
+        ]);
+
+        return back()->with('success', 'Licence check recorded.');
+    }
+
     /** Dropdown data shared by the create and edit forms. */
     private function formOptions(?int $excludeEmployeeId = null): array
     {
@@ -278,6 +563,30 @@ class EmployeeController extends Controller
             'employmentStatuses' => Employee::EMPLOYMENT_STATUSES,
             'statuses' => Employee::STATUSES,
             'documentTypes' => EmployeeDocument::TYPES,
+
+            /*
+             * The types that carry no expiry at all, derived from the one
+             * place that states it rather than restated in the component. The
+             * scanner clears the field for these; this is what lets the panel
+             * say "Does not expire" instead of "Not found", which would read
+             * as a failed reading rather than as a fact about the document.
+             */
+            'neverExpires' => array_keys(array_filter(
+                config('scanner.type_cannot_have', []),
+                fn (array $fields) => in_array('expires_at', $fields, true),
+            )),
+            'categories' => Employee::CATEGORIES,
+            'clients' => Client::where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'code', 'wage_region']),
+            // Offered on the form so someone posted away from their client's
+            // own site can be measured against the right regional floor.
+            'wageRegions' => collect(config('payroll.wage_regions'))
+                ->map(fn (array $region, string $key) => [
+                    'value' => $key,
+                    'label' => $region['label'],
+                ])
+                ->values(),
         ];
     }
 }

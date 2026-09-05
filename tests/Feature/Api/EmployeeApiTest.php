@@ -94,6 +94,7 @@ class EmployeeApiTest extends TestCase
             ->postJson('/api/v1/employees', [
                 'first_name' => 'Ana',
                 'last_name' => 'Reyes',
+                'employment_category' => 'internal',
                 'employment_status' => 'regular',
                 'employment_type' => 'full_time',
                 'date_hired' => '2026-03-01',

@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Card, CardBody, CardHeader, Field, Input, Select, Textarea } from '@/Components/ui';
+import {
+    Card,
+    CardBody,
+    CardHeader,
+    DateInput,
+    Field,
+    Input,
+    Select,
+    Textarea,
+} from '@/Components/ui';
 import { initials } from '@/lib/utils';
 
 const GENDERS = [
@@ -80,6 +89,15 @@ export default function EmployeeForm({
         );
     }, [options.positions, data.department_id]);
 
+    // Drives the wage-region hint: what the employee inherits if left blank.
+    const selectedClient = useMemo(
+        () =>
+            (options.clients ?? []).find(
+                (client) => String(client.id) === String(data.client_id),
+            ) ?? null,
+        [options.clients, data.client_id],
+    );
+
     const set = (field) => (event) => setData(field, event.target.value);
 
     return (
@@ -122,9 +140,8 @@ export default function EmployeeForm({
 
                 <Field label="Date of Birth" error={errors.birth_date}>
                     {({ id }) => (
-                        <Input
+                        <DateInput
                             id={id}
-                            type="date"
                             value={data.birth_date}
                             onChange={set('birth_date')}
                             error={errors.birth_date}
@@ -362,6 +379,89 @@ export default function EmployeeForm({
                 </Field>
             </Section>
 
+            {/* Ahead of Employment Details on purpose: whether someone is
+                agency staff or deployed decides what the rest of that section
+                even means, and it is the first thing HR knows about a hire. */}
+            <Section
+                title="Assignment"
+                description="Whether this person runs the agency or is deployed to a client."
+            >
+                <Field label="Staff Category" required error={errors.employment_category}>
+                    {({ id }) => (
+                        <Select
+                            id={id}
+                            value={data.employment_category}
+                            onChange={(event) => {
+                                const category = event.target.value;
+
+                                setData((current) => ({
+                                    ...current,
+                                    employment_category: category,
+                                    // Cleared rather than left behind: a stale
+                                    // client on someone brought in-house keeps
+                                    // them in that client's billing.
+                                    client_id: category === 'external' ? current.client_id : '',
+                                    wage_region:
+                                        category === 'external' ? current.wage_region : '',
+                                }));
+                            }}
+                            error={errors.employment_category}
+                            options={[
+                                { value: 'internal', label: 'Internal Staff (PrimePower)' },
+                                { value: 'external', label: 'External (Deployed to a client)' },
+                            ]}
+                        />
+                    )}
+                </Field>
+
+                {data.employment_category === 'external' && (
+                    <>
+                        <Field label="Client" required error={errors.client_id}>
+                            {({ id }) => (
+                                <Select
+                                    id={id}
+                                    value={data.client_id}
+                                    onChange={set('client_id')}
+                                    placeholder="Select client"
+                                    error={errors.client_id}
+                                    options={(options.clients ?? []).map((client) => ({
+                                        value: client.id,
+                                        label: `${client.name} (${client.code})`,
+                                    }))}
+                                />
+                            )}
+                        </Field>
+
+                        <Field
+                            label="Wage Region"
+                            error={errors.wage_region}
+                            hint={
+                                selectedClient?.wage_region
+                                    ? `Defaults to ${selectedClient.wage_region} — the client's own site. Set this only if posted elsewhere.`
+                                    : 'Only needed if posted away from the client site.'
+                            }
+                        >
+                            {({ id }) => (
+                                <Select
+                                    id={id}
+                                    value={data.wage_region}
+                                    onChange={set('wage_region')}
+                                    placeholder={
+                                        selectedClient?.wage_region
+                                            ? `Use client's (${selectedClient.wage_region})`
+                                            : "Use client's region"
+                                    }
+                                    options={(options.wageRegions ?? []).map((region) => ({
+                                        value: region.value,
+                                        label: region.label,
+                                    }))}
+                                />
+                            )}
+                        </Field>
+                    </>
+                )}
+            </Section>
+
             <Section
                 title="Employment Details"
                 description="Position, reporting line, and tenure."
@@ -463,9 +563,8 @@ export default function EmployeeForm({
 
                 <Field label="Date Hired" required error={errors.date_hired}>
                     {({ id }) => (
-                        <Input
+                        <DateInput
                             id={id}
-                            type="date"
                             value={data.date_hired}
                             onChange={set('date_hired')}
                             error={errors.date_hired}
@@ -475,9 +574,8 @@ export default function EmployeeForm({
 
                 <Field label="Date Regularized" error={errors.date_regularized}>
                     {({ id }) => (
-                        <Input
+                        <DateInput
                             id={id}
-                            type="date"
                             value={data.date_regularized}
                             onChange={set('date_regularized')}
                             error={errors.date_regularized}
@@ -487,9 +585,8 @@ export default function EmployeeForm({
 
                 <Field label="Date Separated" error={errors.date_separated}>
                     {({ id }) => (
-                        <Input
+                        <DateInput
                             id={id}
-                            type="date"
                             value={data.date_separated}
                             onChange={set('date_separated')}
                             error={errors.date_separated}
@@ -574,22 +671,50 @@ export default function EmployeeForm({
                     )}
                 </Field>
 
-                <Field label="Restriction Codes" error={errors.license_restriction_codes}>
+                {/* DL Codes, not "Restriction Codes". The numeric restriction
+                    scheme (1–8) is retired; a card issued today prints letter
+                    codes in a panel headed "I. DL CODES", and they are the
+                    legal ceiling on what the holder may drive — code A alone
+                    is a motorcycle licence, and putting that driver on a truck
+                    is the same class of problem as dispatching a lapsed one. */}
+                <Field
+                    label="DL Codes"
+                    hint="What they may drive. A, A1, B, B1, B2, C, D, BE, CE."
+                    error={errors.license_dl_codes}
+                >
                     {({ id }) => (
                         <Input
                             id={id}
-                            value={data.license_restriction_codes}
-                            onChange={set('license_restriction_codes')}
-                            placeholder="e.g. 1,2,3"
+                            value={data.license_dl_codes}
+                            onChange={set('license_dl_codes')}
+                            placeholder="e.g. B,C"
+                        />
+                    )}
+                </Field>
+
+                {/* The card's second panel. Condition 4 is the one that
+                    reaches scheduling: a driver restricted to daylight cannot
+                    lawfully take a night run, which Deployment Readiness says
+                    out loud. */}
+                <Field
+                    label="Conditions"
+                    hint="1 lenses · 2 special equipment · 3 customized vehicle · 4 daylight only · 5 hearing aid"
+                    error={errors.license_conditions}
+                >
+                    {({ id }) => (
+                        <Input
+                            id={id}
+                            value={data.license_conditions}
+                            onChange={set('license_conditions')}
+                            placeholder="Leave blank for NONE"
                         />
                     )}
                 </Field>
 
                 <Field label="License Expiry" error={errors.license_expiry}>
                     {({ id }) => (
-                        <Input
+                        <DateInput
                             id={id}
-                            type="date"
                             value={data.license_expiry}
                             onChange={set('license_expiry')}
                         />

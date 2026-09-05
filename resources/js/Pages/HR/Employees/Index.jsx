@@ -1,6 +1,16 @@
 import { Link, router, WhenVisible } from '@inertiajs/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarClock, Loader2, Plus, UserCheck, Users, UserX } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+    Building2,
+    CalendarClock,
+    Inbox,
+    Loader2,
+    ScanLine,
+    UserCheck,
+    Users,
+    UserX,
+    Upload,
+} from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
@@ -8,6 +18,7 @@ import {
     Button,
     SearchInput,
     Select,
+    MeterCard,
     StatCard,
     TBody,
     TD,
@@ -17,7 +28,7 @@ import {
     Table,
     TableEmpty,
 } from '@/Components/ui';
-import { formatDate, initials } from '@/lib/utils';
+import { formatDate, initials, withFilters } from '@/lib/utils';
 
 const titleCase = (value) =>
     String(value)
@@ -33,7 +44,16 @@ const EMPLOYMENT_STATUSES = [
     'terminated',
 ];
 
-export default function Index({ employees, statistics, departments, filters, sort, can }) {
+export default function Index({
+    employees,
+    statistics,
+    departments,
+    clients,
+    filters,
+    sort,
+    can,
+    pendingEndorsements = 0,
+}) {
     const [search, setSearch] = useState(filters.search ?? '');
     const isFirstRender = useRef(true);
 
@@ -79,15 +99,19 @@ export default function Index({ employees, statistics, departments, filters, sor
     const meta = employees.meta ?? {};
     const hasMore = (meta.current_page ?? 1) < (meta.last_page ?? 1);
 
-    const stats = useMemo(
-        () => [
-            { label: 'Total Employees', value: statistics.total, icon: Users },
-            { label: 'Active', value: statistics.active, icon: UserCheck },
-            { label: 'On Leave', value: statistics.on_leave, icon: CalendarClock },
-            { label: 'Probationary', value: statistics.probationary, icon: UserX },
-        ],
-        [statistics],
-    );
+    /*
+     * Clicking a figure opens the rows it counted, keeping whatever the
+     * screen is already narrowed to. `status` and `employment_status` are
+     * cleared together: they are two dropdowns over the same list, and a tile
+     * that set one while leaving the other behind would return the people who
+     * are both — usually nobody.
+     */
+    const drillTo = (changes) =>
+        withFilters('/hr/employees', filters, changes, ['status', 'employment_status']);
+
+    // 38 of 41 is the reading; 38 on its own is a number whose scale the
+    // reader has to go and find.
+    const activeRate = statistics.total > 0 ? (statistics.active / statistics.total) * 100 : 0;
 
     return (
         <AppLayout
@@ -95,9 +119,52 @@ export default function Index({ employees, statistics, departments, filters, sor
             breadcrumbs={[{ label: 'Human Resource' }, { label: 'Employee Information' }]}
         >
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {stats.map((stat) => (
-                    <StatCard key={stat.label} {...stat} />
-                ))}
+                {/* The whole list. Clicking it clears the narrowing filters
+                    rather than adding one — it is the way back out. */}
+                <StatCard
+                    label="Total Employees"
+                    value={statistics.total}
+                    icon={Users}
+                    tone="primary"
+                    hint={filters.search ? 'matching this search' : 'on the books'}
+                    href={drillTo({})}
+                />
+
+                {/* A share, because "38 active" says nothing until you know
+                    whether the roster is 41 or 400. */}
+                <MeterCard
+                    label="Active"
+                    value={statistics.active}
+                    percent={activeRate}
+                    badge={`${Math.round(activeRate)}%`}
+                    icon={UserCheck}
+                    tone={activeRate >= 90 ? 'success' : 'warning'}
+                    iconTone="success"
+                    hint={`of ${statistics.total} on the books`}
+                    href={drillTo({ status: 'active' })}
+                />
+
+                {/* Info, not warning — an approved absence is not a fault.
+                    Grey at zero, like every other tile in the system. */}
+                <StatCard
+                    label="On Leave"
+                    value={statistics.on_leave}
+                    icon={CalendarClock}
+                    tone={statistics.on_leave > 0 ? 'info' : 'muted'}
+                    hint="away today, still on the roster"
+                    href={drillTo({ status: 'on_leave' })}
+                />
+
+                {/* Not a problem, a clock: every one of these is a
+                    regularisation date somebody has to act on. */}
+                <StatCard
+                    label="Probationary"
+                    value={statistics.probationary}
+                    icon={UserX}
+                    tone={statistics.probationary > 0 ? 'warning' : 'muted'}
+                    hint="awaiting regularisation"
+                    href={drillTo({ employment_status: 'probationary' })}
+                />
             </div>
 
             <Card>
@@ -112,6 +179,38 @@ export default function Index({ employees, statistics, departments, filters, sor
                     </div>
 
                     <div className="flex flex-1 flex-wrap gap-2 lg:justify-end">
+                        {/* The agency split comes first: it is the widest cut
+                            of the workforce, and the client filter beside it
+                            only means anything for external staff. */}
+                        <Select
+                            value={filters.employment_category ?? ''}
+                            onChange={(event) =>
+                                applyFilter('employment_category', event.target.value)
+                            }
+                            placeholder="All staff"
+                            className="w-full sm:w-40"
+                            aria-label="Filter by internal or external"
+                            options={[
+                                { value: 'internal', label: 'Internal Staff' },
+                                { value: 'external', label: 'External (Deployed)' },
+                            ]}
+                        />
+
+                        <Select
+                            value={filters.client_id ?? ''}
+                            onChange={(event) => applyFilter('client_id', event.target.value)}
+                            placeholder="All clients"
+                            className="w-full sm:w-52"
+                            aria-label="Filter by client"
+                            options={clients.map((client) => ({
+                                value: client.id,
+                                // The headcount is the figure the agency is
+                                // asked for; showing it here saves opening the
+                                // filter five times to compare.
+                                label: `${client.name} (${client.employees_count})`,
+                            }))}
+                        />
+
                         <Select
                             value={filters.department_id ?? ''}
                             onChange={(event) =>
@@ -153,10 +252,46 @@ export default function Index({ employees, statistics, departments, filters, sor
                             ]}
                         />
 
+                        {/* Two ways in, beside each other: a spreadsheet of a
+                            workforce that already exists, and a stack of scans
+                            for the files they arrive with. Splitting them
+                            across the screen would make the bulk paths look
+                            like separate features rather than the same act at
+                            scale.
+
+                            There is no "Add Employee" beside them any more.
+                            PrimePower does not hire into this system directly —
+                            Core 1 recruits and sends the hire over, and it is
+                            approved on the endorsements screen. Leaving a
+                            direct button here would have been a second way in
+                            that keeps no record of who accepted the person or
+                            why, which is the whole thing the handover exists to
+                            record. Import stays because digitising a workforce
+                            that already works here is not hiring: there is no
+                            endorsement for somebody on their sixth year. */}
                         {can.create && (
-                            <Button href="/hr/employees/create">
-                                <Plus className="h-4 w-4" />
-                                Add Employee
+                            <Button variant="outline" href="/hr/employees/import">
+                                <Upload className="h-4 w-4" />
+                                Import
+                            </Button>
+                        )}
+
+                        {can.fileDocuments && (
+                            <Button variant="outline" href="/hr/employees/documents/batch">
+                                <ScanLine className="h-4 w-4" />
+                                File Scans
+                            </Button>
+                        )}
+
+                        {can.create && (
+                            <Button href="/hr/endorsements">
+                                <Inbox className="h-4 w-4" />
+                                New Hires
+                                {pendingEndorsements > 0 && (
+                                    <span className="ml-0.5 grid min-w-5 place-items-center rounded-full bg-primary-foreground/20 px-1.5 text-[11px] font-semibold leading-5">
+                                        {pendingEndorsements}
+                                    </span>
+                                )}
                             </Button>
                         )}
                     </div>
@@ -168,7 +303,7 @@ export default function Index({ employees, statistics, departments, filters, sor
                             <TH sortKey="employee_number" sort={sort} onSort={applySort}>
                                 Employee
                             </TH>
-                            <TH>Department</TH>
+                            <TH>Assignment</TH>
                             <TH>Position</TH>
                             <TH sortKey="employment_status" sort={sort} onSort={applySort}>
                                 Employment
@@ -221,8 +356,28 @@ export default function Index({ employees, statistics, departments, filters, sor
                                             </Link>
                                         </TD>
 
-                                        <TD className="text-sm text-muted-foreground">
-                                            {employee.department?.name ?? '—'}
+                                        {/* One column, two meanings: an
+                                            internal employee belongs to a
+                                            department, a deployed one belongs
+                                            to a client. Showing both as
+                                            separate columns would leave one
+                                            of them blank on every row. */}
+                                        <TD className="text-sm">
+                                            {employee.client ? (
+                                                <span className="flex items-center gap-1.5">
+                                                    <Building2
+                                                        className="h-3.5 w-3.5 shrink-0 text-primary"
+                                                        aria-hidden="true"
+                                                    />
+                                                    <span className="truncate text-foreground">
+                                                        {employee.client.name}
+                                                    </span>
+                                                </span>
+                                            ) : (
+                                                <span className="text-muted-foreground">
+                                                    {employee.department?.name ?? '—'}
+                                                </span>
+                                            )}
                                         </TD>
 
                                         <TD className="text-sm text-muted-foreground">

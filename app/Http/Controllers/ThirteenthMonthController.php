@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PayrollRun;
 use App\Models\Payslip;
+use App\Services\DataAccessLogger;
 use App\Services\ThirteenthMonthCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -48,12 +49,17 @@ class ThirteenthMonthController extends Controller
         ]);
     }
 
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request, DataAccessLogger $access): StreamedResponse
     {
         Gate::authorize('viewAny', PayrollRun::class);
 
         $year = (int) $request->query('year', Carbon::now()->year);
         $built = $this->calculator->build($this->payslips($year));
+
+        $access->exported('13th-month', Payslip::class, [
+            'year' => $year,
+            'employees' => count($built['rows'] ?? []),
+        ]);
 
         return response()->streamDownload(function () use ($built) {
             $handle = fopen('php://output', 'w');

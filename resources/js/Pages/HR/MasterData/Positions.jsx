@@ -1,6 +1,6 @@
 import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
-import { Briefcase, Pencil, Plus, Trash2, TriangleAlert, Users } from 'lucide-react';
+import { Briefcase, Plus, TriangleAlert, Users } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
@@ -12,6 +12,7 @@ import {
     Modal,
     SearchInput,
     Select,
+    MeterCard,
     StatCard,
     TBody,
     TD,
@@ -47,51 +48,27 @@ function Band({ min, max }) {
 }
 
 export default function Positions({ positions, filters, departments, summary }) {
-    // null | 'new' | the position being edited
-    const [modal, setModal] = useState(null);
-    const [pendingDelete, setPendingDelete] = useState(null);
+    const [creating, setCreating] = useState(false);
 
     const form = useForm(BLANK);
 
-    const open = (position = 'new') => {
+    const open = () => {
         form.clearErrors();
-        form.setData(
-            position === 'new'
-                ? BLANK
-                : {
-                      ...BLANK,
-                      ...position,
-                      salary_grade: position.salary_grade ?? '',
-                      min_salary: position.min_salary ?? '',
-                      max_salary: position.max_salary ?? '',
-                  },
-        );
-        setModal(position);
+        form.setData(BLANK);
+        setCreating(true);
     };
 
     const submit = (event) => {
         event.preventDefault();
 
-        const done = {
+        form.post('/hr/positions', {
             preserveScroll: true,
             onSuccess: () => {
                 form.reset();
-                setModal(null);
+                setCreating(false);
             },
-        };
-
-        if (modal === 'new') {
-            form.post('/hr/positions', done);
-        } else {
-            form.put(`/hr/positions/${modal.id}`, done);
-        }
-    };
-
-    const confirmDelete = () =>
-        router.delete(`/hr/positions/${pendingDelete.id}`, {
-            preserveScroll: true,
-            onSuccess: () => setPendingDelete(null),
         });
+    };
 
     const filter = (key, value) =>
         router.get(
@@ -100,9 +77,7 @@ export default function Positions({ positions, filters, departments, summary }) 
             { preserveState: true, preserveScroll: true, replace: true },
         );
 
-    // A position with people in it is deactivated, not deleted, so their
-    // history keeps its job title.
-    const inUse = pendingDelete ? pendingDelete.employees_count > 0 : false;
+    const activeRate = summary.total > 0 ? (summary.active / summary.total) * 100 : 0;
 
     return (
         <AppLayout
@@ -118,16 +93,30 @@ export default function Positions({ positions, filters, departments, summary }) 
                     label="Positions"
                     value={summary.total}
                     icon={Briefcase}
-                    tone="primary"
-                    hint={`${summary.active} active`}
+                    tone={summary.total > 0 ? 'primary' : 'muted'}
+                    hint="job titles on the org chart"
                 />
-                <StatCard label="Active" value={summary.active} icon={Users} tone="success" />
+
+                <MeterCard
+                    label="Active"
+                    value={summary.active}
+                    percent={activeRate}
+                    badge={summary.total > 0 ? `${Math.round(activeRate)}%` : undefined}
+                    icon={Users}
+                    tone="success"
+                    iconTone="success"
+                    hint={`of ${summary.total} — the rest are deactivated, not deleted`}
+                />
+
+                {/* Counted, not flagged as an error: a band is optional and
+                    advisory. But a rate keyed against a bandless position has
+                    nothing to be compared to, which is worth seeing. */}
                 <StatCard
                     label="Without a Salary Band"
                     value={summary.without_band}
                     icon={TriangleAlert}
-                    tone="warning"
-                    hint="A rate keyed here has nothing to check against"
+                    tone={summary.without_band > 0 ? 'info' : 'muted'}
+                    hint="a rate keyed here has nothing to check against"
                 />
             </div>
 
@@ -136,8 +125,8 @@ export default function Positions({ positions, filters, departments, summary }) 
                     title="Positions"
                     description="Job titles inside a department. Salaries & Adjustments flags a rate that falls outside the band — it never blocks it."
                     action={
-                        <div className="flex gap-2">
-                            <div className="w-52">
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                            <div className="w-full sm:w-52">
                                 <SearchInput
                                     defaultValue={filters.search ?? ''}
                                     onChange={(event) => filter('search', event.target.value)}
@@ -151,13 +140,13 @@ export default function Positions({ positions, filters, departments, summary }) 
                                     filter('department_id', event.target.value)
                                 }
                                 aria-label="Filter by department"
-                                className="w-44"
+                                className="w-full sm:w-44"
                                 options={[
                                     { value: '', label: 'All departments' },
                                     ...departments,
                                 ]}
                             />
-                            <Button onClick={() => open('new')}>
+                            <Button onClick={open}>
                                 <Plus className="h-4 w-4" />
                                 New Position
                             </Button>
@@ -175,14 +164,13 @@ export default function Positions({ positions, filters, departments, summary }) 
                             <TH>Salary Band</TH>
                             <TH className="text-right">Employees</TH>
                             <TH>Status</TH>
-                            <TH />
                         </TR>
                     </THead>
 
                     <TBody>
                         {positions.length === 0 ? (
                             <TableEmpty
-                                colSpan={8}
+                                colSpan={7}
                                 icon={Briefcase}
                                 title={
                                     filters.search || filters.department_id
@@ -222,26 +210,6 @@ export default function Positions({ positions, filters, departments, summary }) 
                                             {position.is_active ? 'Active' : 'Inactive'}
                                         </Badge>
                                     </TD>
-                                    <TD className="text-right">
-                                        <div className="flex justify-end gap-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => open(position)}
-                                                className="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
-                                                aria-label={`Edit ${position.title}`}
-                                            >
-                                                <Pencil className="h-4 w-4" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setPendingDelete(position)}
-                                                className="rounded p-1 text-muted-foreground transition-colors hover:text-destructive"
-                                                aria-label={`Delete ${position.title}`}
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </button>
-                                        </div>
-                                    </TD>
                                 </TR>
                             ))
                         )}
@@ -250,18 +218,18 @@ export default function Positions({ positions, filters, departments, summary }) 
             </Card>
 
             <Modal
-                show={modal !== null}
-                onClose={() => setModal(null)}
-                title={modal === 'new' ? 'New position' : 'Edit position'}
+                show={creating}
+                onClose={() => setCreating(false)}
+                title="New position"
                 description="The salary band is advisory — HR pays outside it deliberately often enough that enforcing it would be wrong."
                 maxWidth="2xl"
                 footer={
                     <>
-                        <Button variant="secondary" onClick={() => setModal(null)}>
+                        <Button variant="secondary" onClick={() => setCreating(false)}>
                             Cancel
                         </Button>
                         <Button onClick={submit} disabled={form.processing}>
-                            {modal === 'new' ? 'Create' : 'Save'}
+                            Create
                         </Button>
                     </>
                 }
@@ -341,27 +309,6 @@ export default function Positions({ positions, filters, departments, summary }) 
                     </label>
                 </form>
             </Modal>
-
-            <Modal
-                show={pendingDelete !== null}
-                onClose={() => setPendingDelete(null)}
-                title={inUse ? 'Deactivate this position?' : 'Delete this position?'}
-                description={
-                    inUse
-                        ? `${pendingDelete?.employees_count} employee(s) hold ${pendingDelete?.title}, so it is deactivated rather than deleted — their history keeps the title.`
-                        : `${pendingDelete?.title} has nobody in it and will be removed.`
-                }
-                footer={
-                    <>
-                        <Button variant="secondary" onClick={() => setPendingDelete(null)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={confirmDelete}>
-                            {inUse ? 'Deactivate' : 'Delete'}
-                        </Button>
-                    </>
-                }
-            />
         </AppLayout>
     );
 }

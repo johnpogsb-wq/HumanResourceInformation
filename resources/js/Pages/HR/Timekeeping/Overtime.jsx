@@ -6,22 +6,24 @@ import {
     Badge,
     Button,
     Card,
+    DateInput,
     Field,
     Input,
     Modal,
     Pagination,
     Select,
+    MeterCard,
     StatCard,
+    Table,
+    TableEmpty,
     TBody,
     TD,
+    Textarea,
     TH,
     THead,
     TR,
-    Table,
-    TableEmpty,
-    Textarea,
 } from '@/Components/ui';
-import { formatDate, initials } from '@/lib/utils';
+import { formatDate, initials, withFilters } from '@/lib/utils';
 
 const titleCase = (value) =>
     String(value ?? '')
@@ -88,17 +90,11 @@ export default function Overtime({
     const rows = requests.data ?? [];
     const meta = requests.meta ?? {};
 
-    const stats = [
-        { label: 'Total Requests', value: summary.total, icon: Clock3 },
-        { label: 'Pending', value: summary.pending, icon: Hourglass },
-        { label: 'Approved', value: summary.approved, icon: CheckCircle2 },
-        {
-            label: 'Approved Hours',
-            value: summary.approved_hours,
-            icon: Timer,
-            hint: 'What payroll will pay',
-        },
-    ];
+    // Clicking a figure opens the rows it counted, keeping the employee filter.
+    const drillTo = (changes) =>
+        withFilters('/hr/timekeeping/overtime', filters, changes, ['status']);
+
+    const approvalRate = summary.total > 0 ? (summary.approved / summary.total) * 100 : 0;
 
     return (
         <AppLayout
@@ -110,9 +106,47 @@ export default function Overtime({
             ]}
         >
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {stats.map((stat) => (
-                    <StatCard key={stat.label} {...stat} />
-                ))}
+                <StatCard
+                    label="Total Requests"
+                    value={summary.total}
+                    icon={Clock3}
+                    tone="primary"
+                    hint="filed so far"
+                    href={drillTo({})}
+                />
+
+                {/* The queue. Attendance records overtime raw; nothing here is
+                    paid until one of these is decided, so a number sitting in
+                    this tile is money nobody has ruled on. */}
+                <StatCard
+                    label="Pending"
+                    value={summary.pending}
+                    icon={Hourglass}
+                    tone={summary.pending > 0 ? 'warning' : 'muted'}
+                    hint={summary.pending > 0 ? 'unpaid until decided' : 'nothing waiting'}
+                    href={drillTo({ status: 'pending' })}
+                />
+
+                <MeterCard
+                    label="Approved"
+                    value={summary.approved}
+                    percent={approvalRate}
+                    badge={`${Math.round(approvalRate)}%`}
+                    icon={CheckCircle2}
+                    tone="success"
+                    iconTone="success"
+                    hint={`of ${summary.total} filed`}
+                    href={drillTo({ status: 'approved' })}
+                />
+
+                <StatCard
+                    label="Approved Hours"
+                    value={summary.approved_hours}
+                    icon={Timer}
+                    tone={summary.approved_hours > 0 ? 'info' : 'muted'}
+                    hint="what payroll will pay"
+                    href={drillTo({ status: 'approved' })}
+                />
             </div>
 
             <Card>
@@ -316,9 +350,8 @@ export default function Overtime({
                     <div className="grid gap-4 sm:grid-cols-3">
                         <Field label="Date" required error={form.errors.date}>
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={form.data.date}
                                     onChange={(event) =>
                                         form.setData('date', event.target.value)

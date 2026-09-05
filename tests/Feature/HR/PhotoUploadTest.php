@@ -4,6 +4,7 @@ namespace Tests\Feature\HR;
 
 use App\Models\Department;
 use App\Models\Employee;
+use App\Models\EmployeeEndorsement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -109,9 +110,14 @@ class PhotoUploadTest extends TestCase
     private function payload(array $overrides = []): array
     {
         return array_merge([
+            // Employees are created by approving a Core 1 endorsement — the
+            // form has no other way in. A fresh one per call, because one
+            // endorsement becomes one employee and a decided one is closed.
+            'endorsement_id' => EmployeeEndorsement::factory()->create()->id,
             'first_name' => 'Juan',
             'last_name' => 'Dela Cruz',
             'nationality' => 'Filipino',
+            'employment_category' => 'internal',
             'employment_status' => 'probationary',
             'employment_type' => 'full_time',
             'date_hired' => '2026-01-15',

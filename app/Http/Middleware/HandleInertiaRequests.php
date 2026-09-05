@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\EmployeeDocument;
+use App\Models\EmployeeEndorsement;
 use App\Models\Setting;
 use App\Services\CredentialExpiryScanner;
 use App\Services\EmployeeService;
@@ -44,6 +45,11 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
+                // Neither a success nor a failure — an explanation. A redirect
+                // that lands somewhere the user did not ask for needs to say
+                // why, and dressing that in a green tick claims something was
+                // accomplished when nothing was.
+                'info' => fn () => $request->session()->get('info'),
             ],
             // Per-row failures from a bulk import, surfaced on the page that
             // triggered it rather than squeezed into a toast.
@@ -72,6 +78,37 @@ class HandleInertiaRequests extends Middleware
                     ),
                 )
                 : 0,
+
+            /*
+             * Hires Core 1 has sent that nobody has answered yet.
+             *
+             * Gated on the ability rather than merely counted, because the
+             * figure is company-wide: a supervisor being told "4 waiting" for a
+             * queue they cannot open is a leak of hiring activity dressed up as
+             * a badge. Zero for everyone else, which draws no badge at all.
+             *
+             * Lazy like the two above, so guests and API calls never run it.
+             */
+            'pendingEndorsements' => fn () => $request->user()?->can('viewAny', EmployeeEndorsement::class)
+                ? EmployeeEndorsement::pending()->count()
+                : 0,
+
+            /*
+             * The idle sign-out, in the browser's terms.
+             *
+             * Read from config rather than restated in JS so the countdown on
+             * the screen and the expiry on the server are the same number.
+             * Two copies would drift the first time one was tuned, and the
+             * failure would be silent in the direction that matters: a screen
+             * counting down from ten against a session that died at five.
+             *
+             * Not lazy, unlike the badges above — it is needed on every
+             * authenticated page render and costs nothing.
+             */
+            'idle' => [
+                'timeout' => (int) config('session.lifetime') * 60,
+                'warnAfter' => (int) config('session.idle_warning'),
+            ],
         ];
     }
 }

@@ -1,6 +1,6 @@
 import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
-import { Building2, Pencil, Plus, Trash2, UserX, Users } from 'lucide-react';
+import { Building2, Plus, UserX, Users } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
@@ -11,6 +11,7 @@ import {
     Input,
     Modal,
     SearchInput,
+    MeterCard,
     StatCard,
     TBody,
     TD,
@@ -25,45 +26,27 @@ import {
 const BLANK = { code: '', name: '', description: '', is_active: true };
 
 export default function Departments({ departments, filters, summary }) {
-    // null | 'new' | the department being edited
-    const [modal, setModal] = useState(null);
-    const [pendingDelete, setPendingDelete] = useState(null);
+    const [creating, setCreating] = useState(false);
 
     const form = useForm(BLANK);
 
-    const open = (department = 'new') => {
+    const open = () => {
         form.clearErrors();
-        form.setData(
-            department === 'new'
-                ? BLANK
-                : { ...BLANK, ...department, description: department.description ?? '' },
-        );
-        setModal(department);
+        form.setData(BLANK);
+        setCreating(true);
     };
 
     const submit = (event) => {
         event.preventDefault();
 
-        const done = {
+        form.post('/hr/departments', {
             preserveScroll: true,
             onSuccess: () => {
                 form.reset();
-                setModal(null);
+                setCreating(false);
             },
-        };
-
-        if (modal === 'new') {
-            form.post('/hr/departments', done);
-        } else {
-            form.put(`/hr/departments/${modal.id}`, done);
-        }
-    };
-
-    const confirmDelete = () =>
-        router.delete(`/hr/departments/${pendingDelete.id}`, {
-            preserveScroll: true,
-            onSuccess: () => setPendingDelete(null),
         });
+    };
 
     const search = (value) =>
         router.get(
@@ -72,11 +55,7 @@ export default function Departments({ departments, filters, summary }) {
             { preserveState: true, preserveScroll: true, replace: true },
         );
 
-    // A department with people or positions filed under it cannot be removed
-    // outright — say so on the button rather than after the click.
-    const inUse = pendingDelete
-        ? pendingDelete.employees_count > 0 || pendingDelete.positions_count > 0
-        : false;
+    const activeRate = summary.total > 0 ? (summary.active / summary.total) * 100 : 0;
 
     return (
         <AppLayout
@@ -87,21 +66,37 @@ export default function Departments({ departments, filters, summary }) {
                 { label: 'Departments' },
             ]}
         >
+            {/* No drill-down here, deliberately: the whole table is on the
+                screen below, so a tile that filtered it would hide rows the
+                reader can already see. These are a summary, not a way in. */}
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
                 <StatCard
                     label="Departments"
                     value={summary.total}
                     icon={Building2}
-                    tone="primary"
-                    hint={`${summary.active} active`}
+                    tone={summary.total > 0 ? 'primary' : 'muted'}
+                    hint="in the org chart"
                 />
-                <StatCard label="Active" value={summary.active} icon={Users} tone="success" />
+
+                <MeterCard
+                    label="Active"
+                    value={summary.active}
+                    percent={activeRate}
+                    badge={summary.total > 0 ? `${Math.round(activeRate)}%` : undefined}
+                    icon={Users}
+                    tone="success"
+                    iconTone="success"
+                    hint={`of ${summary.total} — the rest are deactivated, not deleted`}
+                />
+
+                {/* Not an error: a department with nobody in it is usually
+                    newly added. Worth seeing, not worth alarming about. */}
                 <StatCard
                     label="Without Employees"
                     value={summary.empty}
                     icon={UserX}
-                    tone="warning"
-                    hint="Newly added, or left behind"
+                    tone={summary.empty > 0 ? 'info' : 'muted'}
+                    hint="newly added, or left behind"
                 />
             </div>
 
@@ -110,8 +105,8 @@ export default function Departments({ departments, filters, summary }) {
                     title="Departments"
                     description="Employee records, KPI scoping, and payroll reporting all group by these."
                     action={
-                        <div className="flex gap-2">
-                            <div className="w-56">
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                            <div className="w-full sm:w-56">
                                 <SearchInput
                                     defaultValue={filters.search ?? ''}
                                     onChange={(event) => search(event.target.value)}
@@ -119,7 +114,7 @@ export default function Departments({ departments, filters, summary }) {
                                     aria-label="Search departments"
                                 />
                             </div>
-                            <Button onClick={() => open('new')}>
+                            <Button onClick={open}>
                                 <Plus className="h-4 w-4" />
                                 New Department
                             </Button>
@@ -135,14 +130,13 @@ export default function Departments({ departments, filters, summary }) {
                             <TH className="text-right">Employees</TH>
                             <TH className="text-right">Positions</TH>
                             <TH>Status</TH>
-                            <TH />
                         </TR>
                     </THead>
 
                     <TBody>
                         {departments.length === 0 ? (
                             <TableEmpty
-                                colSpan={6}
+                                colSpan={5}
                                 icon={Building2}
                                 title={
                                     filters.search
@@ -182,26 +176,6 @@ export default function Departments({ departments, filters, summary }) {
                                             {department.is_active ? 'Active' : 'Inactive'}
                                         </Badge>
                                     </TD>
-                                    <TD className="text-right">
-                                        <div className="flex justify-end gap-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => open(department)}
-                                                className="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
-                                                aria-label={`Edit ${department.name}`}
-                                            >
-                                                <Pencil className="h-4 w-4" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setPendingDelete(department)}
-                                                className="rounded p-1 text-muted-foreground transition-colors hover:text-destructive"
-                                                aria-label={`Delete ${department.name}`}
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </button>
-                                        </div>
-                                    </TD>
                                 </TR>
                             ))
                         )}
@@ -210,17 +184,17 @@ export default function Departments({ departments, filters, summary }) {
             </Card>
 
             <Modal
-                show={modal !== null}
-                onClose={() => setModal(null)}
-                title={modal === 'new' ? 'New department' : 'Edit department'}
+                show={creating}
+                onClose={() => setCreating(false)}
+                title="New department"
                 description="The code is normalised to upper case and must be unique."
                 footer={
                     <>
-                        <Button variant="secondary" onClick={() => setModal(null)}>
+                        <Button variant="secondary" onClick={() => setCreating(false)}>
                             Cancel
                         </Button>
                         <Button onClick={submit} disabled={form.processing}>
-                            {modal === 'new' ? 'Create' : 'Save'}
+                            Create
                         </Button>
                     </>
                 }
@@ -276,27 +250,6 @@ export default function Departments({ departments, filters, summary }) {
                     </label>
                 </form>
             </Modal>
-
-            <Modal
-                show={pendingDelete !== null}
-                onClose={() => setPendingDelete(null)}
-                title={inUse ? 'Deactivate this department?' : 'Delete this department?'}
-                description={
-                    inUse
-                        ? `${pendingDelete?.name} has records filed against it, so it is deactivated rather than deleted — the history keeps its department.`
-                        : `${pendingDelete?.name} has nothing filed against it and will be removed.`
-                }
-                footer={
-                    <>
-                        <Button variant="secondary" onClick={() => setPendingDelete(null)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={confirmDelete}>
-                            {inUse ? 'Deactivate' : 'Delete'}
-                        </Button>
-                    </>
-                }
-            />
         </AppLayout>
     );
 }

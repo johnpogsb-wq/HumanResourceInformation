@@ -49,18 +49,30 @@ export default function ThirteenthMonth({ rows, totals, filters, years, deadline
             }
         >
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
-                <StatCard label="Employees" value={totals.employees} icon={Users} />
+                <StatCard
+                    label="Employees"
+                    value={totals.employees}
+                    icon={Users}
+                    tone={totals.employees > 0 ? 'primary' : 'muted'}
+                    hint={`with earnings in ${filters.year}`}
+                />
+
                 <StatCard
                     label="Basic Salary Earned"
                     value={formatCurrency(totals.basic_earned)}
                     icon={Wallet}
-                    hint={`Across ${filters.year}`}
+                    tone={totals.basic_earned > 0 ? 'info' : 'muted'}
+                    hint="lateness and unpaid leave already taken off"
                 />
+
+                {/* The figure that has to be paid by 24 December. Primary, not
+                    a warning — it is an obligation, not a fault. */}
                 <StatCard
                     label="Total 13th-Month Pay"
                     value={formatCurrency(totals.amount)}
                     icon={Wallet}
-                    hint="Basic earned ÷ 12"
+                    tone={totals.amount > 0 ? 'primary' : 'muted'}
+                    hint="basic earned ÷ 12"
                 />
             </div>
 
@@ -94,7 +106,7 @@ export default function ThirteenthMonth({ rows, totals, filters, years, deadline
                             value={String(filters.year)}
                             onChange={(event) => changeYear(event.target.value)}
                             aria-label="Filter by year"
-                            className="w-32"
+                            className="w-full sm:w-32"
                             options={years.map((year) => ({
                                 value: String(year),
                                 label: String(year),

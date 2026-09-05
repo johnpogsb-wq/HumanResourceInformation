@@ -5,13 +5,15 @@ import {
     ArrowLeft,
     CheckCircle2,
     Download,
+    ExternalLink,
     Eye,
     FileText,
-    History,
     Loader2,
+    MinusCircle,
     Pencil,
     Plus,
     ScanLine,
+    ShieldCheck,
     Trash2,
     TriangleAlert,
 } from 'lucide-react';
@@ -22,43 +24,49 @@ import {
     Card,
     CardBody,
     CardHeader,
+    DateInput,
     Field,
     Input,
     Modal,
     Select,
+    Table,
+    TableEmpty,
     TBody,
     TD,
+    Textarea,
     TH,
     THead,
     TR,
-    Table,
-    TableEmpty,
-    Textarea,
 } from '@/Components/ui';
 import { cn, formatCurrency, formatDate, initials } from '@/lib/utils';
-
-const DOCUMENT_TYPES = [
-    'contract',
-    'resume',
-    'government_id',
-    'clearance',
-    'certificate',
-    'medical',
-    'drivers_license',
-    'other',
-];
 
 const titleCase = (value) =>
     String(value ?? '')
         .replace(/[_-]/g, ' ')
         .replace(/\b\w/g, (character) => character.toUpperCase());
 
-const TABS = [
+/**
+ * The whole 201 file is on one page — these are jump links, not tabs. The
+ * record used to be split four ways, which meant checking whether someone's
+ * licence was on file was a click away from the licence number itself.
+ */
+const SECTIONS = [
     { id: 'overview', label: 'Overview' },
     { id: 'employment', label: 'Employment' },
     { id: 'documents', label: 'Documents' },
-    { id: 'audit', label: 'Audit Trail' },
 ];
+
+/** Groups the cards that have no single card title of their own. */
+function SectionHeading({ id, title }) {
+    return (
+        <h2
+            id={id}
+            className="mb-3 scroll-mt-6 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+        >
+            {title}
+        </h2>
+    );
+}
 
 function DetailRow({ label, value, className }) {
     return (
@@ -69,6 +77,95 @@ function DetailRow({ label, value, className }) {
     );
 }
 
+/**
+ * One value the scanner read.
+ *
+ * A field it looked for and did not find is shown as "Not found" rather than
+ * hidden: the difference between "the scanner missed this" and "the scanner
+ * never looks at this" is the difference between checking the document again
+ * and not bothering.
+ */
+function ScanField({ label, value, filled = false, mono = false }) {
+    return (
+        <div className="flex items-baseline gap-2 px-3 py-1.5">
+            <dt className="w-20 shrink-0 text-xs text-muted-foreground">{label}</dt>
+            <dd
+                className={cn(
+                    'min-w-0 flex-1 break-words text-xs',
+                    value ? 'text-foreground' : 'italic text-muted-foreground/70',
+                    mono && value && 'font-mono',
+                )}
+            >
+                {value || 'Not found'}
+            </dd>
+            {/* Which values landed in the form. Without this the panel and the
+                fields above it look like two unrelated readings of the same
+                document. */}
+            {filled && (
+                <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Filled in
+                </span>
+            )}
+        </div>
+    );
+}
+
+/**
+ * How the document's type was decided, in the order the server tries them.
+ *
+ * Shown because "this is a Clearance" and "this is a Clearance because its own
+ * heading says so" are different claims, and only the second is worth refusing
+ * an upload over. Saying which one it is lets HR judge the machine rather than
+ * take it on faith.
+ */
+const TYPE_SOURCES = {
+    stored_number: 'its number is already on this employee’s file',
+    heading: 'the heading printed on it',
+    number_format: 'the shape of its number',
+    validity: 'how long it is valid for',
+    model: 'the scanner’s best guess',
+};
+/** One verdict. `state` is the meaning; the icon and colour follow from it. */
+function ScanCheck({ state, children }) {
+    const Icon =
+        state === 'ok' ? CheckCircle2 : state === 'unknown' ? MinusCircle : TriangleAlert;
+
+    return (
+        <p
+            className={cn(
+                'flex items-start gap-1.5 text-xs',
+                state === 'ok' && 'text-success',
+                state === 'bad' && 'text-destructive',
+                state === 'note' && 'text-warning',
+                state === 'unknown' && 'text-muted-foreground',
+            )}
+        >
+            <Icon className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0">{children}</span>
+        </p>
+    );
+}
+
+/**
+ * How a recorded LTMS check reads.
+ *
+ * "Due again" rather than "expired": a verification does not lapse the way a
+ * licence does. A licence can be suspended the day after somebody looked at
+ * it, so the date says nobody has checked in a year — not that the licence is
+ * now invalid.
+ */
+const VERIFICATION_LABELS = {
+    verified: 'Checked',
+    stale: 'Due again',
+    unverified: 'Never checked',
+};
+
+const VERIFICATION_TONES = {
+    verified: 'success',
+    stale: 'warning',
+    unverified: 'muted',
+};
+
 function formatBytes(bytes) {
     if (!bytes) return '—';
     if (bytes < 1024) return `${bytes} B`;
@@ -76,14 +173,28 @@ function formatBytes(bytes) {
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export default function Show({ employee, subordinates, audits, can }) {
+export default function Show({
+    employee,
+    subordinates,
+    expiringTypes = [],
+    documentTypes = [],
+    neverExpires = [],
+    licence,
+    can,
+}) {
     const record = employee.data ?? employee;
 
-    const [tab, setTab] = useState('overview');
     const [uploadOpen, setUploadOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [pendingDocument, setPendingDocument] = useState(null);
     const [preview, setPreview] = useState(null);
+    const [verifyOpen, setVerifyOpen] = useState(false);
+
+    // What the portal said, in the portal's own words. Free text on purpose:
+    // "active", "suspended until March", and "no record found" are three
+    // different answers, and flattening them to a tick loses the two that
+    // matter.
+    const verifyForm = useForm({ license_verification_note: '' });
 
     const upload = useForm({
         type: 'contract',
@@ -92,6 +203,10 @@ export default function Show({ employee, subordinates, audits, can }) {
         issued_at: '',
         expires_at: '',
         file: null,
+        // Which scan this upload is answering, so the accuracy figures can
+        // tell a corrected proposal from an accepted one. An identifier only;
+        // the proposal itself is read back server-side.
+        scan_id: null,
     });
 
     // What the scanner proposed, kept beside the form rather than merged into
@@ -99,6 +214,142 @@ export default function Show({ employee, subordinates, audits, can }) {
     // the name check, before saving.
     const [scan, setScan] = useState(null);
     const [scanning, setScanning] = useState(false);
+
+    /*
+     * A document that belongs to someone else cannot be filed here at all.
+     *
+     * This is the one place the scanner *stops* an action rather than warning
+     * about it — a deliberate departure from PayrollReadiness, salary bands,
+     * and wage floors, which all flag without blocking. Filing under the wrong
+     * employee was judged worth refusing, because the error is silent
+     * afterwards: nobody goes looking through another person's 201 file for a
+     * document that should never have been there.
+     *
+     * **The ID number outranks the name.** A licence number belongs to one
+     * person and OCR reads digits well; a name is shared by thousands and
+     * arrives truncated or misread. So a number matching the 201 file settles
+     * it even when the name reading looks wrong — which is exactly the case
+     * that refused a real licence: the card printed "JOHN GAVE" with no
+     * surname, the model read "JONN GAVE", and the number underneath was right
+     * all along. A number that *contradicts* the file is the strongest
+     * evidence available that the document is someone else's, and blocks on
+     * its own.
+     *
+     * The scanner only reads images (`config('scanner.accepts')`), so a
+     * document that genuinely names someone else and still belongs on the
+     * file — a dependant's birth certificate, an HMO beneficiary form — is
+     * uploaded as a PDF, which never reaches this check. That is the escape
+     * hatch, and it is deliberate rather than a gap.
+     */
+    const numberMatch = scan?.number_matches;
+
+    /*
+     * Filed under a type the document contradicts.
+     *
+     * Before this, choosing "Government ID" and uploading a clearance saved
+     * quietly under the wrong type — and a clearance filed as an ID lands in
+     * the wrong renewal window in CredentialExpiryScanner, so it stops being
+     * chased at all.
+     *
+     * Only refused when the type was read off the document's own heading. The
+     * model's bare guess at a type is wrong often enough that blocking on it
+     * would refuse correct filings; that case is said out loud and left to HR.
+     */
+    const typeConflict = Boolean(
+        scan?.type && upload.data.type && scan.type !== upload.data.type,
+    );
+
+    /*
+     * Refused only on evidence from the document itself — a number already
+     * on this employee's 201 file, or the heading printed across the top.
+     * The server decides which sources count (`type_certain`); the weaker
+     * ones are still said out loud in the panel, because a number *shape* is
+     * shared between cards and a validity period overlaps between types.
+     */
+    const blockedByType = typeConflict && scan?.type_certain === true;
+
+    /*
+     * The name verdict has a case the other two do not: a name that does not
+     * match while the ID number *does*. That is not a failure — it is the
+     * married-name and truncated-card reading the number already settled — so
+     * it is reported as a note rather than in the colour that means "refused".
+     */
+    const nameCheckState =
+        scan?.name_matches === true
+            ? 'ok'
+            : scan?.name_matches === false
+              ? // Not a failure where a different name is the norm, and not a
+                // failure where the ID number already settled it.
+                numberMatch === true || scan?.name_may_differ
+                  ? 'note'
+                  : 'bad'
+              : 'unknown';
+
+    /*
+     * An expiry date already in the past.
+     *
+     * Read off the **form field**, not off the scan, and that is the whole
+     * design of it. The scanner misreads this date — a real upload came back
+     * with "Jul 25, 2024" taken from a line that was actually a date of birth
+     * — so blocking on what the scanner said would refuse a current document
+     * over a bad reading, with nothing the user could do about it. Blocking on
+     * the field means correcting the date lifts the block, which is exactly
+     * the recovery the misreading case needs.
+     *
+     * It also covers a date nobody scanned at all: typed by hand, in the past,
+     * still refused.
+     *
+     * The escape hatch for a document that genuinely must be filed expired —
+     * a lapsed licence kept for the record while the renewal is in progress —
+     * is the one the name check already uses: upload it as a PDF, which the
+     * scanner does not read and this does not reach. That is deliberate
+     * rather than an oversight, and it is the reason this can be absolute.
+     */
+    const expiryOnForm = upload.data.expires_at
+        ? new Date(`${upload.data.expires_at}T00:00:00`)
+        : null;
+
+    const blockedByExpiry = Boolean(
+        expiryOnForm &&
+        !Number.isNaN(expiryOnForm.getTime()) &&
+        expiryOnForm < new Date(new Date().toDateString()),
+    );
+
+    /*
+     * A name that does not match is only a refusal where a match was expected.
+     *
+     * A PSA birth certificate filed in a 201 file is usually the employee's
+     * child's — kept for BIR and PhilHealth dependant claims — and it names
+     * the child. Refusing that is refusing the document for being what it is.
+     * The server decides which types are like this; the check still runs and
+     * the panel still says whose name is on the paper.
+     */
+    const nameMustMatch = scan?.name_may_differ !== true;
+
+    const blockedByMismatch =
+        blockedByType ||
+        blockedByExpiry ||
+        numberMatch === false ||
+        (nameMustMatch && numberMatch !== true && scan?.name_matches === false);
+
+    /*
+     * Whether the Expiry Date field is on screen.
+     *
+     * Two things can put it there: the chosen type is one that normally lapses
+     * (`expiringTypes`, from config/credentials.php), or HR asked for it on a
+     * type that usually does not. The second is remembered per open form, so
+     * revealing it and then correcting the type does not snatch the field back
+     * with a date already in it.
+     */
+    const [expiryShown, setExpiryShown] = useState(false);
+
+    const showExpiry =
+        expiryShown ||
+        expiringTypes.includes(upload.data.type) ||
+        // A date already read off the document — by the scanner or typed
+        // before the type was changed — has to stay visible, or it would be
+        // saved from a field nobody can see.
+        Boolean(upload.data.expires_at);
 
     /**
      * Reads the picked file and fills the form. Nothing is saved here; the
@@ -124,6 +375,7 @@ export default function Show({ employee, subordinates, audits, can }) {
             if (!data.scanned) return;
 
             setScan(data.fields);
+            upload.setData('scan_id', data.scan_id ?? null);
 
             // Only fill what came back. A null from the scanner means "not
             // legible" — overwriting a field with it would erase a correction
@@ -147,6 +399,7 @@ export default function Show({ employee, subordinates, audits, can }) {
     const closeUpload = () => {
         setUploadOpen(false);
         setScan(null);
+        setExpiryShown(false);
     };
 
     const submitDocument = (event) => {
@@ -253,24 +506,17 @@ export default function Show({ employee, subordinates, audits, can }) {
                 </CardBody>
             </Card>
 
-            {/* Tabs */}
-            <div
-                className="scrollbar-thin mb-5 flex gap-1 overflow-x-auto border-b border-border"
-                role="tablist"
+            {/* Jump links. Every section is already on the page; these only
+                scroll to one, so nothing is hidden behind a click. */}
+            <nav
+                aria-label="Sections"
+                className="scrollbar-thin mb-5 flex gap-1.5 overflow-x-auto border-b border-border pb-3"
             >
-                {TABS.map((item) => (
-                    <button
+                {SECTIONS.map((item) => (
+                    <a
                         key={item.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={tab === item.id}
-                        onClick={() => setTab(item.id)}
-                        className={cn(
-                            '-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
-                            tab === item.id
-                                ? 'border-primary text-primary'
-                                : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground',
-                        )}
+                        href={`#${item.id}`}
+                        className="whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                     >
                         {item.label}
                         {item.id === 'documents' && documents.length > 0 && (
@@ -278,16 +524,17 @@ export default function Show({ employee, subordinates, audits, can }) {
                                 {documents.length}
                             </span>
                         )}
-                    </button>
+                    </a>
                 ))}
-            </div>
+            </nav>
 
-            {tab === 'overview' && (
+            <section className="mb-8">
+                <SectionHeading id="overview" title="Overview" />
                 <div className="grid gap-5 lg:grid-cols-2">
                     <Card>
                         <CardHeader title="Personal Information" />
                         <CardBody>
-                            <dl className="grid grid-cols-2 gap-4">
+                            <dl className="grid gap-4 sm:grid-cols-2">
                                 <DetailRow
                                     label="Date of Birth"
                                     value={formatDate(record.birth_date)}
@@ -308,7 +555,7 @@ export default function Show({ employee, subordinates, audits, can }) {
                     <Card>
                         <CardHeader title="Contact Information" />
                         <CardBody>
-                            <dl className="grid grid-cols-2 gap-4">
+                            <dl className="grid gap-4 sm:grid-cols-2">
                                 <DetailRow label="Email" value={record.email} />
                                 <DetailRow label="Mobile" value={record.mobile_number} />
                                 <DetailRow label="Phone" value={record.phone_number} />
@@ -330,7 +577,7 @@ export default function Show({ employee, subordinates, audits, can }) {
                     <Card>
                         <CardHeader title="Emergency Contact" />
                         <CardBody>
-                            <dl className="grid grid-cols-2 gap-4">
+                            <dl className="grid gap-4 sm:grid-cols-2">
                                 <DetailRow label="Name" value={record.emergency_contact_name} />
                                 <DetailRow
                                     label="Relationship"
@@ -351,7 +598,7 @@ export default function Show({ employee, subordinates, audits, can }) {
                                 description="Visible to HR and the employee only."
                             />
                             <CardBody>
-                                <dl className="grid grid-cols-2 gap-4">
+                                <dl className="grid gap-4 sm:grid-cols-2">
                                     <DetailRow label="SSS" value={record.sss_number} />
                                     <DetailRow
                                         label="PhilHealth"
@@ -364,14 +611,15 @@ export default function Show({ employee, subordinates, audits, can }) {
                         </Card>
                     )}
                 </div>
-            )}
+            </section>
 
-            {tab === 'employment' && (
+            <section className="mb-8">
+                <SectionHeading id="employment" title="Employment" />
                 <div className="grid gap-5 lg:grid-cols-2">
                     <Card>
                         <CardHeader title="Employment Details" />
                         <CardBody>
-                            <dl className="grid grid-cols-2 gap-4">
+                            <dl className="grid gap-4 sm:grid-cols-2">
                                 <DetailRow label="Department" value={record.department?.name} />
                                 <DetailRow label="Position" value={record.position?.title} />
                                 <DetailRow
@@ -413,7 +661,7 @@ export default function Show({ employee, subordinates, audits, can }) {
                         <Card>
                             <CardHeader title="Compensation & Banking" />
                             <CardBody>
-                                <dl className="grid grid-cols-2 gap-4">
+                                <dl className="grid gap-4 sm:grid-cols-2">
                                     <DetailRow
                                         label="Basic Salary"
                                         value={formatCurrency(record.basic_salary)}
@@ -433,22 +681,161 @@ export default function Show({ employee, subordinates, audits, can }) {
                     )}
 
                     <Card>
-                        <CardHeader title="Driver's License" />
-                        <CardBody>
-                            <dl className="grid grid-cols-2 gap-4">
+                        <CardHeader
+                            title="Driver's License"
+                            description="Structure is checked here; authenticity is checked on LTMS."
+                        />
+                        <CardBody className="space-y-4">
+                            <dl className="grid gap-4 sm:grid-cols-2">
                                 <DetailRow
                                     label="License Number"
                                     value={record.drivers_license_number}
-                                />
-                                <DetailRow
-                                    label="Restriction Codes"
-                                    value={record.license_restriction_codes}
                                 />
                                 <DetailRow
                                     label="Expiry"
                                     value={formatDate(record.license_expiry)}
                                 />
                             </dl>
+
+                            {/* The two panels the card itself prints, spelled
+                                out rather than shown as bare codes: "C" means
+                                nothing to whoever is deciding a dispatch, and
+                                being able to act on them is the whole reason
+                                they are held. */}
+                            {licence.dl_codes.length > 0 && (
+                                <div>
+                                    <p className="text-xs text-muted-foreground">DL Codes</p>
+                                    <ul className="mt-1 space-y-0.5">
+                                        {licence.dl_codes.map((code) => (
+                                            <li
+                                                key={code.code}
+                                                className="text-sm text-foreground"
+                                            >
+                                                <span className="font-semibold">
+                                                    {code.code}
+                                                </span>
+                                                {code.label && (
+                                                    <span className="text-muted-foreground">
+                                                        {' — '}
+                                                        {code.label}
+                                                    </span>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            <div>
+                                <p className="text-xs text-muted-foreground">Conditions</p>
+                                {licence.conditions.length === 0 ? (
+                                    <p className="mt-0.5 text-sm text-foreground">NONE</p>
+                                ) : (
+                                    <ul className="mt-1 space-y-0.5">
+                                        {licence.conditions.map((item) => (
+                                            <li
+                                                key={item.code}
+                                                className="text-sm text-foreground"
+                                            >
+                                                <span className="font-semibold">
+                                                    {item.code}
+                                                </span>
+                                                {item.label && (
+                                                    <span className="text-muted-foreground">
+                                                        {' — '}
+                                                        {item.label}
+                                                    </span>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+
+                            {/* What this system checked by itself. Never
+                                called "valid": passing means the card is
+                                internally consistent, which is a much smaller
+                                claim than being genuine. */}
+                            {licence.checks.length > 0 && (
+                                <ul className="space-y-1.5 border-t border-border pt-3">
+                                    {licence.checks.map((finding, index) => (
+                                        <li
+                                            key={`${finding.field}-${index}`}
+                                            className="flex items-start gap-2 text-xs"
+                                        >
+                                            <TriangleAlert
+                                                className={cn(
+                                                    'mt-0.5 h-3.5 w-3.5 shrink-0',
+                                                    finding.severity === 'error'
+                                                        ? 'text-destructive'
+                                                        : 'text-warning',
+                                                )}
+                                                aria-hidden="true"
+                                            />
+                                            <span>
+                                                <span className="font-medium text-foreground">
+                                                    {finding.summary}
+                                                </span>{' '}
+                                                <span className="text-muted-foreground">
+                                                    {finding.detail}
+                                                </span>
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+
+                            {/* The half that cannot be automated. LTO
+                                publishes no API an employer can call, so this
+                                records a person's answer with their name and
+                                the date rather than showing a tick nobody can
+                                account for. */}
+                            <div className="border-t border-border pt-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-xs text-muted-foreground">LTMS check</p>
+                                    <Badge
+                                        variant={VERIFICATION_TONES[licence.verification.state]}
+                                    >
+                                        {VERIFICATION_LABELS[licence.verification.state]}
+                                    </Badge>
+                                </div>
+
+                                {licence.verification.at ? (
+                                    <div className="mt-1.5">
+                                        <p className="text-sm text-foreground">
+                                            {licence.verification.note}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {licence.verification.by ?? 'Someone'} on{' '}
+                                            {formatDate(licence.verification.at)}
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <p className="mt-1.5 text-xs text-muted-foreground">
+                                        Nobody has confirmed this licence against LTO&apos;s own
+                                        records. The checks above only say the card is
+                                        internally consistent.
+                                    </p>
+                                )}
+
+                                {can.update && record.drivers_license_number && (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            external
+                                            href={licence.ltms_url}
+                                        >
+                                            <ExternalLink className="h-4 w-4" />
+                                            Open LTMS
+                                        </Button>
+                                        <Button size="sm" onClick={() => setVerifyOpen(true)}>
+                                            <ShieldCheck className="h-4 w-4" />
+                                            Record the check
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
                         </CardBody>
                     </Card>
 
@@ -484,9 +871,11 @@ export default function Show({ employee, subordinates, audits, can }) {
                         </CardBody>
                     </Card>
                 </div>
-            )}
+            </section>
 
-            {tab === 'documents' && (
+            {/* These two carry their own CardHeader, so the card title is the
+                heading and the anchor sits on the section itself. */}
+            <section id="documents" className="mb-8 scroll-mt-6">
                 <Card>
                     <CardHeader
                         title="Documents"
@@ -626,73 +1015,7 @@ export default function Show({ employee, subordinates, audits, can }) {
                         </TBody>
                     </Table>
                 </Card>
-            )}
-
-            {tab === 'audit' && (
-                <Card>
-                    <CardHeader
-                        title="Audit Trail"
-                        description="Most recent changes to this record."
-                    />
-
-                    <Table>
-                        <THead>
-                            <TR>
-                                <TH>Event</TH>
-                                <TH>Changed Fields</TH>
-                                <TH>User</TH>
-                                <TH>When</TH>
-                            </TR>
-                        </THead>
-
-                        <TBody>
-                            {audits.length === 0 ? (
-                                <TableEmpty
-                                    colSpan={4}
-                                    icon={History}
-                                    title="No audit entries"
-                                    description="Changes to this record will appear here."
-                                />
-                            ) : (
-                                audits.map((audit) => (
-                                    <TR key={audit.id}>
-                                        <TD>
-                                            <Badge
-                                                variant={
-                                                    audit.event === 'deleted'
-                                                        ? 'destructive'
-                                                        : audit.event === 'created'
-                                                          ? 'success'
-                                                          : 'primary'
-                                                }
-                                            >
-                                                {audit.event}
-                                            </Badge>
-                                        </TD>
-
-                                        <TD className="text-sm text-muted-foreground">
-                                            {audit.changes.length > 0
-                                                ? audit.changes.map(titleCase).join(', ')
-                                                : '—'}
-                                        </TD>
-
-                                        <TD className="text-sm text-foreground">
-                                            {audit.user}
-                                        </TD>
-
-                                        <TD className="whitespace-nowrap text-sm text-muted-foreground">
-                                            {formatDate(audit.created_at, {
-                                                hour: '2-digit',
-                                                minute: '2-digit',
-                                            })}
-                                        </TD>
-                                    </TR>
-                                ))
-                            )}
-                        </TBody>
-                    </Table>
-                </Card>
-            )}
+            </section>
 
             {/* Upload document */}
             <Modal
@@ -709,7 +1032,7 @@ export default function Show({ employee, subordinates, audits, can }) {
                                 id={id}
                                 value={upload.data.type}
                                 onChange={(event) => upload.setData('type', event.target.value)}
-                                options={DOCUMENT_TYPES.map((type) => ({
+                                options={documentTypes.map((type) => ({
                                     value: type,
                                     label: titleCase(type),
                                 }))}
@@ -747,9 +1070,8 @@ export default function Show({ employee, subordinates, audits, can }) {
                     <div className="grid gap-4 sm:grid-cols-2">
                         <Field label="Issued Date" error={upload.errors.issued_at}>
                             {({ id }) => (
-                                <Input
+                                <DateInput
                                     id={id}
-                                    type="date"
                                     value={upload.data.issued_at}
                                     onChange={(event) =>
                                         upload.setData('issued_at', event.target.value)
@@ -758,19 +1080,53 @@ export default function Show({ employee, subordinates, audits, can }) {
                             )}
                         </Field>
 
-                        <Field label="Expiry Date" error={upload.errors.expires_at}>
-                            {({ id }) => (
-                                <Input
-                                    id={id}
-                                    type="date"
-                                    value={upload.data.expires_at}
-                                    onChange={(event) =>
-                                        upload.setData('expires_at', event.target.value)
-                                    }
-                                    error={upload.errors.expires_at}
-                                />
-                            )}
-                        </Field>
+                        {/* Asked only for the types that normally lapse. A
+                            résumé has no expiry, and a field that is always
+                            there invites a date that means nothing —
+                            CredentialExpiryScanner would then warn about a CV
+                            going out of date. */}
+                        {/* The refusal is stated on the field itself, not
+                            only in the scan panel — the date can be typed by
+                            hand with no scan at all, and a disabled button
+                            with no reason beside it is where a user stops
+                            trusting the screen. */}
+                        {showExpiry ? (
+                            <Field
+                                label="Expiry Date"
+                                error={
+                                    upload.errors.expires_at ??
+                                    (blockedByExpiry
+                                        ? 'This date has already passed, so the document cannot be filed. Correct it if it was read wrongly.'
+                                        : undefined)
+                                }
+                            >
+                                {({ id }) => (
+                                    <DateInput
+                                        id={id}
+                                        value={upload.data.expires_at}
+                                        onChange={(event) =>
+                                            upload.setData('expires_at', event.target.value)
+                                        }
+                                        error={upload.errors.expires_at || blockedByExpiry}
+                                    />
+                                )}
+                            </Field>
+                        ) : (
+                            /* Still reachable, because "normally" is not
+                               "always": a passport is filed as a government ID
+                               and does expire, and a project-based contract has
+                               an end date. Hiding it outright would leave HR
+                               unable to record a real one. */
+                            <div className="flex items-end">
+                                <button
+                                    type="button"
+                                    onClick={() => setExpiryShown(true)}
+                                    className="pb-2 text-xs font-medium text-primary hover:underline"
+                                >
+                                    + Add an expiry date
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     <Field
@@ -803,85 +1159,295 @@ export default function Show({ employee, subordinates, audits, can }) {
 
                     {/* What was read, shown separately from the fields it
                         filled — HR has to be able to tell a scanned value from
-                        a typed one before saving. */}
+                        a typed one before saving.
+
+                        Two sections, deliberately: what the document *says*,
+                        then what was *checked*. These used to be one pile of
+                        sentences at four severities, and the one line that
+                        refuses the upload has to stand apart from the six
+                        that do not. */}
                     {scan && !scanning && (
-                        <div className="rounded-lg border border-border bg-secondary/40 p-3">
-                            <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-foreground">
-                                <ScanLine className="h-3.5 w-3.5" aria-hidden="true" />
-                                Read from the document — check before saving
+                        <div className="overflow-hidden rounded-lg border border-border bg-secondary/40">
+                            <p className="flex items-center gap-1.5 border-b border-border/60 px-3 py-2 text-xs font-medium text-foreground">
+                                <ScanLine className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                                Read from the document
+                                <span className="ml-auto font-normal text-muted-foreground">
+                                    Check before saving
+                                </span>
                             </p>
 
-                            <dl className="space-y-1 text-xs">
-                                {scan.name_on_document && (
-                                    <div className="flex gap-2">
-                                        <dt className="w-28 shrink-0 text-muted-foreground">
-                                            Name
-                                        </dt>
-                                        <dd className="text-foreground">
-                                            {scan.name_on_document}
-                                        </dd>
-                                    </div>
-                                )}
-                                {scan.document_number && (
-                                    <div className="flex gap-2">
-                                        <dt className="w-28 shrink-0 text-muted-foreground">
-                                            Number
-                                        </dt>
-                                        <dd className="font-mono text-foreground">
-                                            {scan.document_number}
-                                        </dd>
-                                    </div>
-                                )}
-                                {scan.expires_at && (
-                                    <div className="flex gap-2">
-                                        <dt className="w-28 shrink-0 text-muted-foreground">
-                                            Expires
-                                        </dt>
-                                        <dd className="text-foreground">
-                                            {formatDate(scan.expires_at)}
-                                        </dd>
-                                    </div>
+                            <dl className="divide-y divide-border/40">
+                                <ScanField
+                                    label="Type"
+                                    value={scan.type ? titleCase(scan.type) : null}
+                                    filled={Boolean(scan.type)}
+                                />
+                                {/* What the keyword rules actually read. On
+                                    screen because it is the only thing that
+                                    explains a wrong type, and without it a
+                                    misread is a mystery to everybody. */}
+                                <ScanField label="Heading" value={scan.heading} />
+                                <ScanField label="Name" value={scan.name_on_document} />
+                                <ScanField label="Number" value={scan.document_number} mono />
+                                <ScanField
+                                    label="Issued"
+                                    value={scan.issued_at ? formatDate(scan.issued_at) : null}
+                                    filled={Boolean(scan.issued_at)}
+                                />
+                                {/* A type that cannot expire says so, rather
+                                    than showing "Not found" — which would read
+                                    as the scanner having looked and missed,
+                                    when in fact there is nothing to look for. */}
+                                {neverExpires.includes(scan.type) ? (
+                                    <ScanField label="Expires" value="Does not expire" />
+                                ) : (
+                                    <ScanField
+                                        label="Expires"
+                                        value={
+                                            scan.expires_at ? formatDate(scan.expires_at) : null
+                                        }
+                                        filled={Boolean(scan.expires_at)}
+                                    />
                                 )}
                             </dl>
 
-                            {/* The check that catches filing a document under
-                                the wrong person. */}
-                            {scan.name_matches === false && (
-                                <p className="mt-2 flex items-start gap-1.5 text-xs text-destructive">
-                                    <TriangleAlert
-                                        className="mt-0.5 h-3.5 w-3.5 shrink-0"
-                                        aria-hidden="true"
+                            {/* What a civil registry document says, read in
+                                its own terms by a second pass. The general
+                                prompt asks for an ID card's fields and a PSA
+                                has none of them, so it used to answer with
+                                whatever sat nearby. */}
+                            {scan.registry && (
+                                <dl className="divide-y divide-border/40 border-t border-border/60">
+                                    <ScanField
+                                        label="Registry"
+                                        value={scan.registry.registry_no}
+                                        mono
                                     />
-                                    This document names {scan.name_on_document}, not{' '}
-                                    {record.full_name}. Check you are filing it under the right
-                                    employee.
-                                </p>
-                            )}
-
-                            {scan.name_matches === true && (
-                                <p className="mt-2 flex items-center gap-1.5 text-xs text-success">
-                                    <CheckCircle2
-                                        className="h-3.5 w-3.5 shrink-0"
-                                        aria-hidden="true"
+                                    <ScanField label="Child" value={scan.registry.child} />
+                                    <ScanField
+                                        label="Born"
+                                        value={
+                                            scan.registry.birth_date
+                                                ? formatDate(scan.registry.birth_date)
+                                                : null
+                                        }
                                     />
-                                    Name matches this employee.
-                                </p>
+                                    <ScanField label="Mother" value={scan.registry.mother} />
+                                    <ScanField label="Father" value={scan.registry.father} />
+                                </dl>
                             )}
+                            {/* The verdicts, gathered in one place and at one
+                                size. Each says what was compared rather than
+                                only whether it passed — a bare green tick is
+                                not something HR can act on. */}
+                            <div className="space-y-1.5 border-t border-border/60 px-3 py-2.5">
+                                <ScanCheck state={nameCheckState}>
+                                    {scan.name_matches === true &&
+                                        `Named as ${record.full_name}.`}
+                                    {scan.name_matches === false &&
+                                        (scan.name_may_differ
+                                            ? `Names ${scan.name_on_document}. A certificate filed here usually names a dependant, so this is not treated as a mismatch — check it is the right one.`
+                                            : `Names ${scan.name_on_document}, not ${record.full_name}.`)}
+                                    {scan.name_matches === null && 'No name could be read.'}
+                                </ScanCheck>
 
-                            {scan.confidence !== 'high' && (
-                                <p className="mt-2 text-xs text-warning">
-                                    {scan.note ??
-                                        'The scan was not fully legible — check every field.'}
-                                </p>
+                                {/* Said at the moment of filing rather than
+                                    left to the Credentials screen to find
+                                    later. An expired document is still filed —
+                                    it is often filed deliberately, for the
+                                    record or while a renewal is in progress —
+                                    but nobody should be able to file one
+                                    without being told. */}
+                                {scan.expiry && (
+                                    <ScanCheck
+                                        state={
+                                            scan.expiry.state === 'expired'
+                                                ? scan.expiry.blocking
+                                                    ? 'bad'
+                                                    : 'note'
+                                                : scan.expiry.state === 'expiring'
+                                                  ? 'note'
+                                                  : 'ok'
+                                        }
+                                    >
+                                        {scan.expiry.state === 'expired' &&
+                                            `Already expired — ${Math.abs(scan.expiry.days)} day${
+                                                Math.abs(scan.expiry.days) === 1 ? '' : 's'
+                                            } ago.${
+                                                scan.expiry.blocking
+                                                    ? ' This one is required to work, so it will show as blocked until it is renewed.'
+                                                    : ''
+                                            }`}
+                                        {scan.expiry.state === 'expiring' &&
+                                            `Expires in ${scan.expiry.days} day${
+                                                scan.expiry.days === 1 ? '' : 's'
+                                            } — inside the renewal window for this type.`}
+                                        {/* Months once it's this far out — a
+                                            licence reads as "valid for another
+                                            27 months," not "816 days," and the
+                                            renewal window above still counts
+                                            in days because that one is a
+                                            precise countdown, not a rough
+                                            distance. */}
+                                        {scan.expiry.state === 'valid' &&
+                                            (() => {
+                                                const months = Math.round(
+                                                    scan.expiry.days / 30.44,
+                                                );
+
+                                                return months >= 1
+                                                    ? `Valid for another ${months} month${months === 1 ? '' : 's'}.`
+                                                    : `Valid for another ${scan.expiry.days} day${scan.expiry.days === 1 ? '' : 's'}.`;
+                                            })()}
+                                    </ScanCheck>
+                                )}
+
+                                {/* The claim a person actually has to a birth
+                                    certificate is being a parent on it — the
+                                    name on the page is their child's and can
+                                    never match. */}
+                                {scan.registry && (
+                                    <ScanCheck
+                                        state={
+                                            scan.registry.claimed_by_employee === true
+                                                ? 'ok'
+                                                : scan.registry.claimed_by_employee === false
+                                                  ? 'note'
+                                                  : 'unknown'
+                                        }
+                                    >
+                                        {scan.registry.claimed_by_employee === true &&
+                                            `${record.full_name} is named as a parent on this certificate.`}
+                                        {scan.registry.claimed_by_employee === false &&
+                                            `${record.full_name} is not named as a parent here. Check this is the right certificate.`}
+                                        {scan.registry.claimed_by_employee === null &&
+                                            (scan.registry.parents_uncertain
+                                                ? 'Both parents were read with the same given names, so one box was misread — the parents cannot be checked. Read them off the certificate yourself.'
+                                                : 'No parent could be read, so there is nothing to check against.')}
+                                    </ScanCheck>
+                                )}
+                                <ScanCheck
+                                    state={
+                                        numberMatch === true
+                                            ? 'ok'
+                                            : numberMatch === false
+                                              ? 'bad'
+                                              : 'unknown'
+                                    }
+                                >
+                                    {numberMatch === true &&
+                                        'ID number matches the one on file.'}
+                                    {numberMatch === false &&
+                                        'ID number contradicts the one on file.'}
+                                    {numberMatch === null &&
+                                        'No ID number to compare against the file.'}
+                                </ScanCheck>
+
+                                <ScanCheck
+                                    state={
+                                        !scan.type
+                                            ? 'unknown'
+                                            : !typeConflict
+                                              ? 'ok'
+                                              : blockedByType
+                                                ? 'bad'
+                                                : 'note'
+                                    }
+                                >
+                                    {!scan.type &&
+                                        'Could not tell what kind of document this is — set the type yourself.'}
+                                    {!typeConflict &&
+                                        `Matches the Document Type chosen${
+                                            TYPE_SOURCES[scan.type_source]
+                                                ? ` — read from ${TYPE_SOURCES[scan.type_source]}`
+                                                : ''
+                                        }.`}
+                                    {typeConflict &&
+                                        `Looks like a ${titleCase(scan.type)}, not a ${titleCase(
+                                            upload.data.type,
+                                        )} — read from ${
+                                            TYPE_SOURCES[scan.type_source] ?? 'the scan'
+                                        }.`}
+                                </ScanCheck>
+
+                                {/* The model's own note. Its `confidence` field
+                                    is not reported: measured across six
+                                    documents it answered "high" every time,
+                                    including on the answers that were wrong. */}
+                                {/* The model's own remark, shown as a remark.
+                                    It was styled as a warning, and the model
+                                    fills it with text copied off the document
+                                    — a real scan put "NO RECORD ON FILE", the
+                                    words printed on an NBI clearance, in
+                                    warning orange where it read as a problem
+                                    with the employee. It is the scanner
+                                    talking, not a finding. */}
+                                {scan.note && (
+                                    <ScanCheck state="unknown">
+                                        Scanner note: {scan.note}
+                                    </ScanCheck>
+                                )}
+
+                                {/* Advisory, never blocking — a card issued
+                                    under an older format is still that
+                                    person's card. */}
+                                {scan.number_format_ok === false && (
+                                    <ScanCheck state="note">
+                                        {scan.document_number} is not shaped like a{' '}
+                                        {titleCase(scan.type ?? 'document')} number.
+                                    </ScanCheck>
+                                )}
+                            </div>
+
+                            {/* The refusal: one box, at the bottom, in the one
+                                colour nothing else in this panel uses. It says
+                                what to do, because a refusal with no way
+                                forward is where somebody works around the
+                                system instead of with it. */}
+                            {blockedByMismatch && (
+                                <div className="border-t border-destructive/30 bg-destructive/10 px-3 py-2.5">
+                                    <p className="flex items-start gap-1.5 text-xs font-medium text-destructive">
+                                        <TriangleAlert
+                                            className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                                            aria-hidden="true"
+                                        />
+                                        This document cannot be filed here.
+                                    </p>
+                                    <p className="mt-1 pl-5 text-xs text-muted-foreground">
+                                        {blockedByExpiry
+                                            ? 'It expired on the date below. Correct the Expiry Date if it was read wrongly — a date of birth is often picked up by mistake — or file the renewed copy instead.'
+                                            : blockedByType
+                                              ? `Set Document Type to ${titleCase(scan.type)}, or pick a different file.`
+                                              : `Open ${scan.name_on_document ?? 'the right employee'}\u2019s record and upload it there, or pick a different file.`}
+                                    </p>
+                                </div>
                             )}
                         </div>
                     )}
 
-                    <div className="flex justify-end gap-2 pt-2">
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                        {/* Two different refusals, so two different sentences.
+                            A reader who is told "names someone else" about a
+                            document that plainly names them stops believing
+                            the message rather than fixing the type. */}
+                        {blockedByMismatch && (
+                            <p className="mr-auto text-xs text-destructive">
+                                {blockedByExpiry
+                                    ? 'This document has expired.'
+                                    : blockedByType
+                                      ? `This is a ${titleCase(scan?.type)}.`
+                                      : 'This file names someone else.'}
+                            </p>
+                        )}
+
                         <Button variant="outline" onClick={closeUpload}>
                             Cancel
                         </Button>
-                        <Button type="submit" loading={upload.processing}>
+                        <Button
+                            type="submit"
+                            loading={upload.processing}
+                            disabled={blockedByMismatch}
+                        >
                             Upload
                         </Button>
                     </div>
@@ -982,6 +1548,80 @@ export default function Show({ employee, subordinates, audits, can }) {
                         className="h-[70vh] w-full rounded-md border border-border bg-background"
                     />
                 )}
+            </Modal>
+
+            {/* Recording an LTMS check.
+                This asks for what the portal *said* rather than offering a
+                yes/no, because the useful answers are not binary — "suspended
+                until March" and "no record found" both mean do not dispatch,
+                and for different reasons somebody will need later. */}
+            <Modal
+                show={verifyOpen}
+                onClose={() => setVerifyOpen(false)}
+                title="Record an LTMS check"
+                description="LTO publishes no API to call, so this records what you saw and when."
+                maxWidth="lg"
+            >
+                <form
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        verifyForm.post(`/hr/employees/${record.id}/verify-license`, {
+                            preserveScroll: true,
+                            onSuccess: () => {
+                                verifyForm.reset();
+                                setVerifyOpen(false);
+                            },
+                        });
+                    }}
+                    className="space-y-4"
+                >
+                    <div className="rounded-md border border-border bg-secondary/40 px-3 py-2">
+                        <p className="text-xs text-muted-foreground">Licence being checked</p>
+                        <p className="font-mono text-sm text-foreground">
+                            {record.drivers_license_number}
+                        </p>
+                    </div>
+
+                    <Field
+                        label="What the portal showed"
+                        required
+                        error={verifyForm.errors.license_verification_note}
+                    >
+                        {({ id }) => (
+                            <Textarea
+                                id={id}
+                                rows={3}
+                                value={verifyForm.data.license_verification_note}
+                                onChange={(event) =>
+                                    verifyForm.setData(
+                                        'license_verification_note',
+                                        event.target.value,
+                                    )
+                                }
+                                error={verifyForm.errors.license_verification_note}
+                                placeholder="e.g. Active, no apprehensions on record. Matches name and expiry."
+                            />
+                        )}
+                    </Field>
+
+                    <p className="text-xs text-muted-foreground">
+                        This is recorded against your name and today&apos;s date, and it is the
+                        only thing on this screen that speaks to whether the licence is genuine.
+                    </p>
+
+                    <div className="flex justify-end gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setVerifyOpen(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button type="submit" disabled={verifyForm.processing}>
+                            Record the check
+                        </Button>
+                    </div>
+                </form>
             </Modal>
         </AppLayout>
     );
