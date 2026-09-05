@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Department;
 use App\Models\Employee;
+use App\Models\EmployeeDocument;
+use App\Services\CredentialExpiryScanner;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
@@ -33,6 +35,11 @@ use Inertia\Response;
  */
 class DirectoryController extends Controller
 {
+    /** Credential findings for the whole set, indexed by employee. */
+    private Collection $credentials;
+
+    public function __construct(private readonly CredentialExpiryScanner $scanner) {}
+
     public function index(Request $request): Response
     {
         Gate::authorize('viewDirectory', Employee::class);
@@ -63,6 +70,20 @@ class DirectoryController extends Controller
         $departments = Department::where('is_active', true)
             ->orderBy('name')
             ->get(['id', 'name', 'code']);
+
+        /*
+         * Credential findings for the whole set at once, then indexed by
+         * employee — the same shape `DeploymentReadinessChecker` uses, and for
+         * the same reason: a per-person call would be one query each, forty
+         * times over, to answer a question one query already answers.
+         *
+         * Only reached for people this viewer may open. The scan runs
+         * regardless because it is one query either way; what is gated is who
+         * the answer is *shown* for.
+         */
+        $this->credentials = $this->scanner
+            ->scan(EmployeeDocument::whereIn('employee_id', $employees->pluck('id')))
+            ->groupBy('employee_id');
 
         return Inertia::render('HR/Directory', [
             /*
@@ -135,6 +156,15 @@ class DirectoryController extends Controller
      */
     private function card(Employee $employee): array
     {
+        /*
+         * Whether *this* viewer may open *this* person's record — asked per
+         * person, because the answer differs per person. HR may open anybody,
+         * a supervisor their own reports, an employee themselves. That is
+         * `EmployeePolicy::view`, unchanged: the directory does not invent a
+         * second answer to a question the system already answers.
+         */
+        $mayOpen = Gate::allows('view', $employee);
+
         return [
             'id' => $employee->id,
             'employee_number' => $employee->employee_number,
@@ -155,6 +185,57 @@ class DirectoryController extends Controller
              */
             'email' => $employee->email,
             'mobile_number' => $employee->mobile_number,
+
+            /*
+             * The row is a link only for somebody who may follow it. Drawing
+             * one that 403s would be worse than none: it tells the reader
+             * there is something behind it *and* that they are not trusted
+             * with it, which is the least useful pair of facts a screen can
+             * offer.
+             */
+            'can_view' => $mayOpen,
+
+            /*
+             * What is lapsing on their 201 file, and *only* for a viewer who
+             * may already open that file. This is document data — it belongs
+             * to the same gate the record does, not to the directory's open
+             * one. For everybody else the key is absent, not null: there is
+             * nothing to render and nothing to hint at.
+             */
+            'credentials' => $mayOpen ? $this->credentialSummary($employee->id) : null,
+        ];
+    }
+
+    /**
+     * A one-line reading of somebody's lapsing documents.
+     *
+     * Read from `CredentialExpiryScanner` rather than derived here, so this
+     * screen, the Credentials screen, and Deployment Readiness cannot end up
+     * disagreeing about the same licence.
+     *
+     * @return array<string, mixed>|null null when nothing is due
+     */
+    private function credentialSummary(int $employeeId): ?array
+    {
+        $findings = $this->credentials->get($employeeId);
+
+        if ($findings === null || $findings->isEmpty()) {
+            return null;
+        }
+
+        $expired = $findings->where('status', CredentialExpiryScanner::STATUS_EXPIRED);
+
+        return [
+            'total' => $findings->count(),
+            'expired' => $expired->count(),
+
+            /*
+             * The hard flag. A lapsed licence or medical is not untidy
+             * paperwork — that person may not lawfully be dispatched, which
+             * is the one thing somebody browsing the org chart to staff a run
+             * needs to see before they click anything.
+             */
+            'blocking' => $expired->where('blocking', true)->isNotEmpty(),
         ];
     }
 }

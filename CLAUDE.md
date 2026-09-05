@@ -918,6 +918,20 @@ anybody but HR.
 - **Separated and inactive staff are not.** A directory is for reaching people
   who are here; somebody who has left is a record, which is what the archive
   and the employee screen are for.
+- **A row is a link only for somebody who may follow it.** `card()` asks
+  `EmployeePolicy::view` per person — HR may open anybody, a supervisor their
+  own reports, an employee themselves — and renders a plain row otherwise.
+  Drawing a link that 403s is worse than drawing none: it says there is
+  something behind it *and* that the reader is not trusted with it, which is
+  the least useful pair of facts a screen can offer. Measured on the seeded
+  set: 38 rows clickable for HR, 1 for a rank-and-file login.
+- **Credential findings ride only for that same viewer.** What is lapsing on
+  somebody's 201 file is document data and belongs to the gate the *record*
+  has, not to the directory's open one — so the key is null for everybody
+  else and the badge is not drawn. It is read from `CredentialExpiryScanner`,
+  scanned once over the whole set and indexed by employee, so this screen, the
+  Credentials screen, and Deployment Readiness cannot disagree about the same
+  licence.
 
 ## Master data (Module 1)
 

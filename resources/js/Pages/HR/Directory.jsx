@@ -1,9 +1,17 @@
-import { router } from '@inertiajs/react';
+import { Link, router } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
-import { Building2, Handshake, Mail, Phone, Users } from 'lucide-react';
+import {
+    Building2,
+    ChevronRight,
+    Handshake,
+    Mail,
+    Phone,
+    ShieldAlert,
+    Users,
+} from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Badge, Card, CardBody, CardHeader, SearchInput, StatCard } from '@/Components/ui';
-import { initials } from '@/lib/utils';
+import { cn, initials } from '@/lib/utils';
 
 /**
  * One colleague, as the rest of the company sees them.
@@ -13,9 +21,9 @@ import { initials } from '@/lib/utils';
  * no address, and no link into the 201 file, and that is what makes the
  * screen safe to open to everybody rather than to HR alone.
  */
-function PersonCard({ person }) {
-    return (
-        <div className="flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card p-3 transition-colors hover:border-primary/30">
+function PersonRow({ person }) {
+    const body = (
+        <>
             {person.photo_url ? (
                 <img
                     src={person.photo_url}
@@ -29,52 +37,102 @@ function PersonCard({ person }) {
             )}
 
             <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">
+                <p
+                    className={cn(
+                        'truncate text-sm font-medium',
+                        person.can_view
+                            ? 'text-foreground group-hover:text-primary'
+                            : 'text-foreground',
+                    )}
+                >
                     {person.full_name}
                 </p>
-
                 <p className="truncate font-mono text-[11px] text-muted-foreground">
                     {person.employee_number}
                 </p>
-
-                {/* Internal staff or deployed, and to whom. For a manpower
-                    agency that is half of "who are you". */}
-                <div className="mt-1.5">
-                    {person.employment_category === 'external' && person.client ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                            <Handshake className="h-3 w-3 shrink-0" aria-hidden="true" />
-                            <span className="truncate">{person.client}</span>
-                        </span>
-                    ) : (
-                        <span className="text-[11px] text-muted-foreground">
-                            Internal staff
-                        </span>
-                    )}
-                </div>
-
-                {/* A directory that cannot be used to reach anybody is a list. */}
-                <div className="mt-2 space-y-0.5">
-                    {person.email && (
-                        <a
-                            href={`mailto:${person.email}`}
-                            className="flex items-center gap-1.5 text-[11px] text-muted-foreground transition-colors hover:text-primary"
-                        >
-                            <Mail className="h-3 w-3 shrink-0" aria-hidden="true" />
-                            <span className="truncate">{person.email}</span>
-                        </a>
-                    )}
-                    {person.mobile_number && (
-                        <a
-                            href={`tel:${person.mobile_number}`}
-                            className="flex items-center gap-1.5 text-[11px] text-muted-foreground transition-colors hover:text-primary"
-                        >
-                            <Phone className="h-3 w-3 shrink-0" aria-hidden="true" />
-                            {person.mobile_number}
-                        </a>
-                    )}
-                </div>
             </div>
-        </div>
+
+            {/* Where they are posted. For a manpower agency that is half of
+                "who are you" — an internal clerk and a driver on a client site
+                are different people to reach. */}
+            <div className="hidden min-w-0 shrink-0 sm:block sm:w-44">
+                {person.employment_category === 'external' && person.client ? (
+                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Handshake className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        <span className="truncate">{person.client}</span>
+                    </span>
+                ) : (
+                    <span className="text-xs text-muted-foreground">Internal staff</span>
+                )}
+            </div>
+
+            {/* A directory that cannot be used to reach anybody is a list.
+                Stopped from bubbling, so a mail link inside a row that is
+                itself a link opens the mail client rather than the record. */}
+            <div
+                className="hidden shrink-0 lg:flex lg:w-64 lg:flex-col lg:gap-0.5"
+                onClick={(event) => event.stopPropagation()}
+            >
+                {person.email && (
+                    <a
+                        href={`mailto:${person.email}`}
+                        className="flex items-center gap-1.5 text-[11px] text-muted-foreground transition-colors hover:text-primary"
+                    >
+                        <Mail className="h-3 w-3 shrink-0" aria-hidden="true" />
+                        <span className="truncate">{person.email}</span>
+                    </a>
+                )}
+                {person.mobile_number && (
+                    <a
+                        href={`tel:${person.mobile_number}`}
+                        className="flex items-center gap-1.5 text-[11px] text-muted-foreground transition-colors hover:text-primary"
+                    >
+                        <Phone className="h-3 w-3 shrink-0" aria-hidden="true" />
+                        {person.mobile_number}
+                    </a>
+                )}
+            </div>
+
+            {/* Only ever present for somebody who may already open this
+                person's 201 file — see DirectoryController::card(). */}
+            {person.credentials && (
+                <div className="shrink-0">
+                    <Badge variant={person.credentials.blocking ? 'destructive' : 'warning'}>
+                        <ShieldAlert className="h-3 w-3" aria-hidden="true" />
+                        {person.credentials.blocking
+                            ? 'Cannot work'
+                            : `${person.credentials.total} due`}
+                    </Badge>
+                </div>
+            )}
+
+            {person.can_view && (
+                <ChevronRight
+                    className="hidden h-4 w-4 shrink-0 text-muted-foreground sm:block"
+                    aria-hidden="true"
+                />
+            )}
+        </>
+    );
+
+    const shell =
+        'group flex items-center gap-3 border-b border-border px-4 py-3 last:border-0';
+
+    /*
+     * A row is a link only when the viewer may follow it. Drawing one that
+     * 403s is worse than drawing none: it says there is something behind it
+     * *and* that they are not trusted with it, which is the least useful pair
+     * of facts a screen can offer.
+     */
+    return person.can_view ? (
+        <Link
+            href={`/hr/employees/${person.id}`}
+            className={cn(shell, 'transition-colors hover:bg-secondary/50')}
+        >
+            {body}
+        </Link>
+    ) : (
+        <div className={shell}>{body}</div>
     );
 }
 
@@ -106,27 +164,23 @@ function DepartmentBlock({ code, name, headcount, positions, icon: Icon = Buildi
                 </Badge>
             </CardHeader>
 
-            <CardBody className="space-y-5">
-                {positions.map((position) => (
-                    <div key={position.title}>
-                        {/* The job, not a heading for its own sake: somebody
-                            looking for "a driver" is walking down the org
-                            chart rather than reading 41 names. */}
-                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            {position.title}
-                            <span className="ml-1.5 font-normal normal-case tracking-normal">
-                                ({position.people.length})
-                            </span>
-                        </p>
+            {positions.map((position) => (
+                <div key={position.title} className="border-t border-border">
+                    {/* The job, not a heading for its own sake: somebody
+                        looking for "a driver" is walking down the org chart
+                        rather than reading 41 names. */}
+                    <p className="bg-secondary/40 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {position.title}
+                        <span className="ml-1.5 font-normal normal-case tracking-normal">
+                            ({position.people.length})
+                        </span>
+                    </p>
 
-                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                            {position.people.map((person) => (
-                                <PersonCard key={person.id} person={person} />
-                            ))}
-                        </div>
-                    </div>
-                ))}
-            </CardBody>
+                    {position.people.map((person) => (
+                        <PersonRow key={person.id} person={person} />
+                    ))}
+                </div>
+            ))}
         </Card>
     );
 }

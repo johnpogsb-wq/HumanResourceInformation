@@ -175,6 +175,76 @@ class DirectoryTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('total', 0));
     }
 
+    /*
+     * -----------------------------------------------------------------
+     * Following a row into the record
+     * -----------------------------------------------------------------
+     */
+
+    public function test_hr_may_open_anybody_from_the_directory(): void
+    {
+        $this->workforce();
+
+        $this->actingAs($this->hr())
+            ->get('/hr/directory')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('departments.0.positions.0.people.0.can_view', true),
+            );
+    }
+
+    public function test_a_rank_and_file_user_cannot_open_a_stranger(): void
+    {
+        $this->workforce();
+
+        /*
+         * The row is a link only for somebody who may follow it. Drawing one
+         * that 403s is worse than drawing none: it says there is something
+         * behind it *and* that they are not trusted with it.
+         */
+        $this->actingAs(User::factory()->create(['role' => User::ROLE_EMPLOYEE]))
+            ->get('/hr/directory')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('departments.0.positions.0.people.0.can_view', false),
+            );
+    }
+
+    public function test_credentials_are_shown_only_to_somebody_who_may_open_the_file(): void
+    {
+        $this->workforce();
+        $employee = Employee::where('last_name', 'Dela Cruz')->firstOrFail();
+
+        // A lapsed licence: the hard flag, because that driver may not
+        // lawfully be dispatched.
+        $employee->documents()->create([
+            'type' => 'drivers_license',
+            'title' => "Driver's Licence",
+            'file_path' => 'documents/x.pdf',
+            'file_name' => 'x.pdf',
+            'mime_type' => 'application/pdf',
+            'file_size' => 1024,
+            'expires_at' => now()->subMonth(),
+            'uploaded_by' => $this->hr()->id,
+        ]);
+
+        // HR may already open the 201 file, so the summary of it is theirs.
+        $this->actingAs($this->hr())
+            ->get('/hr/directory')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('departments.0.positions.0.people.0.credentials.expired', 1)
+                ->where('departments.0.positions.0.people.0.credentials.blocking', true),
+            );
+
+        /*
+         * Document data belongs to the same gate the record does, not to the
+         * directory's open one. Null, and the component draws nothing.
+         */
+        $this->actingAs(User::factory()->create(['role' => User::ROLE_EMPLOYEE]))
+            ->get('/hr/directory')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('departments.0.positions.0.people.0.credentials', null),
+            );
+    }
+
     public function test_search_narrows_to_the_person_being_looked_for(): void
     {
         $this->workforce();
