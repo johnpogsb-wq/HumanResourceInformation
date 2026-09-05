@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\Employee;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Carbon;
 
 /**
  * @extends Factory<Employee>
@@ -77,11 +78,45 @@ class EmployeeFactory extends Factory
     /** Drivers carry a licence; used for Operations headcount. */
     public function driver(): static
     {
-        return $this->state(fn () => [
-            'drivers_license_number' => fake()->bothify('???-##-######'),
-            'license_restriction_codes' => fake()->randomElement(['1,2', '2,3', '1,2,3', '3,8']),
-            'license_expiry' => fake()->dateTimeBetween('-3 months', '+4 years'),
-        ]);
+        return $this->state(function (array $attributes) {
+            /*
+             * A licence expires on the holder's birthday — confirmed on the
+             * card this was modelled from, and checked by LicenseVerifier. A
+             * factory that ignored it would flag every seeded driver, which is
+             * exactly what the old three-letter licence number did.
+             */
+            $birth = isset($attributes['birth_date'])
+                ? Carbon::parse($attributes['birth_date'])
+                : null;
+
+            $expiry = fake()->dateTimeBetween('-3 months', '+4 years');
+
+            if ($birth) {
+                $expiry = Carbon::parse($expiry)->setMonth($birth->month)->setDay($birth->day);
+            }
+
+            return [
+                // One letter and ten digits, printed N01-23-456789. The old
+                // pattern was three letters and eight digits, which is not a
+                // shape the LTO issues — and RecordIntegrityChecker rightly
+                // flagged every seeded driver because of it.
+                'drivers_license_number' => fake()->bothify('?##-##-######'),
+
+                /*
+                 * Real DL codes, not the retired numeric restriction codes.
+                 * The seeded set was '1,2' / '3,8', which is the scheme a
+                 * current card no longer carries — and against the real list
+                 * every one of them is an unknown code.
+                 */
+                'license_dl_codes' => fake()->randomElement(['A', 'B', 'B,C', 'C', 'C,CE', 'B,D']),
+
+                // Most licences carry none; the one in five that does is what
+                // makes the Deployment Readiness warning worth having.
+                'license_conditions' => fake()->optional(0.2)->randomElement(['1', '4', '1,4']),
+
+                'license_expiry' => $expiry,
+            ];
+        });
     }
 
     public function onLeave(): static

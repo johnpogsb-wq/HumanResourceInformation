@@ -31,6 +31,326 @@ class DocumentScannerTest extends TestCase
         $this->assertFalse(app(DocumentScanner::class)->isEnabled());
     }
 
+    /**
+     * The local driver needs no key — a host is the whole configuration.
+     * Whether Ollama is actually up is not asked here: a server that is down
+     * fails inside read(), which is where every other failure is handled.
+     */
+    public function test_the_ollama_driver_needs_no_api_key(): void
+    {
+        config([
+            'scanner.driver' => 'ollama',
+            'scanner.api_key' => null,
+            'scanner.ollama.host' => 'http://127.0.0.1:11434',
+        ]);
+
+        $this->assertTrue(app(DocumentScanner::class)->isEnabled());
+    }
+
+    public function test_the_ollama_driver_is_off_without_a_host(): void
+    {
+        config(['scanner.driver' => 'ollama', 'scanner.ollama.host' => null]);
+
+        $this->assertFalse(app(DocumentScanner::class)->isEnabled());
+    }
+
+    // --- The deployment driver ---------------------------------------------
+
+    /**
+     * Ollama cannot run on a small server, so a deployed instance reaches a
+     * hosted model instead. The key is the whole configuration.
+     */
+    public function test_the_gemini_driver_needs_a_key(): void
+    {
+        config(['scanner.driver' => 'gemini', 'scanner.gemini.api_key' => null]);
+        $this->assertFalse(app(DocumentScanner::class)->isEnabled());
+
+        config(['scanner.gemini.api_key' => 'test-key']);
+        $this->assertTrue(app(DocumentScanner::class)->isEnabled());
+    }
+
+    /**
+     * The three drivers answer the same shape, so everything downstream of
+     * read() — the type check, the date pair, the name match — is unchanged by
+     * which one ran. A regression here would only show up in production on
+     * whichever driver the tests do not exercise.
+     */
+    public function test_every_driver_returns_the_same_normalised_shape(): void
+    {
+        $expected = [
+            'type', 'type_source', 'type_certain', 'title', 'heading', 'document_number', 'issued_at', 'expires_at',
+            'name_on_document', 'name_matches', 'number_matches', 'number_format_ok',
+            'expiry', 'name_may_differ', 'registry', 'confidence', 'note',
+        ];
+
+        foreach (['ollama', 'gemini', 'anthropic'] as $driver) {
+            config([
+                'scanner.driver' => $driver,
+                'scanner.ollama.host' => 'http://127.0.0.1:11434',
+                'scanner.gemini.api_key' => 'test-key',
+                'scanner.api_key' => 'test-key',
+            ]);
+
+            $fields = $this->scannerReturning([
+                'type' => 'drivers_license',
+                'expires_at' => '2029-05-12',
+            ])->scan(UploadedFile::fake()->image('x.jpg'));
+
+            $this->assertSame($expected, array_keys($fields), "Driver {$driver} drifted.");
+        }
+    }
+
+    /** A typo in SCANNER_DRIVER must go dark, not fall through to a default. */
+    public function test_an_unknown_driver_is_off(): void
+    {
+        config(['scanner.driver' => 'gpt-please', 'scanner.api_key' => 'test-key']);
+
+        $this->assertFalse(app(DocumentScanner::class)->isEnabled());
+    }
+
+    // --- Cleaning what the model wrote -------------------------------------
+
+    /**
+     * The title comes from the validated type, not from free text. A small
+     * local model reliably answers "Last Name, First Name, Middle Name" here
+     * — it reads the label above the value.
+     */
+    public function test_the_title_is_derived_from_the_type_not_from_free_text(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'drivers_license',
+            'title' => 'Last Name, First Name, Middle Name',
+        ])->scan(UploadedFile::fake()->image('licence.jpg'));
+
+        $this->assertSame("Driver's Licence", $fields['title']);
+    }
+
+    /**
+     * The heading beats the enum, because the model is measurably better at
+     * transcribing a title than at picking the matching key.
+     *
+     * Regression guard for a real miss: on an NBI clearance this model writes
+     * title "NBI Clearance" and then answers type "drivers_license", every
+     * time. Filing that under licences would put a clearance in the wrong
+     * renewal window in CredentialExpiryScanner.
+     */
+    public function test_the_documents_heading_overrules_a_wrong_type(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'drivers_license',
+            'title' => 'NBI Clearance',
+        ])->scan(UploadedFile::fake()->image('x.jpg'));
+
+        $this->assertSame('clearance', $fields['type']);
+        $this->assertSame('Clearance', $fields['title']);
+    }
+
+    /**
+     * The form has to know *where* the type came from, not just what it is.
+     *
+     * Choosing "Government ID" and uploading a clearance used to save quietly
+     * under the wrong type, and a clearance filed as an ID lands in the wrong
+     * renewal window — it stops being chased at all. The upload is now refused
+     * when the document's own heading contradicts the chosen type.
+     *
+     * But only then. The model's bare guess is wrong often enough that
+     * blocking on it would refuse correct filings, so that case only warns —
+     * which is why this flag exists rather than a plain type comparison.
+     */
+    public function test_a_type_read_from_the_heading_is_marked_as_such(): void
+    {
+        $fromHeading = $this->scannerReturning([
+            'type' => 'government_id',
+            'title' => 'NBI Clearance',
+        ])->scan(UploadedFile::fake()->image('x.jpg'));
+
+        $this->assertSame('clearance', $fromHeading['type']);
+        $this->assertSame(DocumentScanner::TYPE_FROM_HEADING, $fromHeading['type_source']);
+        $this->assertTrue($fromHeading['type_certain']);
+    }
+
+    public function test_a_type_the_model_merely_guessed_is_not(): void
+    {
+        $guessed = $this->scannerReturning([
+            'type' => 'clearance',
+            // No keyword in the heading, so nothing corroborates the guess.
+            'title' => 'LAST NAME, FIRST NAME, MIDDLE NAME',
+        ])->scan(UploadedFile::fake()->image('x.jpg'));
+
+        $this->assertSame('clearance', $guessed['type']);
+        $this->assertSame(DocumentScanner::TYPE_FROM_MODEL, $guessed['type_source']);
+        $this->assertFalse($guessed['type_certain']);
+    }
+
+    /**
+     * PSA civil registry documents are their own type, not training
+     * certificates.
+     *
+     * The keyword order in `scanner.title_keywords` is what does this: "PSA
+     * Birth Certificate" contains the word "certificate", so `psa` has to be
+     * tested first or every birth certificate is filed as a qualification.
+     *
+     * @dataProvider psaHeadings
+     */
+    public function test_psa_documents_are_not_filed_as_training_certificates(
+        string $heading,
+        string $expected,
+    ): void {
+        $fields = $this->scannerReturning([
+            'type' => 'other',
+            'title' => $heading,
+        ])->scan(UploadedFile::fake()->image('x.jpg'));
+
+        $this->assertSame($expected, $fields['type'], "\"{$heading}\" was misfiled.");
+    }
+
+    /** @return array<string, array{0: string, 1: string}> */
+    public static function psaHeadings(): array
+    {
+        return [
+            'birth certificate' => ['PSA Birth Certificate', 'psa'],
+            'certificate of live birth' => ['CERTIFICATE OF LIVE BIRTH', 'psa'],
+            'the issuing authority' => ['Philippine Statistics Authority', 'psa'],
+            'marriage certificate' => ['Certificate of Marriage', 'psa'],
+            'cenomar' => ['CENOMAR', 'psa'],
+            // PSA was NSO until 2013, and older copies still say so.
+            'an older NSO copy' => ['NSO Birth Certificate', 'psa'],
+
+            // The ones that must keep their own type.
+            'a training certificate' => ['TESDA Certificate of Competency', 'certificate'],
+            'an NBI clearance' => ['NBI Clearance', 'clearance'],
+        ];
+    }
+
+    /**
+     * The common case for a licence, whose title line is the field caption
+     * above the name rather than the document's own heading.
+     */
+    public function test_a_heading_with_no_keyword_leaves_the_models_type_alone(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'drivers_license',
+            'title' => 'LAST NAME, FIRST NAME, MIDDLE NAME',
+        ])->scan(UploadedFile::fake()->image('x.jpg'));
+
+        $this->assertSame('drivers_license', $fields['type']);
+    }
+
+    /**
+     * Where this model lies most readily: a document carrying no dates at
+     * all. Given a PhilSys card, which prints a birth date and nothing else,
+     * it answered that same date as both the issue and the expiry — and an
+     * invented expiry is the exact failure the whole feature exists to stop.
+     */
+    public function test_an_expiry_equal_to_the_issue_date_drops_both(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'government_id',
+            'issued_at' => '1990-07-14',
+            'expires_at' => '1990-07-14',
+        ])->scan(UploadedFile::fake()->image('philsys.jpg'));
+
+        $this->assertNull($fields['issued_at']);
+        $this->assertNull($fields['expires_at']);
+    }
+
+    public function test_an_expiry_before_the_issue_date_drops_both(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'drivers_license',
+            'issued_at' => '2026-05-01',
+            'expires_at' => '2024-05-01',
+        ])->scan(UploadedFile::fake()->image('x.jpg'));
+
+        $this->assertNull($fields['issued_at']);
+        $this->assertNull($fields['expires_at']);
+    }
+
+    public function test_a_sane_pair_of_dates_survives(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'drivers_license',
+            'issued_at' => '2024-05-12',
+            'expires_at' => '2029-05-12',
+        ])->scan(UploadedFile::fake()->image('x.jpg'));
+
+        $this->assertSame('2024-05-12', $fields['issued_at']);
+        $this->assertSame('2029-05-12', $fields['expires_at']);
+    }
+
+    /**
+     * Plenty of documents print only one of the two. With nothing to compare
+     * against there is no contradiction, so the single date stands.
+     */
+    public function test_an_expiry_with_no_issue_date_is_kept(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'clearance',
+            'issued_at' => null,
+            'expires_at' => '2027-03-01',
+        ])->scan(UploadedFile::fake()->image('x.jpg'));
+
+        $this->assertNull($fields['issued_at']);
+        $this->assertSame('2027-03-01', $fields['expires_at']);
+    }
+
+    /**
+     * The prompt tells the model a null note is fine; the model sometimes
+     * answers with that sentence, and it arrives looking like a finding.
+     */
+    public function test_the_prompt_echoed_back_as_a_note_is_dropped(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'contract',
+            'note' => 'null unless something is genuinely worth flagging',
+        ])->scan(UploadedFile::fake()->image('x.jpg'));
+
+        $this->assertNull($fields['note']);
+    }
+
+    public function test_a_real_note_survives(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'contract',
+            'note' => 'The expiry date is already past.',
+        ])->scan(UploadedFile::fake()->image('x.jpg'));
+
+        $this->assertSame('The expiry date is already past.', $fields['note']);
+    }
+
+    /** Nothing better to offer when the type was rejected. */
+    public function test_an_unrecognised_type_falls_back_to_the_models_title(): void
+    {
+        // A heading with no keyword in it either, so there is genuinely
+        // nothing left to recover the type from.
+        $fields = $this->scannerReturning([
+            'type' => 'birth_certificate',
+            'title' => 'Republic of the Philippines',
+        ])->scan(UploadedFile::fake()->image('x.jpg'));
+
+        $this->assertNull($fields['type']);
+        $this->assertSame('Republic of the Philippines', $fields['title']);
+    }
+
+    /**
+     * These land in single-line inputs. A newline pasted into one silently
+     * becomes a space, so a block of OCR output arrives looking deliberate.
+     */
+    public function test_free_text_is_flattened_to_a_single_line_and_capped(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'other',
+            'name_on_document' => "DELA CRUZ,\n   JUAN\t SANTOS",
+            'note' => str_repeat('very long ', 40),
+        ])->scan(UploadedFile::fake()->image('x.jpg'));
+
+        $this->assertSame('DELA CRUZ, JUAN SANTOS', $fields['name_on_document']);
+        $this->assertStringNotContainsString("\n", $fields['note']);
+        // The note gets a longer cap than the other fields — it is a sentence
+        // about the document, not a value copied off it.
+        $this->assertLessThanOrEqual(201, mb_strlen($fields['note']));
+    }
+
     /** A PDF or DOCX upload skips the scanner rather than failing. */
     public function test_a_non_image_is_not_scanned(): void
     {
@@ -146,6 +466,330 @@ class DocumentScannerTest extends TestCase
         $this->assertSame('DELA CRUZ, JUANA MARTINEZ', $fields['name_on_document']);
     }
 
+    /**
+     * The name check has to survive a real ID, and the first version did not.
+     *
+     * A licence printed "JOHN GAVE" without the surname, the model read it as
+     * "JONN GAVE", and the old test — first name *and* last name, both
+     * verbatim — failed twice over: once to a missing word, once to a single
+     * misread letter. Both are ordinary. Philippine IDs truncate long names
+     * and OCR confuses H with N.
+     *
+     * @dataProvider nameComparisons
+     */
+    public function test_the_name_check_tolerates_how_ids_are_actually_printed(
+        string $printed,
+        string $first,
+        string $middle,
+        string $last,
+        bool $expected,
+        string $because,
+    ): void {
+        $employee = Employee::factory()->create([
+            'first_name' => $first,
+            'middle_name' => $middle,
+            'last_name' => $last,
+        ]);
+
+        $fields = $this->scannerReturning([
+            'type' => 'drivers_license',
+            'name_on_document' => $printed,
+        ])->scan(UploadedFile::fake()->image('id.jpg'), $employee);
+
+        $this->assertSame($expected, $fields['name_matches'], $because);
+    }
+
+    /** @return array<string, array{0: string, 1: string, 2: string, 3: string, 4: bool, 5: string}> */
+    public static function nameComparisons(): array
+    {
+        return [
+            // The case that prompted all of this.
+            'surname missing and a letter misread' => [
+                'JONN GAVE', 'John', 'Gave P.', 'Benavidez', true,
+                'A truncated, slightly misread reading is still this person.',
+            ],
+            'full name, exactly' => [
+                'JOHN GAVE P. BENAVIDEZ', 'John', 'Gave P.', 'Benavidez', true,
+                'The straightforward case must not have regressed.',
+            ],
+            'surname printed first' => [
+                'BENAVIDEZ, JOHN GAVE', 'John', 'Gave P.', 'Benavidez', true,
+                'Order is not evidence — half of Philippine IDs lead with the surname.',
+            ],
+            'two-word surname' => [
+                'DELA CRUZ, JUAN SANTOS', 'Juan', 'Santos', 'Dela Cruz', true,
+                'A surname with a space is one name, not two mismatches.',
+            ],
+            'married name adds words' => [
+                'MARIA SANTOS DELA CRUZ', 'Maria', '', 'Santos', true,
+                'Every word of her name is there; the document simply has more.',
+            ],
+            'middle name absent from the document' => [
+                'REYES, ANTONIO', 'Antonio', 'Cruz', 'Reyes', true,
+                'Plenty of IDs omit the middle name.',
+            ],
+
+            // The cases the check exists to catch.
+            'a different person entirely' => [
+                'MARIE JUMIO', 'Anastasia', 'C.', 'Zemlak', false,
+                'Nothing in common — this is the filing error being prevented.',
+            ],
+            'same given name, different surname' => [
+                'ANTONIO SANTOS', 'Antonio', '', 'Reyes', false,
+                'Given names repeat constantly; one match is not enough.',
+            ],
+            'a short given name one letter apart' => [
+                'ANA REYES', 'Anna', '', 'Reyes', false,
+                'Ana and Anna are different people. Fuzzy matching stops at short words, '
+                .'or "Ana" would also match "Ann" and "Any".',
+            ],
+        ];
+    }
+
+    // --- The ID number, which outranks the name ----------------------------
+
+    /**
+     * The check that answers "is this really their ID" as honestly as it can
+     * be answered here.
+     *
+     * Whether a card is *authentic* cannot be told from a photograph — that
+     * needs the issuing agency, and there is no public LTO or PSA lookup. But
+     * whether it is *theirs* can be, and a number already on the 201 file
+     * answers it far better than a name: a licence number identifies one
+     * person, and OCR reads digits more reliably than letters.
+     */
+    public function test_a_matching_licence_number_confirms_the_document(): void
+    {
+        $employee = Employee::factory()->create([
+            'drivers_license_number' => 'N01-23-456789',
+        ]);
+
+        $fields = $this->scannerReturning([
+            'type' => 'drivers_license',
+            'document_number' => 'N01-23-456789',
+        ])->scan(UploadedFile::fake()->image('licence.jpg'), $employee);
+
+        $this->assertTrue($fields['number_matches']);
+    }
+
+    /**
+     * The caption is read along with the value, and must not refuse the card.
+     *
+     * From a real scan: an NBI clearance came back with document_number
+     * "NBI ID NO.: N2G4-25-123456" rather than the number alone. Compared for
+     * equality that reads as a contradiction — and a contradicted number
+     * *blocks the upload*, so the correct document, correctly read, was
+     * refused because of the words printed next to the number.
+     *
+     * @dataProvider capturedNumbers
+     */
+    public function test_a_caption_read_with_the_number_does_not_refuse_the_card(
+        string $printed,
+        bool $expected,
+    ): void {
+        $employee = Employee::factory()->create([
+            'drivers_license_number' => 'N01-23-456789',
+        ]);
+
+        $fields = $this->scannerReturning([
+            'type' => 'drivers_license',
+            'document_number' => $printed,
+        ])->scan(UploadedFile::fake()->image('licence.jpg'), $employee);
+
+        $this->assertSame($expected, $fields['number_matches'], "\"{$printed}\"");
+    }
+
+    /** @return array<string, array{0: string, 1: bool}> */
+    public static function capturedNumbers(): array
+    {
+        return [
+            'the number alone' => ['N01-23-456789', true],
+            'captioned with a colon' => ['LICENSE NO.: N01-23-456789', true],
+            'captioned without one' => ['License No N01-23-456789', true],
+
+            // Still has to refuse someone else's card, caption or not.
+            'a different licence' => ['N01-23-999999', false],
+            'a different licence, captioned' => ['LICENSE NO.: N01-23-999999', false],
+        ];
+    }
+
+    /**
+     * A line that is not a number at all must become "unknown", not evidence.
+     *
+     * A real scan returned document_number "012 A-345, SAMPLE STREET, MANILA" —
+     * the holder's address. Kept, it can never match the 201 file, and a
+     * *contradicted* number blocks the upload: the employee's own ID refused
+     * because the model read the wrong line. Dropped, the answer is null,
+     * nothing is blocked, and the name check decides.
+     *
+     * @dataProvider implausibleNumbers
+     */
+    public function test_a_line_that_is_not_a_number_is_dropped(string $printed): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'government_id',
+            'document_number' => $printed,
+        ])->scan(UploadedFile::fake()->image('id.jpg'));
+
+        $this->assertNull($fields['document_number'], "\"{$printed}\" was kept.");
+    }
+
+    /** @return array<string, array{0: string}> */
+    public static function implausibleNumbers(): array
+    {
+        return [
+            'an address' => ['012 A-345, SAMPLE STREET, MANILA'],
+            'a heading' => ['REPUBLIC OF THE PHILIPPINES'],
+            'one word' => ['MANILA'],
+            'a name' => ['DELA CRUZ, JUAN P.'],
+        ];
+    }
+
+    /**
+     * The formats actually carried in a 201 file, none of which may be lost to
+     * the check above.
+     *
+     * @dataProvider realNumbers
+     */
+    public function test_real_id_numbers_survive_the_check(string $printed): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'government_id',
+            'document_number' => $printed,
+        ])->scan(UploadedFile::fake()->image('id.jpg'));
+
+        $this->assertSame($printed, $fields['document_number']);
+    }
+
+    /** @return array<string, array{0: string}> */
+    public static function realNumbers(): array
+    {
+        return [
+            'LTO licence' => ['N01-23-456789'],
+            'PhilSys' => ['1234-5678-9012-3456'],
+            'UMID CRN' => ['CRN-0111-2222222-3'],
+            'SSS' => ['34-1234567-8'],
+            'PhilHealth' => ['12-345678901-2'],
+            'TIN' => ['123-456-789-000'],
+            'passport' => ['P1234567A'],
+        ];
+    }
+
+    /**
+     * And the form shows the number, not the line it was printed on — HR reads
+     * this field to check the scan, so it should hold the value.
+     */
+    public function test_the_caption_is_stripped_from_what_the_form_shows(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'clearance',
+            'document_number' => 'NBI ID NO.: N2G4-25-123456',
+        ])->scan(UploadedFile::fake()->image('x.jpg'));
+
+        $this->assertSame('N2G4-25-123456', $fields['document_number']);
+    }
+
+    /** Punctuation is how it was typed, not part of the number. */
+    public function test_the_number_is_compared_without_its_punctuation(): void
+    {
+        $employee = Employee::factory()->create([
+            'drivers_license_number' => 'N01-23-456789',
+        ]);
+
+        $fields = $this->scannerReturning([
+            'type' => 'drivers_license',
+            'document_number' => 'n01 23 456789',
+        ])->scan(UploadedFile::fake()->image('licence.jpg'), $employee);
+
+        $this->assertTrue($fields['number_matches']);
+    }
+
+    /**
+     * `government_id` covers PhilSys, SSS, PhilHealth, Pag-IBIG and the TIN,
+     * and the document does not say which — so any recorded number counts.
+     */
+    public function test_a_government_id_matches_any_recorded_number(): void
+    {
+        $employee = Employee::factory()->create([
+            'sss_number' => '34-1234567-8',
+            'tin' => '123-456-789-000',
+        ]);
+
+        foreach (['34-1234567-8', '123456789000'] as $printed) {
+            $fields = $this->scannerReturning([
+                'type' => 'government_id',
+                'document_number' => $printed,
+            ])->scan(UploadedFile::fake()->image('id.jpg'), $employee);
+
+            $this->assertTrue($fields['number_matches'], "{$printed} should have matched.");
+        }
+    }
+
+    /** The strongest evidence there is that a document is someone else's. */
+    public function test_a_contradicting_number_is_reported(): void
+    {
+        $employee = Employee::factory()->create([
+            'drivers_license_number' => 'N01-23-456789',
+        ]);
+
+        $fields = $this->scannerReturning([
+            'type' => 'drivers_license',
+            'document_number' => 'D99-88-777666',
+        ])->scan(UploadedFile::fake()->image('licence.jpg'), $employee);
+
+        $this->assertFalse($fields['number_matches']);
+    }
+
+    /**
+     * The one check that reads the document rather than who it belongs to.
+     *
+     * It matters most on the *first* document scanned for someone: there is
+     * nothing on file to compare a number against, so without this the name —
+     * the least reliable reading of the three — is the only evidence there is.
+     */
+    public function test_a_number_shaped_wrongly_for_its_type_is_flagged(): void
+    {
+        $employee = Employee::factory()->create();
+
+        $wrong = $this->scannerReturning([
+            'type' => 'drivers_license',
+            'document_number' => 'ABC123',
+        ])->scan(UploadedFile::fake()->image('x.jpg'), $employee);
+
+        $this->assertFalse($wrong['number_format_ok']);
+
+        $right = $this->scannerReturning([
+            'type' => 'drivers_license',
+            'document_number' => 'N01-23-456789',
+        ])->scan(UploadedFile::fake()->image('x.jpg'), $employee);
+
+        $this->assertTrue($right['number_format_ok']);
+    }
+
+    /** No pattern configured for the type is not a finding either. */
+    public function test_a_type_with_no_known_format_reports_null(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'medical',
+            'document_number' => 'MC-2026-4471',
+        ])->scan(UploadedFile::fake()->image('x.jpg'), Employee::factory()->create());
+
+        $this->assertNull($fields['number_format_ok']);
+    }
+
+    /** Nothing on file to compare against is not a finding. */
+    public function test_no_recorded_number_reports_null(): void
+    {
+        $employee = Employee::factory()->create(['drivers_license_number' => null]);
+
+        $fields = $this->scannerReturning([
+            'type' => 'drivers_license',
+            'document_number' => 'N01-23-456789',
+        ])->scan(UploadedFile::fake()->image('licence.jpg'), $employee);
+
+        $this->assertNull($fields['number_matches']);
+    }
+
     /** Nothing to compare against is not the same as a mismatch. */
     public function test_a_missing_name_reports_null_not_false(): void
     {
@@ -213,7 +857,13 @@ class DocumentScannerTest extends TestCase
     {
         parent::setUp();
 
-        config(['scanner.api_key' => 'test-key']);
+        // These cover the rules *around* read() — the driver underneath is
+        // irrelevant to them, so one is pinned rather than left to whatever
+        // .env happens to say.
+        config([
+            'scanner.driver' => 'anthropic',
+            'scanner.api_key' => 'test-key',
+        ]);
     }
 
     // --- Helpers -----------------------------------------------------------
