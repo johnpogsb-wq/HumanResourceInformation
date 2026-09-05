@@ -40,4 +40,26 @@ return [
         'drivers_license',
         'medical',
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Which types normally carry an expiry date
+    |--------------------------------------------------------------------------
+    | Drives the upload form: the Expiry Date field is shown for these and
+    | tucked behind a toggle for the rest, so a résumé is not asked when it
+    | expires.
+    |
+    | "Normally", not "always", and the difference matters. A PhilSys ID never
+    | expires but a passport does, and both are filed as `government_id`; a
+    | regular employment contract has no end date but a project-based one does.
+    | So this decides what the form *offers first*, never what it will accept —
+    | the field is always reachable, and `expires_at` stays nullable for every
+    | type. Hiding it outright would leave HR unable to record a real date.
+    */
+    'expiring_types' => [
+        'drivers_license',
+        'medical',
+        'clearance',
+        'certificate',
+    ],
 ];
