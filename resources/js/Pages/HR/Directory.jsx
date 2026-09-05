@@ -55,8 +55,9 @@ function PersonRow({ person }) {
 
             {/* Where they are posted. For a manpower agency that is half of
                 "who are you" — an internal clerk and a driver on a client site
-                are different people to reach. */}
-            {/* Both readings carry an icon, "Internal staff" included. One
+                are different people to reach.
+
+                Both readings carry an icon, "Internal staff" included. One
                 line indented behind a symbol and the next starting flush left
                 is what made this column read as debris rather than as a
                 posting. */}
@@ -117,25 +118,39 @@ function PersonRow({ person }) {
                 )}
             </div>
 
-            {/* Only ever present for somebody who may already open this
+            {/* The slot is drawn whether or not there is a badge in it, and
+                that is the whole reason the rows line up.
+
+                A badge only some people carry, sized to its own words, is a
+                column of variable width — so a row with one pushed everything
+                to its left along by 90px, and the posting and the contact
+                landed at a different x on every line. Reserving the width
+                costs a fixed strip of whitespace and buys a screen that reads
+                as a table.
+
+                Only ever filled for somebody who may already open this
                 person's 201 file — see DirectoryController::card(). */}
-            {person.credentials && (
-                <div className="shrink-0">
+            <div className="hidden w-32 shrink-0 justify-end sm:flex">
+                {person.credentials && (
                     <Badge variant={person.credentials.blocking ? 'destructive' : 'warning'}>
                         <ShieldAlert className="h-3 w-3" aria-hidden="true" />
                         {person.credentials.blocking
                             ? 'Cannot work'
                             : `${person.credentials.total} due`}
                     </Badge>
-                </div>
-            )}
+                )}
+            </div>
 
-            {person.can_view && (
-                <ChevronRight
-                    className="hidden h-4 w-4 shrink-0 text-muted-foreground sm:block"
-                    aria-hidden="true"
-                />
-            )}
+            {/* Reserved for the same reason, so a row nobody may open ends
+                where every other row ends. */}
+            <div className="hidden w-4 shrink-0 sm:block">
+                {person.can_view && (
+                    <ChevronRight
+                        className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+                        aria-hidden="true"
+                    />
+                )}
+            </div>
         </>
     );
 
