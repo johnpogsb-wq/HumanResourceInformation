@@ -302,13 +302,34 @@ export function MeterCard({
  * is the resting state and is what a zero falls back to.
  */
 const TILE_TONES = {
-    default: 'bg-secondary/60',
-    primary: 'bg-primary/10',
-    info: 'bg-info/10',
-    success: 'bg-success/10',
-    warning: 'bg-warning/10',
-    destructive: 'bg-destructive/10',
-    muted: 'bg-muted',
+    default: {
+        rest: 'bg-secondary/60 ring-border',
+        hover: 'hover:bg-secondary/80 hover:ring-muted-foreground/25',
+    },
+    primary: {
+        rest: 'bg-primary/[0.07] ring-primary/20',
+        hover: 'hover:bg-primary/[0.14] hover:ring-primary/40',
+    },
+    info: {
+        rest: 'bg-info/[0.07] ring-info/20',
+        hover: 'hover:bg-info/[0.14] hover:ring-info/40',
+    },
+    success: {
+        rest: 'bg-success/[0.07] ring-success/20',
+        hover: 'hover:bg-success/[0.14] hover:ring-success/40',
+    },
+    warning: {
+        rest: 'bg-warning/[0.07] ring-warning/20',
+        hover: 'hover:bg-warning/[0.14] hover:ring-warning/40',
+    },
+    destructive: {
+        rest: 'bg-destructive/[0.07] ring-destructive/20',
+        hover: 'hover:bg-destructive/[0.14] hover:ring-destructive/40',
+    },
+    muted: {
+        rest: 'bg-muted ring-border',
+        hover: 'hover:bg-muted hover:ring-muted-foreground/25',
+    },
 };
 
 /**
@@ -329,12 +350,32 @@ const TILE_TONES = {
  */
 export function StatTile({ label, value, tone = 'default', href, className }) {
     const isZero = value === 0 || value === '0';
+    const palette = isZero ? TILE_TONES.muted : (TILE_TONES[tone] ?? TILE_TONES.default);
 
     const classes = cn(
-        'block min-w-0 flex-1 rounded-lg px-2 py-2.5 text-center',
-        isZero ? TILE_TONES.muted : (TILE_TONES[tone] ?? TILE_TONES.default),
+        /*
+         * A ring, not a shadow, and that is the whole change in how these
+         * read. The tile is a tint with no edge, so on the app's own pale
+         * background it dissolved into the card behind it — three soft
+         * rectangles rather than three figures. An inset hairline in the
+         * tile's own tone gives it a boundary without adding a second colour.
+         *
+         * A drop shadow would have done it too and would have been wrong:
+         * these sit *inside* a card, and a raised tile inside a card reads as
+         * a card floating on a card.
+         */
+        'block min-w-0 flex-1 rounded-lg px-2.5 py-3 text-center ring-1 ring-inset',
+        palette.rest,
+        /*
+         * Hover deepens the tint rather than lifting the tile, for the same
+         * reason: a tile that moves inside a card makes the card look loose.
+         * The tint doubling is a clear enough answer that something happened.
+         */
         href &&
-            'transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_16px_-8px_hsl(var(--foreground)/0.25)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+            cn(
+                'transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                palette.hover,
+            ),
         className,
     );
 
@@ -342,13 +383,15 @@ export function StatTile({ label, value, tone = 'default', href, className }) {
         <>
             <p
                 className={cn(
-                    'truncate text-xl font-semibold tabular-nums leading-tight',
+                    'truncate text-[22px] font-semibold tabular-nums leading-none',
                     isZero ? TEXT_TONES.muted : (TEXT_TONES[tone] ?? TEXT_TONES.default),
                 )}
             >
                 {value}
             </p>
-            <p className="mt-0.5 truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            {/* Sat 2px under the number before, which read as one block of
+                text rather than a figure with a caption. */}
+            <p className="mt-1.5 truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                 {label}
             </p>
         </>
