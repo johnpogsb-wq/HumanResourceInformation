@@ -170,7 +170,12 @@ export default function DocumentBatch({
             body.append(`assignments[${position}][expires_at]`, row.expires_at ?? '');
         });
 
-        form.transform(() => body).post('/hr/employees/documents/batch', {
+        // Set, then posted — not chained. useForm's transform() returns
+        // undefined, so chaining throws on the post and the button silently
+        // stops working.
+        form.transform(() => body);
+
+        form.post('/hr/employees/documents/batch', {
             forceFormData: true,
         });
     };

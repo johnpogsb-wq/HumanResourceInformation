@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Department;
+use App\Models\Employee;
 use App\Models\Position;
 use App\Models\Setting;
 use Illuminate\Http\RedirectResponse;
@@ -31,8 +32,32 @@ class PositionController extends Controller
             'department_id' => $request->integer('department_id') ?: null,
         ];
 
-        $positions = Position::with('department:id,name')
-            ->withCount('employees')
+        $positions = Position::with([
+            'department:id,name',
+
+            /*
+             * The people holding each title, so the screen can be walked into
+             * rather than read as a table of counts.
+             *
+             * Eager-loaded in one query rather than fetched per card: fifteen
+             * positions opened one at a time would be fifteen round trips for
+             * a set this size, and the browser is holding the answer either
+             * way once the page has rendered.
+             *
+             * Active only. A position's headcount is who holds it now — a
+             * separated employee is a record, and the archive is where that
+             * question is asked.
+             */
+            'employees' => fn ($query) => $query
+                ->where('status', 'active')
+                ->orderBy('last_name')
+                ->orderBy('first_name')
+                ->select([
+                    'id', 'employee_number', 'first_name', 'middle_name', 'last_name',
+                    'suffix', 'photo_path', 'position_id', 'department_id',
+                ]),
+        ])
+            ->withCount(['employees' => fn ($query) => $query->where('status', 'active')])
             ->search($filters['search'])
             ->when(
                 $filters['department_id'],
@@ -53,7 +78,45 @@ class PositionController extends Controller
                 'max_salary' => $position->max_salary ? (float) $position->max_salary : null,
                 'is_active' => $position->is_active,
                 'employees_count' => $position->employees_count,
+
+                /*
+                 * Deliberately a name, a number, and a photo — nothing else.
+                 *
+                 * This screen is master data behind `manageOrganization`, not
+                 * a record screen: it answers "who holds this title", which
+                 * needs no salary, no government number, and no 201 file. The
+                 * same narrowing `DirectoryController::card()` makes, for the
+                 * same reason — the field list is what keeps a widened screen
+                 * safe.
+                 */
+                'employees' => $position->employees->map(fn (Employee $employee) => [
+                    'id' => $employee->id,
+                    'employee_number' => $employee->employee_number,
+                    'full_name' => $employee->full_name,
+                    'photo_url' => $employee->photo_path
+                        ? asset('storage/'.$employee->photo_path)
+                        : null,
+                ]),
             ]),
+
+            /*
+             * Where somebody may be moved to. Active only, and the same rule
+             * `EndorsementService::suggestions()` applies: a deactivated
+             * position is kept so history keeps what it was filed under, not
+             * so a new person can be filed against it.
+             */
+            'moveTargets' => Position::with('department:id,name')
+                ->where('is_active', true)
+                ->orderBy('title')
+                ->get(['id', 'title', 'code', 'department_id'])
+                ->map(fn (Position $position) => [
+                    'value' => $position->id,
+                    'label' => $position->department
+                        ? "{$position->title} · {$position->department->name}"
+                        : $position->title,
+                    'department' => $position->department?->name,
+                    'department_id' => $position->department_id,
+                ]),
             'filters' => $filters,
             'departments' => Department::orderBy('name')->get(['id', 'name'])
                 ->map(fn (Department $department) => [

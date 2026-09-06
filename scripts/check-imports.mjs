@@ -337,6 +337,33 @@ for (const file of files) {
     }
 }
 
+/*
+ * A fourth shape, and not an import problem at all — but the same *class* of
+ * bug this script exists for: silent in the build, fatal in the browser.
+ *
+ * Inertia's `useForm().transform()` returns undefined. So
+ * `form.transform(fn).post(url)` throws a TypeError on `.post` and the submit
+ * simply never happens — no error on screen, no failing test, a button that
+ * looks fine and does nothing. Two of these were sitting in the codebase
+ * before it was written: the bulk-import commit and the batch document filer,
+ * both load-bearing, both silently dead.
+ *
+ * Set the transform, then submit, as two statements.
+ */
+for (const file of files) {
+    const source = stripNonCode(fs.readFileSync(file, 'utf8'));
+
+    for (const match of source.matchAll(
+        /\.transform\s*\([\s\S]*?\)\s*\.\s*(post|put|patch|delete|submit)\s*\(/g,
+    )) {
+        console.log(
+            `  ${file}  .transform(…).${match[1]}() — transform() returns undefined; ` +
+                'set it and submit as two statements',
+        );
+        bad++;
+    }
+}
+
 console.log(
     bad === 0
         ? `  clean — ${files.length} files, every name used is imported or declared`

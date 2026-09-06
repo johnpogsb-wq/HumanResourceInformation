@@ -95,6 +95,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('employees/{employee}/verify-license', [EmployeeController::class, 'verifyLicense'])
             ->name('employees.verifyLicense');
 
+        /*
+         * Moving somebody between job titles, reached from the Positions
+         * screen. Addressed as the *employee* rather than as the position,
+         * because that is whose record changes — and it is gated on `update`
+         * for that employee, not on `manageOrganization`.
+         */
+        Route::patch('employees/{employee}/position', [EmployeeController::class, 'updatePosition'])
+            ->name('employees.position');
+
         Route::resource('employees', EmployeeController::class);
 
         /*

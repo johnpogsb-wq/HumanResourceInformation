@@ -1,11 +1,12 @@
-import { router, useForm } from '@inertiajs/react';
+import { Link, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
-import { Briefcase, Plus, TriangleAlert, Users } from 'lucide-react';
+import { ArrowRight, Briefcase, ChevronDown, Plus, TriangleAlert, Users } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
     Button,
     Card,
+    CardBody,
     CardHeader,
     Field,
     Input,
@@ -14,15 +15,8 @@ import {
     Select,
     MeterCard,
     StatCard,
-    TBody,
-    TD,
-    TH,
-    THead,
-    TR,
-    Table,
-    TableEmpty,
 } from '@/Components/ui';
-import { formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency, initials } from '@/lib/utils';
 
 const BLANK = {
     department_id: '',
@@ -37,20 +31,188 @@ const BLANK = {
 /** The band, or an honest gap where one was never set. */
 function Band({ min, max }) {
     if (min === null || max === null) {
-        return <span className="text-xs text-muted-foreground">Not set</span>;
+        return <span className="text-xs text-muted-foreground">No band set</span>;
     }
 
     return (
-        <span className="tabular-nums">
+        <span className="text-xs tabular-nums text-muted-foreground">
             {formatCurrency(min)} – {formatCurrency(max)}
         </span>
     );
 }
 
-export default function Positions({ positions, filters, departments, summary }) {
+/**
+ * One person holding this title, and the control that moves them off it.
+ *
+ * The name, the number, and a photo — nothing else. This is a master-data
+ * screen answering "who holds this title", which needs no salary, no
+ * government number, and no 201 file; the same narrowing the org directory
+ * makes, for the same reason.
+ */
+function HolderRow({ employee, positionId, targets, onMove }) {
+    return (
+        <div className="flex items-center gap-3 border-b border-border px-4 py-2.5 last:border-0">
+            {employee.photo_url ? (
+                <img
+                    src={employee.photo_url}
+                    alt=""
+                    className="h-9 w-9 shrink-0 rounded-full object-cover"
+                />
+            ) : (
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
+                    {initials(employee.full_name)}
+                </span>
+            )}
+
+            <div className="min-w-0 flex-1">
+                <Link
+                    href={`/hr/employees/${employee.id}`}
+                    className="block truncate text-sm font-medium text-foreground hover:text-primary"
+                >
+                    {employee.full_name}
+                </Link>
+                <p className="truncate font-mono text-[11px] text-muted-foreground">
+                    {employee.employee_number}
+                </p>
+            </div>
+
+            {/* The move sits on the person, not on the position, because that
+                is whose record changes. It only proposes — the confirmation
+                names what the change costs before anything is written. */}
+            <div className="w-full max-w-[15rem] shrink-0">
+                <Select
+                    value={positionId}
+                    onChange={(event) => onMove(employee, Number(event.target.value))}
+                    aria-label={`Move ${employee.full_name} to another position`}
+                    className="w-full"
+                    options={targets}
+                />
+            </div>
+        </div>
+    );
+}
+
+/**
+ * A position, closed until somebody asks who is in it.
+ *
+ * The screen opens on the titles — a shape a reader takes in at once — rather
+ * than on a table whose headcount column can only be counted, never opened.
+ * Expanding is the question being asked: "who is a Dispatcher?"
+ *
+ * A position with nobody in it is still drawn and still opens. An empty title
+ * is a real state on an org chart, and hiding it would make the list quietly
+ * shorter than the master data it is supposed to be showing.
+ */
+function PositionBlock({ position, open, onToggle, targets, onMove }) {
+    const holders = position.employees ?? [];
+
+    return (
+        <Card className="mb-3">
+            <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={open}
+                className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-secondary/40"
+            >
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                    <Briefcase className="h-[18px] w-[18px]" aria-hidden="true" />
+                </span>
+
+                <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-semibold text-foreground">
+                        {position.title}
+                    </h3>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                        <span className="font-mono">{position.code}</span>
+                        {position.department && ` · ${position.department}`}
+                        {position.salary_grade && ` · ${position.salary_grade}`}
+                    </p>
+                </div>
+
+                <div className="hidden shrink-0 sm:block">
+                    <Band min={position.min_salary} max={position.max_salary} />
+                </div>
+
+                {/* Deactivated is not deleted — the title stays listed so the
+                    history filed under it keeps its name. Only ever drawn when
+                    it is the exception, so the row is quiet when it is not. */}
+                {!position.is_active && <Badge variant="muted">Inactive</Badge>}
+
+                <Badge variant={position.employees_count > 0 ? 'info' : 'muted'}>
+                    {position.employees_count}{' '}
+                    {position.employees_count === 1 ? 'person' : 'people'}
+                </Badge>
+
+                <ChevronDown
+                    className={cn(
+                        'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
+                        open && 'rotate-180',
+                    )}
+                    aria-hidden="true"
+                />
+            </button>
+
+            {open && (
+                <div className="border-t border-border">
+                    {holders.length === 0 ? (
+                        <p className="px-5 py-4 text-xs text-muted-foreground">
+                            Nobody holds this title yet.
+                        </p>
+                    ) : (
+                        holders.map((employee) => (
+                            <HolderRow
+                                key={employee.id}
+                                employee={employee}
+                                positionId={position.id}
+                                targets={targets}
+                                onMove={onMove}
+                            />
+                        ))
+                    )}
+                </div>
+            )}
+        </Card>
+    );
+}
+
+export default function Positions({
+    positions,
+    filters,
+    departments,
+    summary,
+    moveTargets = [],
+}) {
     const [creating, setCreating] = useState(false);
 
+    /*
+     * Which positions are open. Closed to begin with, and more than one may be
+     * open at once — a master-data screen is being *read*, and having one
+     * title close itself because somebody opened another takes away what they
+     * were halfway through. The same choice the org directory makes.
+     */
+    const [expanded, setExpanded] = useState(() => new Set());
+
+    /** The move being confirmed: { employee, from, to }. */
+    const [moving, setMoving] = useState(null);
+
     const form = useForm(BLANK);
+    const moveForm = useForm({ position_id: '' });
+
+    const toggle = (id) =>
+        setExpanded((current) => {
+            const next = new Set(current);
+            next.has(id) ? next.delete(id) : next.add(id);
+
+            return next;
+        });
+
+    /*
+     * A search opens what it matched. Without this, searching a closed list
+     * returns the right answer and shows a screen of shut cards — the reader
+     * would have to open each one to find out which of them the search meant.
+     */
+    const searching = Boolean(filters.search || filters.department_id);
+    const isOpen = (id) => searching || expanded.has(id);
 
     const open = () => {
         form.clearErrors();
@@ -70,14 +232,45 @@ export default function Positions({ positions, filters, departments, summary }) 
         });
     };
 
+    /*
+     * Proposed here, written only after the dialog. Firing the move straight
+     * off the dropdown would make an undoable change to somebody's record out
+     * of a mis-click on a select — and the thing worth saying (the department
+     * follows, the pay does not) has to be said *before* it happens, not in a
+     * toast afterwards.
+     */
+    const proposeMove = (employee, toId, fromPosition) => {
+        const to = moveTargets.find((target) => target.value === toId);
+
+        if (!to || toId === fromPosition.id) return;
+
+        setMoving({ employee, from: fromPosition, to });
+    };
+
+    const confirmMove = () => {
+        /*
+         * Set, then sent — never chained. `useForm`'s `transform()` returns
+         * undefined in Inertia 2, so `.transform(...).patch(...)` throws on
+         * the patch and the button just stops working, with the TypeError
+         * going nowhere a user can see. Two statements cost nothing and
+         * cannot do that.
+         */
+        moveForm.transform(() => ({ position_id: moving.to.value }));
+
+        moveForm.patch(`/hr/employees/${moving.employee.id}/position`, {
+            preserveScroll: true,
+            onSuccess: () => setMoving(null),
+        });
+    };
+
+    const activeRate = summary.total > 0 ? (summary.active / summary.total) * 100 : 0;
+
     const filter = (key, value) =>
         router.get(
             '/hr/positions',
             { ...filters, [key]: value || undefined },
             { preserveState: true, preserveScroll: true, replace: true },
         );
-
-    const activeRate = summary.total > 0 ? (summary.active / summary.total) * 100 : 0;
 
     return (
         <AppLayout
@@ -120,10 +313,10 @@ export default function Positions({ positions, filters, departments, summary }) 
                 />
             </div>
 
-            <Card>
+            <Card className="mb-5">
                 <CardHeader
                     title="Positions"
-                    description="Job titles inside a department. Salaries & Adjustments flags a rate that falls outside the band — it never blocks it."
+                    description="Open a title to see who holds it. Moving somebody changes their record, not this list."
                     action={
                         <div className="flex flex-col gap-2 sm:flex-row">
                             <div className="w-full sm:w-52">
@@ -153,69 +346,95 @@ export default function Positions({ positions, filters, departments, summary }) 
                         </div>
                     }
                 />
-
-                <Table>
-                    <THead>
-                        <TR>
-                            <TH>Code</TH>
-                            <TH>Position</TH>
-                            <TH>Department</TH>
-                            <TH>Grade</TH>
-                            <TH>Salary Band</TH>
-                            <TH className="text-right">Employees</TH>
-                            <TH>Status</TH>
-                        </TR>
-                    </THead>
-
-                    <TBody>
-                        {positions.length === 0 ? (
-                            <TableEmpty
-                                colSpan={7}
-                                icon={Briefcase}
-                                title={
-                                    filters.search || filters.department_id
-                                        ? 'No position matches those filters'
-                                        : 'No positions yet'
-                                }
-                                description="A position gives an employee a job title and an optional salary band."
-                            />
-                        ) : (
-                            positions.map((position) => (
-                                <TR key={position.id}>
-                                    <TD>
-                                        <span className="font-mono text-xs font-medium text-muted-foreground">
-                                            {position.code}
-                                        </span>
-                                    </TD>
-                                    <TD>
-                                        <span className="font-medium text-foreground">
-                                            {position.title}
-                                        </span>
-                                    </TD>
-                                    <TD>{position.department ?? '—'}</TD>
-                                    <TD>{position.salary_grade ?? '—'}</TD>
-                                    <TD>
-                                        <Band
-                                            min={position.min_salary}
-                                            max={position.max_salary}
-                                        />
-                                    </TD>
-                                    <TD className="text-right tabular-nums">
-                                        {position.employees_count}
-                                    </TD>
-                                    <TD>
-                                        <Badge
-                                            variant={position.is_active ? 'success' : 'muted'}
-                                        >
-                                            {position.is_active ? 'Active' : 'Inactive'}
-                                        </Badge>
-                                    </TD>
-                                </TR>
-                            ))
-                        )}
-                    </TBody>
-                </Table>
             </Card>
+
+            {positions.length === 0 ? (
+                <Card>
+                    <CardBody className="py-14 text-center">
+                        <p className="text-sm font-medium text-foreground">
+                            {searching
+                                ? 'No position matches those filters'
+                                : 'No positions yet'}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            A position gives an employee a job title and an optional salary
+                            band.
+                        </p>
+                    </CardBody>
+                </Card>
+            ) : (
+                positions.map((position) => (
+                    <PositionBlock
+                        key={position.id}
+                        position={position}
+                        open={isOpen(position.id)}
+                        onToggle={() => toggle(position.id)}
+                        targets={moveTargets}
+                        onMove={(employee, toId) => proposeMove(employee, toId, position)}
+                    />
+                ))
+            )}
+
+            {/* --- Moving somebody between titles --- */}
+            <Modal
+                show={moving !== null}
+                onClose={() => setMoving(null)}
+                title={moving ? `Move ${moving.employee.full_name}?` : ''}
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setMoving(null)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={confirmMove} disabled={moveForm.processing}>
+                            Move
+                        </Button>
+                    </>
+                }
+            >
+                {moving && (
+                    <div className="space-y-4">
+                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                            <Badge variant="muted">{moving.from.title}</Badge>
+                            <ArrowRight
+                                className="h-4 w-4 text-muted-foreground"
+                                aria-hidden="true"
+                            />
+                            <Badge variant="info">{moving.to.label}</Badge>
+                        </div>
+
+                        <ul className="space-y-1.5 text-xs text-muted-foreground">
+                            {/* A position belongs to a department, so a record
+                                filed under one while holding the other's title
+                                is not a state anybody chose. Said here rather
+                                than discovered on the employee's record. */}
+                            {moving.to.department_id !== moving.from.department_id && (
+                                <li>
+                                    Their department changes from{' '}
+                                    <span className="font-medium text-foreground">
+                                        {moving.from.department ?? 'none'}
+                                    </span>{' '}
+                                    to{' '}
+                                    <span className="font-medium text-foreground">
+                                        {moving.to.department ?? 'none'}
+                                    </span>
+                                    , because the position belongs to it.
+                                </li>
+                            )}
+                            <li>
+                                <span className="font-medium text-foreground">
+                                    Pay does not change.
+                                </span>{' '}
+                                A rate is a decision with a date and a reason behind it — record
+                                it on Salaries &amp; Adjustments if a raise goes with this move.
+                            </li>
+                            <li>
+                                Attendance, leave, and payslips already filed keep the title
+                                they were filed under.
+                            </li>
+                        </ul>
+                    </div>
+                )}
+            </Modal>
 
             <Modal
                 show={creating}

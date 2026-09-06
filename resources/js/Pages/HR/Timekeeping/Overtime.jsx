@@ -76,15 +76,18 @@ export default function Overtime({
     const submitDecision = (event) => {
         event.preventDefault();
 
-        decisionForm
-            .transform((data) => ({ ...data, status: decision.status }))
-            .post(`/hr/timekeeping/overtime/${decision.request.id}/decide`, {
-                preserveScroll: true,
-                onSuccess: () => {
-                    decisionForm.reset();
-                    setDecision(null);
-                },
-            });
+        // Set, then posted. `useForm`'s transform() returns undefined, so
+        // chaining throws on the post and approving an overtime request
+        // silently does nothing.
+        decisionForm.transform((data) => ({ ...data, status: decision.status }));
+
+        decisionForm.post(`/hr/timekeeping/overtime/${decision.request.id}/decide`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                decisionForm.reset();
+                setDecision(null);
+            },
+        });
     };
 
     const rows = requests.data ?? [];

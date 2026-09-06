@@ -23,6 +23,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -546,6 +547,66 @@ class EmployeeController extends Controller
         ]);
 
         return back()->with('success', 'Licence check recorded.');
+    }
+
+    /**
+     * Moves one employee to another position.
+     *
+     * Lives here, and is gated on `update` for *this employee*, because that
+     * is what it is: a change to somebody's record. The Positions screen it is
+     * reached from sits behind `manageOrganization`, which is the right gate
+     * for *shaping* the org chart — deciding a title exists, or that it no
+     * longer does. Filing a person against one is a different act, and the two
+     * abilities happen to be held by the same roles today only because nobody
+     * has yet needed them apart. Asking the wrong one would work until that
+     * changed, and then quietly let the wrong person move somebody.
+     *
+     * The department follows the position rather than being sent separately.
+     * A position belongs to a department, so a record filed under Operations
+     * while holding a Finance title is not a state anybody chose — it is one
+     * they would have had to be asked about twice to reach. The screen names
+     * the department move before the click.
+     */
+    public function updatePosition(Request $request, Employee $employee): RedirectResponse
+    {
+        Gate::authorize('update', $employee);
+
+        $validated = $request->validate([
+            /*
+             * `exists` is not enough on its own: a deactivated position is
+             * kept so history keeps what it was filed under, not so somebody
+             * new can be filed against it — the same rule the endorsement
+             * form's position matching applies.
+             */
+            'position_id' => [
+                'required',
+                Rule::exists('positions', 'id')->where('is_active', true),
+            ],
+        ], [
+            'position_id.exists' => 'That position is not one somebody can be moved to.',
+        ]);
+
+        $position = Position::findOrFail($validated['position_id']);
+        $from = $employee->position?->title ?? 'no position';
+
+        /*
+         * Pay is deliberately untouched. `basic_salary` is a cache of what the
+         * `salary_adjustments` history says, and money reads that history
+         * through `SalaryAdjustmentService::rateAsOf()` — so writing a new
+         * rate here would put a figure on the record that no adjustment
+         * explains, and payroll would keep paying the old one anyway. A raise
+         * that goes with a move is a decision recorded on Salaries &
+         * Adjustments, with its date and its reason.
+         */
+        $employee->update([
+            'position_id' => $position->id,
+            'department_id' => $position->department_id,
+        ]);
+
+        return back()->with(
+            'success',
+            "{$employee->full_name} moved from {$from} to {$position->title}. Pay is unchanged — record a raise on Salaries & Adjustments if one goes with it.",
+        );
     }
 
     /** Dropdown data shared by the create and edit forms. */

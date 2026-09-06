@@ -89,7 +89,14 @@ export default function Import({ columns = [], clients = [] }) {
     };
 
     const commit = () => {
-        form.transform((data) => ({ ...data, commit: true })).post('/hr/employees/import', {
+        /*
+         * Set, then posted — not chained. Inertia's useForm transform() returns
+         * undefined, so `.transform(...).post(...)` throws on the post rather
+         * than submitting. Nothing catches it: the button simply stops working.
+         */
+        form.transform((data) => ({ ...data, commit: true }));
+
+        form.post('/hr/employees/import', {
             forceFormData: true,
         });
     };
