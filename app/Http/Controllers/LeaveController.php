@@ -36,9 +36,14 @@ class LeaveController extends Controller
     {
         Gate::authorize('viewAny', LeaveRequest::class);
 
-        // The `awaiting` key is set by the summary tile and matches the two
-        // statuses it counts — see LeaveRequest::scopeFilter.
-        $filters = $request->only(['status', 'leave_type_id', 'employee_id', 'from', 'to', 'awaiting']);
+        // `awaiting` and `filed_from` are set by summary tiles rather than by
+        // any control on this screen — the first matches the two statuses the
+        // tile counts, the second the month the dashboard's Leave card counts.
+        // See LeaveRequest::scopeFilter, and the chips beside the filter row.
+        $filters = $request->only([
+            'status', 'leave_type_id', 'employee_id', 'from', 'to',
+            'awaiting', 'filed_from',
+        ]);
 
         $query = $this->leave->scopedQuery($request->user())->filter($filters);
 

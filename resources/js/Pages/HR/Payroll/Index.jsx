@@ -1,6 +1,6 @@
 import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
-import { CalendarRange, Play, Plus } from 'lucide-react';
+import { CalendarRange, Play, Plus, X } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
@@ -28,7 +28,20 @@ const titleCase = (value) =>
         .replace(/[_-]/g, ' ')
         .replace(/\b\w/g, (character) => character.toUpperCase());
 
-export default function Index({ periods, suggestion, can }) {
+/**
+ * What the dashboard's Payroll tiles asked for, in this screen's words.
+ *
+ * "Released" is not a run status — it is approved *or* paid, the pair
+ * `PayrollRun::REPORTABLE` holds — so the chip has to name the idea rather
+ * than echo a column value the table does not show.
+ */
+const RUN_STAGE_LABEL = {
+    draft: 'Draft runs only',
+    for_approval: 'Awaiting approval only',
+    released: 'Released runs only',
+};
+
+export default function Index({ periods, suggestion, filters, can }) {
     const [createOpen, setCreateOpen] = useState(false);
 
     // Pre-filled with the next cut-off so HR is not typing dates by hand.
@@ -51,18 +64,38 @@ export default function Index({ periods, suggestion, can }) {
             breadcrumbs={[{ label: 'Human Resource' }, { label: 'Payroll & Compensation' }]}
         >
             <Card>
-                {/* No filters on this screen, so the header carries only the
-                    action — same top-right slot the filtered screens use. */}
+                {/* No filter controls on this screen, so the header carries
+                    the action — same top-right slot the filtered screens use.
+
+                    The one narrowing that can reach here comes from the
+                    dashboard's Payroll card, and it arrives as a removable
+                    chip rather than as a silently shorter table: a list
+                    narrowed by something with no control on screen is a list
+                    nobody can explain. */}
                 <CardHeader
                     title="Payroll Periods"
                     description="Each period holds one run. A run is computed, submitted, approved, then paid."
                     action={
-                        can.create && (
-                            <Button onClick={() => setCreateOpen(true)}>
-                                <Plus className="h-4 w-4" />
-                                New Period
-                            </Button>
-                        )
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            {filters?.run_status && (
+                                <button
+                                    type="button"
+                                    onClick={() => router.get('/hr/payroll')}
+                                    className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-info/30 bg-info/10 px-3 text-xs font-medium text-info transition-colors hover:bg-info/20"
+                                >
+                                    {RUN_STAGE_LABEL[filters.run_status] ??
+                                        titleCase(filters.run_status)}
+                                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                                </button>
+                            )}
+
+                            {can.create && (
+                                <Button onClick={() => setCreateOpen(true)}>
+                                    <Plus className="h-4 w-4" />
+                                    New Period
+                                </Button>
+                            )}
+                        </div>
                     }
                 />
 

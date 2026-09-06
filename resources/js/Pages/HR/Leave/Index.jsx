@@ -7,6 +7,7 @@ import {
     Hourglass,
     Paperclip,
     Plus,
+    X,
     XCircle,
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
@@ -46,6 +47,20 @@ const STAGE_LABEL = {
     rejected: 'Rejected',
     cancelled: 'Cancelled',
 };
+
+/**
+ * Filters the tiles set that no control on this screen can show.
+ *
+ * `awaiting` is two statuses at once, so the status dropdown cannot express
+ * it. `filed_from` asks when a request was *filed*, which is a different
+ * question from the dates somebody is away — the dashboard's Leave card counts
+ * what was filed this month, and its tiles carry that window along so they
+ * open the rows they counted rather than every request ever.
+ */
+const TILE_FILTERS = [
+    { key: 'awaiting', label: () => 'Awaiting a decision' },
+    { key: 'filed_from', label: (value) => `Filed since ${formatDate(value)}` },
+];
 
 export default function Index({
     requests,
@@ -93,7 +108,7 @@ export default function Index({
             '/hr/leave',
             {
                 ...filters,
-                // The status dropdown drops the tile's  filter: the
+                // The status dropdown drops the tile's `awaiting` filter: the
                 // two narrow one axis, and leaving one behind ands them.
                 ...(key === 'status' ? { awaiting: undefined } : {}),
                 [key]: value || undefined,
@@ -228,6 +243,23 @@ export default function Index({
                             label: employee.full_name,
                         }))}
                     />
+
+                    {/* Filters no dropdown here can show — `awaiting` is two
+                        statuses at once, `filed_from` is when a request was
+                        filed rather than when somebody is away. Both are set
+                        by tiles, and a list narrowed by a filter with no
+                        visible control is a list nobody can explain. */}
+                    {TILE_FILTERS.filter(({ key }) => filters[key]).map(({ key, label }) => (
+                        <button
+                            key={key}
+                            type="button"
+                            onClick={() => applyFilter(key, '')}
+                            className="flex h-9 shrink-0 items-center gap-1.5 self-end rounded-full border border-info/30 bg-info/10 px-3 text-xs font-medium text-info transition-colors hover:bg-info/20"
+                        >
+                            {label(filters[key])}
+                            <X className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                    ))}
 
                     {can.create && (
                         <Button className="lg:ml-auto" onClick={() => setFileOpen(true)}>

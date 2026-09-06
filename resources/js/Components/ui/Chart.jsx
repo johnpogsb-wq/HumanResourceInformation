@@ -50,8 +50,33 @@ export function TrendChart({ data = [], className, valueLabel = 'value', ticks =
      * line off both edges so it never touches the frame.
      */
     const span = rawMax - rawMin || Math.max(rawMax, 1);
-    const max = rawMax + span * 0.15;
-    const min = Math.max(0, rawMin - span * 0.35);
+
+    let max = rawMax + span * 0.15;
+    let min = Math.max(0, rawMin - span * 0.35);
+    let lines = ticks;
+
+    /*
+     * A headcount is a whole number, so the axis has to step in whole numbers
+     * too — and the axis was being *rounded* rather than stepped.
+     *
+     * Twelve months moving 39 -> 41 gave a padded axis of 38.3 to 41.3, split
+     * into four: 38.3, 39.05, 39.8, 40.55, 41.3. Each label was rounded for
+     * display, which printed 38, 39, 40, 41, **41** — two gridlines carrying
+     * the same number, one of them a lie about where it sat. Rounding the
+     * label is the bug: it changes what the tick says without moving the tick.
+     *
+     * So the step is snapped to a whole unit first and the axis is grown to
+     * fit it. Fractional data (a rate, an average) keeps the even split, where
+     * a fractional tick is the honest answer.
+     */
+    if (values.every(Number.isInteger)) {
+        const step = Math.max(1, Math.ceil((max - min) / ticks));
+
+        min = Math.floor(min);
+        lines = Math.max(1, Math.ceil((max - min) / step));
+        max = min + step * lines;
+    }
+
     const range = max - min || 1;
 
     const x = (index) => PAD_LEFT + (index / (data.length - 1)) * plotWidth;
@@ -66,11 +91,18 @@ export function TrendChart({ data = [], className, valueLabel = 'value', ticks =
     const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.cx},${p.cy}`).join(' ');
     const area = `${line} L${points.at(-1).cx},${PAD_TOP + plotHeight} L${points[0].cx},${PAD_TOP + plotHeight} Z`;
 
-    // Round tick values so the axis reads in whole units, not 37.4.
-    const gridlines = Array.from({ length: ticks + 1 }, (_, i) => {
-        const value = min + (range / ticks) * i;
+    /*
+     * The label is whatever the tick actually is — never a rounded stand-in
+     * for it. A fractional axis is shown to one decimal rather than snapped to
+     * an integer it does not sit on.
+     */
+    const gridlines = Array.from({ length: lines + 1 }, (_, i) => {
+        const value = min + (range / lines) * i;
 
-        return { value: Math.round(value), y: y(value) };
+        return {
+            value: Number.isInteger(value) ? value : Number(value.toFixed(1)),
+            y: y(value),
+        };
     });
 
     const first = values[0];

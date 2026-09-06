@@ -50,6 +50,10 @@ class EmployeeController extends Controller
         $filters = $request->only([
             'search', 'department_id', 'employment_status', 'status',
             'employment_category', 'client_id',
+
+            // Set by the dashboard tiles, and not by any dropdown here — see
+            // Employee::scopeFilter and the chips on the filter row.
+            'hired_within', 'without_documents',
         ]);
 
         $sort = in_array($request->query('sort'), self::SORTABLE, true)

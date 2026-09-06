@@ -10,6 +10,7 @@ import {
     Users,
     UserX,
     Upload,
+    X,
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
@@ -43,6 +44,40 @@ const EMPLOYMENT_STATUSES = [
     'resigned',
     'terminated',
 ];
+
+/**
+ * How a filter the dropdowns cannot show describes itself.
+ *
+ * Each of these is set by a dashboard tile and has no control on this screen:
+ * `hired_within` is a rolling window, `without_documents` is the absence of a
+ * relationship, and a comma-separated `employment_status` is the donut's
+ * grouping — "Contractual" there is contractual *and* project-based, which no
+ * single dropdown option can say.
+ *
+ * A list narrowed by a filter with no visible control is a list nobody can
+ * explain, so each draws a removable chip instead.
+ */
+function tileFilterLabel(filters) {
+    if (filters.hired_within) {
+        return {
+            key: 'hired_within',
+            label: `Hired in the last ${filters.hired_within} days`,
+        };
+    }
+
+    if (filters.without_documents) {
+        return { key: 'without_documents', label: 'No documents on file' };
+    }
+
+    if (String(filters.employment_status ?? '').includes(',')) {
+        return {
+            key: 'employment_status',
+            label: filters.employment_status.split(',').map(titleCase).join(' or '),
+        };
+    }
+
+    return null;
+}
 
 export default function Index({
     employees,
@@ -98,6 +133,7 @@ export default function Index({
     const rows = employees.data ?? [];
     const meta = employees.meta ?? {};
     const hasMore = (meta.current_page ?? 1) < (meta.last_page ?? 1);
+    const tileFilter = tileFilterLabel(filters);
 
     /*
      * Clicking a figure opens the rows it counted, keeping whatever the
@@ -105,9 +141,19 @@ export default function Index({
      * cleared together: they are two dropdowns over the same list, and a tile
      * that set one while leaving the other behind would return the people who
      * are both — usually nobody.
+     *
+     * The two dashboard-set keys are cleared with them, for the same reason:
+     * arriving on "no documents on file" and then clicking "Total Employees"
+     * has to give the whole list back, not the whole list still narrowed to
+     * the people with an empty 201 file.
      */
     const drillTo = (changes) =>
-        withFilters('/hr/employees', filters, changes, ['status', 'employment_status']);
+        withFilters('/hr/employees', filters, changes, [
+            'status',
+            'employment_status',
+            'hired_within',
+            'without_documents',
+        ]);
 
     // 38 of 41 is the reading; 38 on its own is a number whose scale the
     // reader has to go and find.
@@ -251,6 +297,18 @@ export default function Index({
                                 { value: 'inactive', label: 'Inactive' },
                             ]}
                         />
+
+                        {/* What a dashboard tile asked for, said out loud. */}
+                        {tileFilter && (
+                            <button
+                                type="button"
+                                onClick={() => applyFilter(tileFilter.key, '')}
+                                className="flex h-9 shrink-0 items-center gap-1.5 self-end rounded-full border border-info/30 bg-info/10 px-3 text-xs font-medium text-info transition-colors hover:bg-info/20"
+                            >
+                                {tileFilter.label}
+                                <X className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                        )}
 
                         {/* Two ways in, beside each other: a spreadsheet of a
                             workforce that already exists, and a stack of scans

@@ -106,6 +106,19 @@ class LeaveRequest extends Model
             ->when(
                 $filters['to'] ?? null,
                 fn (Builder $q, $value) => $q->whereDate('start_date', '<=', $value),
+            )
+            /*
+             * When the request was *filed*, which is a different question from
+             * `from`/`to` — those ask when somebody is away.
+             *
+             * The dashboard's Leave card counts what was filed this month, and
+             * a request filed today for December would be counted by it and
+             * missed by a date-of-leave filter. Without this the tile could not
+             * open its own rows.
+             */
+            ->when(
+                $filters['filed_from'] ?? null,
+                fn (Builder $q, $value) => $q->whereDate('created_at', '>=', $value),
             );
     }
 

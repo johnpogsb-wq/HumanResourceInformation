@@ -146,9 +146,40 @@ class Employee extends Model
                 $filters['department_id'] ?? null,
                 fn (Builder $q, $value) => $q->where('department_id', $value),
             )
+            /*
+             * A comma separates alternatives, because the dashboard donut
+             * groups statuses the dropdown does not: "Contractual" is
+             * contractual *and* project-based, "Separated" is resigned *and*
+             * terminated. Without this the slice could not open the records it
+             * counted, and a figure that cannot show its own rows is a figure
+             * nobody can check. A single value still behaves exactly as it did.
+             */
             ->when(
                 $filters['employment_status'] ?? null,
-                fn (Builder $q, $value) => $q->where('employment_status', $value),
+                fn (Builder $q, $value) => $q->whereIn(
+                    'employment_status',
+                    array_filter(array_map('trim', explode(',', (string) $value))),
+                ),
+            )
+            /*
+             * Set by the dashboard's "New Hires" tile, which counts the last
+             * 30 days. A date range would have done, but the tile is a rolling
+             * window and pinning it to two dates in a URL would leave a stale
+             * link that reads correctly and returns the wrong month.
+             */
+            ->when(
+                $filters['hired_within'] ?? null,
+                fn (Builder $q, $value) => $q->where(
+                    'date_hired',
+                    '>=',
+                    now()->startOfDay()->subDays((int) $value),
+                ),
+            )
+            // Set by "No Documents": an empty 201 file, not a specific gap in
+            // one — that finer question is OnboardingChecker's.
+            ->when(
+                filter_var($filters['without_documents'] ?? null, FILTER_VALIDATE_BOOLEAN),
+                fn (Builder $q) => $q->whereDoesntHave('documents'),
             )
             ->when(
                 $filters['status'] ?? null,

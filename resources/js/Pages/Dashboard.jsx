@@ -76,17 +76,29 @@ function HeadcountChart({ data }) {
     }
 
     return (
-        <div className="space-y-3.5">
+        <div className="space-y-1.5">
             {data.map((row) => {
                 const share = total > 0 ? Math.round((row.count / total) * 100) : 0;
 
                 return (
-                    <div
+                    /*
+                     * The whole row is the target, not the bar — Finance &
+                     * Accounting's bar is a third of the width of Fleet
+                     * Operations', and a link whose hit area shrinks with the
+                     * value it represents is hardest to click exactly where
+                     * there is least to see.
+                     *
+                     * `status=active` rides along because that is what the bar
+                     * measured. Opening the department's whole history from a
+                     * bar labelled "active" would be a different number.
+                     */
+                    <Link
                         key={row.name}
-                        className="grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-3"
+                        href={`/hr/employees?department_id=${row.id}&status=active`}
+                        className="group -mx-2 grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-secondary/60"
                         title={`${row.name}: ${row.count} active (${share}% of headcount)`}
                     >
-                        <span className="truncate text-xs text-muted-foreground">
+                        <span className="truncate text-xs text-muted-foreground group-hover:text-foreground">
                             {row.name}
                         </span>
 
@@ -102,7 +114,7 @@ function HeadcountChart({ data }) {
                         <span className="w-8 text-right text-xs font-medium tabular-nums text-foreground">
                             {row.count}
                         </span>
-                    </div>
+                    </Link>
                 );
             })}
         </div>
@@ -176,9 +188,18 @@ function StatusDonut({ data }) {
                 </div>
             </div>
 
-            <dl className="w-full space-y-2">
+            {/* The legend is the clickable half, not the ring. A slice is a
+                2px-tall arc at the edge of the donut and two of them here are
+                under 10% — a target that small is one somebody misses and then
+                stops trying. The legend row is the full width of the column
+                and names the thing it opens. */}
+            <dl className="-mx-2 w-full">
                 {data.map((row, index) => (
-                    <div key={row.label} className="flex items-center gap-2.5">
+                    <Link
+                        key={row.label}
+                        href={`/hr/employees?employment_status=${row.filter}`}
+                        className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-secondary/60"
+                    >
                         <span
                             className={cn(
                                 'h-2.5 w-2.5 shrink-0 rounded-sm',
@@ -195,7 +216,7 @@ function StatusDonut({ data }) {
                         <dd className="w-9 text-right text-xs tabular-nums text-muted-foreground">
                             {Math.round((row.count / total) * 100)}%
                         </dd>
-                    </div>
+                    </Link>
                 ))}
             </dl>
         </div>
@@ -218,6 +239,16 @@ export default function Dashboard({
     can,
 }) {
     const headcountChange = statistics.headcount_change ?? 0;
+
+    /*
+     * The Leave card counts what was filed this month, so every one of its
+     * links has to carry that window as well as the status it names. The month
+     * start comes from the controller that did the counting rather than being
+     * worked out again here — two derivations of "this month" is one too many,
+     * and the day they disagree is the 1st.
+     */
+    const leaveFiled = ({ status }) =>
+        `/hr/leave?status=${status}&filed_from=${leaveSummary.filed_from}`;
 
     // Company-wide summaries arrive as null for a role that may not read them,
     // so the card is never drawn empty — it is simply not there.
@@ -418,27 +449,41 @@ export default function Dashboard({
                             }
                         />
                         <CardBody>
+                            {/* Every tile carries `filed_from` as well as its
+                                status, because the card counts what was filed
+                                *this month*. Without it a tile reading 6 would
+                                open a list of every pending request ever, and
+                                a figure that cannot show its own rows is one
+                                nobody can check. */}
                             <div className="flex gap-2">
                                 <StatTile
                                     label="Pending"
                                     value={leaveSummary.pending}
                                     tone="warning"
+                                    href={leaveFiled({ status: 'pending' })}
                                 />
                                 <StatTile
                                     label="Approved"
                                     value={leaveSummary.approved}
                                     tone="success"
+                                    href={leaveFiled({ status: 'approved' })}
                                 />
                                 <StatTile
                                     label="Rejected"
                                     value={leaveSummary.rejected}
                                     tone="destructive"
+                                    href={leaveFiled({ status: 'rejected' })}
                                 />
                             </div>
 
                             <TilePreview
                                 icon={CalendarDays}
                                 tone="info"
+                                href={
+                                    leaveSummary.latest?.employee_id
+                                        ? `/hr/leave?employee_id=${leaveSummary.latest.employee_id}`
+                                        : undefined
+                                }
                                 title={leaveSummary.latest?.title}
                                 subtitle={leaveSummary.latest?.subtitle}
                                 badge={
@@ -467,27 +512,40 @@ export default function Dashboard({
                             }
                         />
                         <CardBody>
+                            {/* `released` is not a run status — it is approved
+                                or paid, the pair PayrollRun::REPORTABLE holds.
+                                The list resolves the word rather than the URL
+                                naming two statuses, so the tile and the screen
+                                cannot come to mean different things. */}
                             <div className="flex gap-2">
                                 <StatTile
                                     label="Draft"
                                     value={payrollSummary.draft}
                                     tone="muted"
+                                    href="/hr/payroll?run_status=draft"
                                 />
                                 <StatTile
                                     label="For Approval"
                                     value={payrollSummary.for_approval}
                                     tone="warning"
+                                    href="/hr/payroll?run_status=for_approval"
                                 />
                                 <StatTile
                                     label="Released"
                                     value={payrollSummary.released}
                                     tone="success"
+                                    href="/hr/payroll?run_status=released"
                                 />
                             </div>
 
                             <TilePreview
                                 icon={Wallet}
                                 tone="primary"
+                                href={
+                                    payrollSummary.latest
+                                        ? `/hr/payroll/runs/${payrollSummary.latest.id}`
+                                        : undefined
+                                }
                                 title={payrollSummary.latest?.title}
                                 subtitle={payrollSummary.latest?.subtitle}
                                 badge={
@@ -515,27 +573,46 @@ export default function Dashboard({
                         }
                     />
                     <CardBody>
+                        {/* The three go to three different screens, because
+                            they are three different questions. "Expiring" is
+                            about documents and belongs to Credentials, whose
+                            warning window is per document type — this tile
+                            reads that same scanner rather than keeping a flat
+                            window of its own, which is what used to make the
+                            two disagree. */}
                         <div className="flex gap-2">
                             <StatTile
                                 label="New Hires"
                                 value={onboardingSummary.new_hires}
                                 tone="info"
+                                href={`/hr/employees?hired_within=${onboardingSummary.new_hire_days}`}
                             />
                             <StatTile
                                 label="Expiring"
                                 value={onboardingSummary.expiring}
                                 tone="warning"
+                                href="/hr/credentials?status=expiring"
                             />
+                            {/* `status=active` as well, because that is what
+                                the count was taken over — an archived record
+                                with an empty file is not somebody's missing
+                                paperwork. */}
                             <StatTile
                                 label="No Documents"
                                 value={onboardingSummary.without_documents}
                                 tone="destructive"
+                                href="/hr/employees?without_documents=1&status=active"
                             />
                         </div>
 
                         <TilePreview
                             icon={UserPlus}
                             tone="success"
+                            href={
+                                onboardingSummary.latest
+                                    ? `/hr/employees/${onboardingSummary.latest.id}`
+                                    : undefined
+                            }
                             title={onboardingSummary.latest?.title}
                             subtitle={onboardingSummary.latest?.subtitle}
                             badge={
@@ -573,7 +650,7 @@ export default function Dashboard({
             <Card floating>
                 <CardHeader
                     title="Recent Hires"
-                    description="Latest five employees onboarded."
+                    description="The six most recently hired."
                     action={
                         <Link
                             href="/hr/employees"

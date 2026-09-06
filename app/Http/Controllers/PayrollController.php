@@ -32,7 +32,27 @@ class PayrollController extends Controller
             return redirect()->route('hr.payroll.payslips');
         }
 
+        /*
+         * Set by the dashboard's Payroll card, which counts periods by the
+         * stage their run is at. There is no control for it on this screen —
+         * the chip beside the table is what makes the narrowing visible, since
+         * a list silently filtered is a list nobody can explain.
+         *
+         * `released` is not a run status: it is approved *or* paid, the same
+         * pair `PayrollRun::REPORTABLE` holds for every downstream screen.
+         * Naming it here rather than restating the two statuses is what keeps
+         * this screen from growing a private opinion about what "released"
+         * means.
+         */
+        $runStatus = $request->query('run_status');
+
         $periods = PayrollPeriod::with(['runs' => fn ($query) => $query->latest('id')])
+            ->when($runStatus, fn ($query, $status) => $query->whereHas(
+                'runs',
+                fn ($run) => $status === 'released'
+                    ? $run->reportable()
+                    : $run->where('status', $status),
+            ))
             ->orderByDesc('start_date')
             ->paginate(12)
             ->withQueryString();
@@ -63,6 +83,7 @@ class PayrollController extends Controller
                 ],
             ],
             'suggestion' => $this->suggestNextPeriod(),
+            'filters' => ['run_status' => $runStatus],
             'can' => ['create' => $request->user()->can('create', PayrollRun::class)],
         ]);
     }

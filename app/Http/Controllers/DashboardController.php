@@ -8,8 +8,10 @@ use App\Models\Employee;
 use App\Models\EmployeeDocument;
 use App\Models\LeaveRequest;
 use App\Models\OvertimeRequest;
+use App\Models\PayrollPeriod;
 use App\Models\PayrollRun;
 use App\Models\PerformanceReview;
+use App\Services\CredentialExpiryScanner;
 use App\Services\EmployeeService;
 use App\Services\LeaveService;
 use App\Services\PerformanceScorer;
@@ -34,8 +36,12 @@ class DashboardController extends Controller
         'status' => null,
     ];
 
+    /** The window the "New Hires" tile counts over, and links with. */
+    private const NEW_HIRE_DAYS = 30;
+
     public function __construct(
         private readonly EmployeeService $employees,
+        private readonly CredentialExpiryScanner $credentials,
         private readonly LeaveService $leave,
         private readonly PerformanceScorer $scorer,
     ) {}
@@ -141,8 +147,24 @@ class DashboardController extends Controller
             'pending' => (int) ($counts[LeaveRequest::STATUS_PENDING] ?? 0),
             'approved' => (int) ($counts[LeaveRequest::STATUS_APPROVED] ?? 0),
             'rejected' => (int) ($counts[LeaveRequest::STATUS_REJECTED] ?? 0),
+
+            /*
+             * The month these figures were counted over, published so the
+             * tiles can carry it into their links rather than the page
+             * deriving a second opinion about when "this month" started. A
+             * tile counting 6 that opens a list of 31 has replaced the
+             * question it raised.
+             */
+            'filed_from' => $monthStart->toDateString(),
+
             'latest' => $latest === null ? null : [
                 'id' => $latest->id,
+                /*
+                 * There is no screen for a single leave request — the list is
+                 * where one is read and decided on. So the preview opens that
+                 * person's leave rather than a record that does not exist.
+                 */
+                'employee_id' => $latest->employee_id,
                 'title' => $latest->employee?->full_name ?? 'Unknown employee',
                 'subtitle' => trim(sprintf(
                     '%s · %s',
@@ -161,45 +183,84 @@ class DashboardController extends Controller
      */
     private function payrollSummary(): array
     {
-        $counts = PayrollRun::selectRaw('status, count(*) as total')
-            ->groupBy('status')
-            ->pluck('total', 'status');
-
         $latest = PayrollRun::with('period')->latest('id')->first();
 
         return [
-            'draft' => (int) ($counts[PayrollRun::STATUS_DRAFT] ?? 0),
-            'for_approval' => (int) ($counts[PayrollRun::STATUS_FOR_APPROVAL] ?? 0),
+            /*
+             * Counted as *periods carrying a run at that stage*, because that
+             * is what `/hr/payroll` lists — one row per period, showing its
+             * latest run. Counting runs instead would read correctly and open
+             * a shorter list the moment any period was ever run twice, which
+             * is the failure that is invisible until it matters.
+             */
+            'draft' => $this->periodsWithRunAt(PayrollRun::STATUS_DRAFT),
+            'for_approval' => $this->periodsWithRunAt(PayrollRun::STATUS_FOR_APPROVAL),
             // Only finalised runs are money that has actually moved — the same
             // rule PayrollRun::REPORTABLE holds for every downstream screen.
-            'released' => PayrollRun::reportable()->count(),
+            'released' => $this->periodsWithRunAt('released'),
             'latest' => $latest === null ? null : [
                 'id' => $latest->id,
                 'title' => $latest->period?->name ?? 'Payroll run',
-                'subtitle' => 'Net '.number_format((float) $latest->total_net, 2),
+                'subtitle' => 'Net '.$this->peso((float) $latest->total_net),
                 'status' => $latest->status,
             ],
         ];
     }
 
     /**
-     * The 201-file health figures that are cheap to count directly.
+     * Periods whose run sits at one stage — the figures the Payroll card
+     * shows, counted by the same clause `PayrollController::index` filters on
+     * so the tile and the list it opens cannot disagree.
+     */
+    private function periodsWithRunAt(string $status): int
+    {
+        return PayrollPeriod::whereHas(
+            'runs',
+            fn ($run) => $status === 'released'
+                ? $run->reportable()
+                : $run->where('status', $status),
+        )->count();
+    }
+
+    /**
+     * The peso figure as this system writes it everywhere else.
      *
-     * Deliberately *not* OnboardingChecker or CredentialExpiryScanner: those
-     * walk every employee's documents to build a findings list, which is the
-     * right shape for their own screens and the wrong one for a dashboard tile
-     * that only needs three numbers.
+     * The dashboard printed a bare "Net 762,899.62" — a number with no unit on
+     * a screen that also shows headcounts, day counts, and percentages.
+     */
+    private function peso(float $amount): string
+    {
+        return '₱'.number_format($amount, 2);
+    }
+
+    /**
+     * The 201-file health figures.
+     *
+     * `expiring` is read from `CredentialExpiryScanner` rather than counted
+     * here, and that is a correction rather than a preference. This method
+     * used to apply a flat 60-day window of its own, while the Credentials
+     * screen applies a window *per document type* — 60 days for an LTO licence
+     * because a renewal needs the lead time, 30 for a certificate because it
+     * does not. So the two screens reported different numbers for the same
+     * documents, and the tile opened a list that did not match it. One scan
+     * over the scoped set is one query; the saving was never worth two screens
+     * disagreeing about the same licence.
+     *
+     * `OnboardingChecker` is still deliberately not called: it walks every
+     * employee to build a findings list, which is the right shape for its own
+     * screen and the wrong one for a tile that needs a count.
      *
      * @return array<string, mixed>
      */
     private function onboardingSummary($scoped, Carbon $today): array
     {
         $newHires = (clone $scoped)
-            ->where('date_hired', '>=', $today->copy()->subDays(30))
+            ->where('date_hired', '>=', $today->copy()->subDays(self::NEW_HIRE_DAYS))
             ->count();
 
-        $expiring = EmployeeDocument::whereNotNull('expires_at')
-            ->whereBetween('expires_at', [$today, $today->copy()->addDays(60)])
+        $expiring = $this->credentials
+            ->scan(EmployeeDocument::whereIn('employee_id', (clone $scoped)->select('employees.id')))
+            ->where('status', CredentialExpiryScanner::STATUS_EXPIRING)
             ->count();
 
         $withoutDocuments = (clone $scoped)
@@ -214,6 +275,7 @@ class DashboardController extends Controller
 
         return [
             'new_hires' => $newHires,
+            'new_hire_days' => self::NEW_HIRE_DAYS,
             'expiring' => $expiring,
             'without_documents' => $withoutDocuments,
             'latest' => $latest === null ? null : [
@@ -277,6 +339,10 @@ class DashboardController extends Controller
             ->orderByDesc('employees_count')
             ->get(['id', 'name'])
             ->map(fn (Department $department) => [
+                // Carried so the bar can open the people it measured. The bar
+                // counts active records, so the link says `status=active` too
+                // — the same narrowing, not merely the same department.
+                'id' => $department->id,
                 'name' => $department->name,
                 'count' => $department->employees_count,
             ]);
@@ -299,11 +365,19 @@ class DashboardController extends Controller
         $contractual = (int) ($counts['contractual'] ?? 0) + (int) ($counts['project-based'] ?? 0);
         $separated = (int) ($counts['resigned'] ?? 0) + (int) ($counts['terminated'] ?? 0);
 
+        /*
+         * Each slice carries the filter that returns exactly the records it
+         * counted, written here beside the grouping rather than restated in
+         * the component. Two of them cover a pair of statuses — a slice that
+         * added `contractual` and `project-based` and then opened only the
+         * contractual ones would be answering a different question from the
+         * one it asked.
+         */
         return [
-            ['label' => 'Regular', 'count' => $regular],
-            ['label' => 'Probationary', 'count' => $probationary],
-            ['label' => 'Contractual', 'count' => $contractual],
-            ['label' => 'Separated', 'count' => $separated],
+            ['label' => 'Regular', 'count' => $regular, 'filter' => 'regular'],
+            ['label' => 'Probationary', 'count' => $probationary, 'filter' => 'probationary'],
+            ['label' => 'Contractual', 'count' => $contractual, 'filter' => 'contractual,project-based'],
+            ['label' => 'Separated', 'count' => $separated, 'filter' => 'resigned,terminated'],
         ];
     }
 

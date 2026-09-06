@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { ArrowDown, ArrowUp } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -318,18 +318,28 @@ const TILE_TONES = {
  * Same rule as every other tile on the dashboard: a zero drops to grey. Three
  * of these side by side is a count broken into its parts, so they are only
  * meaningful together — a lone StatTile should be a StatCard instead.
+ *
+ * With an `href` it becomes a link to the rows it counted, and it is a real
+ * `<a>` for the same reasons `Card` is: middle-click opens a tab, the status
+ * bar says where it goes, and a keyboard reaches it.
+ *
+ * A zero still links. The list is empty either way, and a tile that stops
+ * responding at zero teaches the reader that some of them are not clickable —
+ * after which they stop trying the ones that are.
  */
-export function StatTile({ label, value, tone = 'default', className }) {
+export function StatTile({ label, value, tone = 'default', href, className }) {
     const isZero = value === 0 || value === '0';
 
-    return (
-        <div
-            className={cn(
-                'min-w-0 flex-1 rounded-lg px-2 py-2.5 text-center',
-                isZero ? TILE_TONES.muted : (TILE_TONES[tone] ?? TILE_TONES.default),
-                className,
-            )}
-        >
+    const classes = cn(
+        'block min-w-0 flex-1 rounded-lg px-2 py-2.5 text-center',
+        isZero ? TILE_TONES.muted : (TILE_TONES[tone] ?? TILE_TONES.default),
+        href &&
+            'transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_16px_-8px_hsl(var(--foreground)/0.25)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+        className,
+    );
+
+    const body = (
+        <>
             <p
                 className={cn(
                     'truncate text-xl font-semibold tabular-nums leading-tight',
@@ -341,7 +351,15 @@ export function StatTile({ label, value, tone = 'default', className }) {
             <p className="mt-0.5 truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                 {label}
             </p>
-        </div>
+        </>
+    );
+
+    return href ? (
+        <Link href={href} className={classes}>
+            {body}
+        </Link>
+    ) : (
+        <div className={classes}>{body}</div>
     );
 }
 
@@ -352,7 +370,15 @@ export function StatTile({ label, value, tone = 'default', className }) {
  * One row, never a list: the summary cards are a glance, and the screen behind
  * them is where the rest lives.
  */
-export function TilePreview({ icon: Icon, tone = 'muted', title, subtitle, badge, empty }) {
+export function TilePreview({
+    icon: Icon,
+    tone = 'muted',
+    title,
+    subtitle,
+    badge,
+    empty,
+    href,
+}) {
     if (!title) {
         return (
             <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
@@ -361,8 +387,8 @@ export function TilePreview({ icon: Icon, tone = 'muted', title, subtitle, badge
         );
     }
 
-    return (
-        <div className="mt-3 flex items-center gap-2.5 border-t border-border pt-3">
+    const body = (
+        <>
             {Icon && (
                 <span
                     className={cn(
@@ -375,14 +401,42 @@ export function TilePreview({ icon: Icon, tone = 'muted', title, subtitle, badge
             )}
 
             <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium text-foreground">{title}</p>
+                <p
+                    className={cn(
+                        'truncate text-xs font-medium text-foreground',
+                        href && 'group-hover:text-primary',
+                    )}
+                >
+                    {title}
+                </p>
                 {subtitle && (
                     <p className="truncate text-[11px] text-muted-foreground">{subtitle}</p>
                 )}
             </div>
 
             {badge && <div className="shrink-0">{badge}</div>}
-        </div>
+        </>
+    );
+
+    /*
+     * The preview names one record, so with an `href` it opens *that* record
+     * rather than the list — the tiles above already lead to the list. A row
+     * naming a person and leading somewhere they are one of forty is a link
+     * that answers a question nobody asked.
+     */
+    return href ? (
+        <Link
+            href={href}
+            className="group mt-3 flex items-center gap-2.5 border-t border-border pt-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+        >
+            {body}
+            <ChevronRight
+                className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+                aria-hidden="true"
+            />
+        </Link>
+    ) : (
+        <div className="mt-3 flex items-center gap-2.5 border-t border-border pt-3">{body}</div>
     );
 }
 
