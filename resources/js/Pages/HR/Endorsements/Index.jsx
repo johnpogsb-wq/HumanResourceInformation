@@ -1,10 +1,13 @@
-import { Link, router } from '@inertiajs/react';
+import { Link, router, useForm } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, Inbox, Radio, XCircle } from 'lucide-react';
+import { CheckCircle2, Inbox, Radio, UserCheck, XCircle } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
+    Button,
     Card,
+    Field,
+    Modal,
     Pagination,
     SearchInput,
     Select,
@@ -16,6 +19,7 @@ import {
     TR,
     Table,
     TableEmpty,
+    Textarea,
 } from '@/Components/ui';
 import { formatDate } from '@/lib/utils';
 
@@ -66,7 +70,33 @@ export default function Index({ endorsements, filters, statistics }) {
         );
     };
 
+    /*
+     * Which row is being declined, held as the row itself rather than an id so
+     * the dialog can name the person. A decline needs a reason typed into it,
+     * so it cannot be a button that simply fires: Core 1 reads the outcome
+     * back, and a recruiter told only "rejected" sends the same candidate
+     * again.
+     */
+    const [declining, setDeclining] = useState(null);
+    const form = useForm({ decision_note: '' });
+
+    const submitDecline = (event) => {
+        event.preventDefault();
+
+        form.post(`/hr/endorsements/${declining.id}/reject`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                form.reset();
+                setDeclining(null);
+            },
+        });
+    };
+
     const rows = endorsements.data ?? [];
+
+    // Nothing to decide on the Approved or Declined views, so the column would
+    // be an empty strip on every row. Drawn only when some row can use it.
+    const showActions = rows.some((row) => row.can_decide);
 
     return (
         <AppLayout title="Endorsements from Core 1">
@@ -136,13 +166,14 @@ export default function Index({ endorsements, filters, statistics }) {
                             <TH>Start date</TH>
                             <TH>Received</TH>
                             <TH>Status</TH>
+                            {showActions && <TH className="text-right">Decision</TH>}
                         </TR>
                     </THead>
 
                     <TBody>
                         {rows.length === 0 && (
                             <TableEmpty
-                                colSpan={6}
+                                colSpan={showActions ? 7 : 6}
                                 icon={Inbox}
                                 title={
                                     filters.status === 'pending'
@@ -212,6 +243,47 @@ export default function Index({ endorsements, filters, statistics }) {
                                         </p>
                                     )}
                                 </TD>
+
+                                {showActions && (
+                                    <TD>
+                                        {row.can_decide ? (
+                                            <div className="flex items-center justify-end gap-1.5">
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() => setDeclining(row)}
+                                                >
+                                                    <XCircle className="h-3.5 w-3.5" />
+                                                    Decline
+                                                </Button>
+
+                                                {/* A link, not a submit, and
+                                                    that is the rule rather
+                                                    than a shortcut: approving
+                                                    opens the employee form.
+                                                    Core 1 cannot know the
+                                                    salary, the pay frequency,
+                                                    the category, or which
+                                                    client is billed, and none
+                                                    of those may be defaulted
+                                                    silently on somebody about
+                                                    to be put on a payroll. */}
+                                                <Button
+                                                    size="sm"
+                                                    href={`/hr/employees/create?endorsement=${row.id}`}
+                                                >
+                                                    <UserCheck className="h-3.5 w-3.5" />
+                                                    Approve
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            /* Decided rows keep the column's
+                                               width so the table does not step
+                                               in and out on a mixed view. */
+                                            <span className="sr-only">Already decided</span>
+                                        )}
+                                    </TD>
+                                )}
                             </TR>
                         ))}
                     </TBody>
@@ -219,6 +291,43 @@ export default function Index({ endorsements, filters, statistics }) {
 
                 <Pagination links={endorsements.meta?.links ?? []} meta={endorsements.meta} />
             </Card>
+
+            {/* The same dialog the review screen uses, for the same reason: a
+                decline is an answer Core 1 reads back, and one given without a
+                reason fills the queue with the same unstated argument. */}
+            <Modal
+                show={declining !== null}
+                onClose={() => setDeclining(null)}
+                title={declining ? `Decline ${declining.full_name}?` : ''}
+                description="Core 1 reads this reason back, so say what would have to change."
+            >
+                <form onSubmit={submitDecline} className="space-y-4">
+                    <Field label="Reason" required error={form.errors.decision_note}>
+                        <Textarea
+                            value={form.data.decision_note}
+                            onChange={(event) =>
+                                form.setData('decision_note', event.target.value)
+                            }
+                            error={form.errors.decision_note}
+                            rows={4}
+                            placeholder="e.g. No LTO licence on file — cannot be deployed as a driver."
+                        />
+                    </Field>
+
+                    <div className="flex justify-end gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setDeclining(null)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button type="submit" variant="destructive" disabled={form.processing}>
+                            Decline endorsement
+                        </Button>
+                    </div>
+                </form>
+            </Modal>
         </AppLayout>
     );
 }

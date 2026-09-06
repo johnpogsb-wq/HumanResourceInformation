@@ -63,6 +63,52 @@ class EndorsementTest extends TestCase
             );
     }
 
+    /**
+     * The inbox carries the decision itself, not only a way into the review
+     * screen — a queue whose whole job is answering has to be answerable from
+     * where it is read.
+     *
+     * `can_decide` is per row rather than per screen, because the ability is
+     * not only about the user: a decided endorsement is closed. Drawing
+     * Approve on one would offer either a second employee from one
+     * endorsement or an overwrite of who was recorded as approving the first.
+     */
+    public function test_the_list_says_which_rows_can_still_be_decided(): void
+    {
+        EmployeeEndorsement::factory()->create();
+        EmployeeEndorsement::factory()->approved()->create();
+        EmployeeEndorsement::factory()->rejected()->create();
+
+        $this->actingAs($this->hr())
+            ->get('/hr/endorsements?status=all')
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('endorsements.data', 3)
+                ->where(
+                    'endorsements.data',
+                    fn ($rows) => collect($rows)
+                        ->groupBy('status')
+                        ->map(fn ($group) => $group->first()['can_decide'])
+                        ->all() === [
+                            EmployeeEndorsement::STATUS_PENDING => true,
+                            EmployeeEndorsement::STATUS_APPROVED => false,
+                            EmployeeEndorsement::STATUS_REJECTED => false,
+                        ],
+                ),
+            );
+    }
+
+    public function test_a_supervisor_is_never_offered_the_decision(): void
+    {
+        EmployeeEndorsement::factory()->create();
+
+        // They cannot open the inbox at all, so the question is settled before
+        // the column is reached — asserted so a future widening of `viewAny`
+        // cannot quietly hand them the buttons too.
+        $this->actingAs(User::factory()->role(User::ROLE_SUPERVISOR)->create())
+            ->get('/hr/endorsements')
+            ->assertForbidden();
+    }
+
     public function test_paginator_meta_links_is_an_array(): void
     {
         EmployeeEndorsement::factory()->count(25)->create();

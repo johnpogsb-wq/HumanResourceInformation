@@ -60,6 +60,16 @@ class EndorsementController extends Controller
                     'decided_by' => $row->decidedBy?->name,
                     'employee_number' => $row->employee?->employee_number,
                     'employee_id' => $row->employee_id,
+
+                    /*
+                     * Asked per row rather than once for the screen, because
+                     * `decide` is not only about the user — it also requires
+                     * the endorsement to still be pending. A decided row is
+                     * history, and drawing Approve on one would offer either a
+                     * second employee from one endorsement or an overwrite of
+                     * who was recorded as approving the first.
+                     */
+                    'can_decide' => Gate::allows('decide', $row),
                 ]),
                 'meta' => [
                     'from' => $endorsements->firstItem(),
