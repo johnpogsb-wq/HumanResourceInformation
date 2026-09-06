@@ -173,18 +173,24 @@ class DirectoryController extends Controller
             // request per row — the same URL the HR directory renders.
             'photo_url' => $employee->photo_path ? asset('storage/'.$employee->photo_path) : null,
 
-            // Where they sit in the agency: internal staff, or deployed and
-            // to whom. For a manpower agency that is half of "who are you".
-            'employment_category' => $employee->employment_category,
-            'client' => $employee->client?->name,
+            /*
+             * The posting — internal staff, or deployed and to whom — used to
+             * ride here too, and is gone with the contact for the same reason.
+             * A row that no longer draws a field has no business still being
+             * sent one: on a screen whose whole defence is its field list, an
+             * unused key is a leak waiting for somebody to render it.
+             */
 
             /*
-             * A work contact, because a directory that cannot be used to
-             * reach anybody is a list. Both are the addresses HR files for
-             * work correspondence — the same ones on a payslip header.
+             * The work contact used to be here, on the reasoning that a
+             * directory which cannot be used to reach anybody is a list. It
+             * now lives on the record instead — and it is *removed from the
+             * payload*, not merely undrawn, because the safety of this screen
+             * has never been the markup. Every signed-in user can open it, and
+             * what makes that defensible is that the server sends only what
+             * everybody may have. A field the page stops rendering but keeps
+             * shipping is still a field that left the building.
              */
-            'email' => $employee->email,
-            'mobile_number' => $employee->mobile_number,
 
             /*
              * The row is a link only for somebody who may follow it. Drawing

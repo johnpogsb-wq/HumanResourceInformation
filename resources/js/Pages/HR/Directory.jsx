@@ -1,16 +1,6 @@
 import { Link, router } from '@inertiajs/react';
 import { useState } from 'react';
-import {
-    X,
-    Building2,
-    ChevronDown,
-    ChevronRight,
-    Handshake,
-    Mail,
-    Phone,
-    ShieldAlert,
-    Users,
-} from 'lucide-react';
+import { X, Building2, ChevronDown, ChevronRight, ShieldAlert, Users } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Badge, Card, CardBody, CardHeader, StatCard } from '@/Components/ui';
 import { cn, initials } from '@/lib/utils';
@@ -53,71 +43,16 @@ function PersonRow({ person }) {
                     {person.employee_number}
                 </p>
             </div>
+            {/* The posting and the work contact used to sit here — "Internal
+                staff" or the client, then an email and a mobile number down
+                the right. They have moved to the record itself, where the rest
+                of what is known about somebody already lives.
 
-            {/* Where they are posted. For a manpower agency that is half of
-                "who are you" — an internal clerk and a driver on a client site
-                are different people to reach.
-
-                Both readings carry an icon, "Internal staff" included. One
-                line indented behind a symbol and the next starting flush left
-                is what made this column read as debris rather than as a
-                posting. */}
-            <div className="hidden min-w-0 shrink-0 sm:block sm:w-40">
-                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    {person.employment_category === 'external' && person.client ? (
-                        <>
-                            <Handshake
-                                className="h-3.5 w-3.5 shrink-0 opacity-60"
-                                aria-hidden="true"
-                            />
-                            <span className="truncate">{person.client}</span>
-                        </>
-                    ) : (
-                        <>
-                            <Building2
-                                className="h-3.5 w-3.5 shrink-0 opacity-60"
-                                aria-hidden="true"
-                            />
-                            <span className="truncate">Internal staff</span>
-                        </>
-                    )}
-                </span>
-            </div>
-
-            {/* A directory that cannot be used to reach anybody is a list.
-
-                Right-aligned with the icon trailing, so the two lines finish
-                against one edge. Left-aligned they stopped wherever the address
-                happened to end — a ragged margin two lines deep on every row,
-                which is what made the column look untidy rather than the sizes
-                did. The number is tabular so it lines up down the column as
-                well as beside the address.
-
-                Stopped from bubbling, so a mail link inside a row that is
-                itself a link opens the mail client rather than the record. */}
-            <div
-                className="hidden shrink-0 text-right lg:block lg:w-56"
-                onClick={(event) => event.stopPropagation()}
-            >
-                {person.email && (
-                    <a
-                        href={`mailto:${person.email}`}
-                        className="flex items-center justify-end gap-1.5 text-xs text-muted-foreground transition-colors hover:text-primary"
-                    >
-                        <span className="truncate">{person.email}</span>
-                        <Mail className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden="true" />
-                    </a>
-                )}
-                {person.mobile_number && (
-                    <a
-                        href={`tel:${person.mobile_number}`}
-                        className="mt-0.5 flex items-center justify-end gap-1.5 font-mono text-xs tabular-nums text-muted-foreground transition-colors hover:text-primary"
-                    >
-                        {person.mobile_number}
-                        <Phone className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden="true" />
-                    </a>
-                )}
-            </div>
+                The trade is real and worth naming: for a viewer who may open
+                the record, one more click reaches the same facts; for one who
+                may not — a rank-and-file user looking at a colleague — those
+                facts are now out of reach from here entirely. The row keeps
+                only what identifies the person. */}
 
             {/* The slot is drawn whether or not there is a badge in it, and
                 that is the whole reason the rows line up.

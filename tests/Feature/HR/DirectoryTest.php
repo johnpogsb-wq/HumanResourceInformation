@@ -76,19 +76,28 @@ class DirectoryTest extends TestCase
         }
     }
 
-    public function test_the_card_carries_a_name_a_number_and_a_way_to_reach_them(): void
+    public function test_the_card_carries_only_what_identifies_the_person(): void
     {
         $this->workforce();
 
-        // A directory that cannot be used to reach anybody is a list.
+        /*
+         * The work contact and the posting used to be here, and have moved to
+         * the record. What matters is that they left the *payload* rather than
+         * only the markup: this screen is open to every signed-in user, and
+         * what makes that safe is the server sending nothing but what everyone
+         * may have. A key the page no longer renders but still ships is a leak
+         * waiting for somebody to render it.
+         */
         $this->actingAs(User::factory()->create(['role' => User::ROLE_EMPLOYEE]))
             ->get('/hr/directory')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('departments.0.positions.0.people.0.full_name', 'Juan Dela Cruz')
-                ->where('departments.0.positions.0.people.0.email', 'juan@primepower.test')
-                ->where('departments.0.positions.0.people.0.mobile_number', '09171234567')
-                ->has('departments.0.positions.0.people.0.employee_number'),
+                ->has('departments.0.positions.0.people.0.employee_number')
+                ->missing('departments.0.positions.0.people.0.email')
+                ->missing('departments.0.positions.0.people.0.mobile_number')
+                ->missing('departments.0.positions.0.people.0.client')
+                ->missing('departments.0.positions.0.people.0.employment_category'),
             );
     }
 
@@ -123,14 +132,21 @@ class DirectoryTest extends TestCase
             'status' => 'active',
         ]);
 
-        // For a manpower agency, where somebody is posted is half of who they
-        // are — an internal clerk and a driver on a client site are different
-        // people to reach.
+        /*
+         * A deployed employee is still listed under the department they are
+         * filed against — the directory is the org chart, and being posted to
+         * a client does not take somebody out of it.
+         *
+         * Where they are posted is no longer on the row. It is a fact about
+         * the person rather than about the shape of the company, so it lives
+         * on their record with the rest of what is known about them.
+         */
         $this->actingAs($this->hr())
             ->get('/hr/directory')
             ->assertInertia(fn (Assert $page) => $page
-                ->where('departments.0.positions.0.people.0.client', 'Metro Fleet')
-                ->where('departments.0.positions.0.people.0.employment_category', 'external'),
+                ->where('departments.0.headcount', 1)
+                ->has('departments.0.positions.0.people', 1)
+                ->missing('departments.0.positions.0.people.0.client'),
             );
     }
 
