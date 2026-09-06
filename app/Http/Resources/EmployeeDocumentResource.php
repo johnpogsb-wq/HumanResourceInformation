@@ -38,6 +38,17 @@ class EmployeeDocumentResource extends JsonResource
             'expires_at' => $this->expires_at?->toDateString(),
             'is_expired' => $this->isExpired(),
             'uploaded_by' => $this->whenLoaded('uploader', fn () => $this->uploader?->name),
+
+            /*
+             * Whether the batch filer decided this row itself.
+             *
+             * Published rather than kept in the table, because the whole
+             * defence of filing without a person is that it can be told apart
+             * afterwards — and a flag only a database query can reach is not
+             * something anybody will ever check. `uploaded_by` still names who
+             * fed the batch through; this says how the row was reached.
+             */
+            'filed_automatically' => (bool) $this->filed_automatically,
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

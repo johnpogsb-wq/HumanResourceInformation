@@ -49,6 +49,7 @@ class EmployeeDocument extends Model
             'issued_at' => 'date',
             'expires_at' => 'date',
             'file_size' => 'integer',
+            'filed_automatically' => 'boolean',
         ];
     }
 }

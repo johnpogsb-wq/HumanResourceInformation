@@ -335,6 +335,75 @@ return [
     */
     'names_may_differ' => ['psa'],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Filing without a person
+    |--------------------------------------------------------------------------
+    |
+    | The batch filer may file a document nobody looked at — but only when
+    | every check it has agrees, and every gate below is a real failure it has
+    | already seen rather than a number picked to make the demo work.
+    |
+    | The rule the whole scanner is built on does not change: a wrong reading
+    | must never become a fact quietly. What changes is where the person is
+    | spent. Today they retype forty documents to catch the two that are
+    | wrong; here the system files the thirty-eight it can defend and hands
+    | back the two, which is the same safety with the effort put where the
+    | risk is.
+    |
+    | Every one of these is *held*, not refused: a held document goes to the
+    | review table the batch filer has always had, and is filed by hand
+    | exactly as before. Nothing is ever discarded for failing a gate.
+    |
+    | Switch `enabled` off and the batch filer behaves exactly as it did —
+    | propose everything, file nothing until somebody confirms.
+    */
+    'autofile' => [
+        'enabled' => (bool) env('SCANNER_AUTOFILE', true),
+
+        /*
+         * How the owner was found. `number` is a value already on this
+         * employee's 201 file — the only evidence in the whole reading with a
+         * person behind it rather than a model. `name` is one exact match
+         * against the scoped roster and no other: the filer already refuses
+         * two, because taking the first would file the document under a coin
+         * toss.
+         *
+         * Dropping `name` here is the one-line way to make this stricter, and
+         * it is the first thing to try if a real batch ever files something
+         * wrong.
+         */
+        'match_strengths' => ['number', 'name'],
+
+        /*
+         * The type must be *certain* — settled by a number already on the 201
+         * file, or by the document's own printed heading. The three weaker
+         * sources are exactly the ones measured wrong: a number's shape is
+         * shared between cards (a medical certificate numbered "MC-2026-4471"
+         * fits the passport pattern), a validity period overlaps between
+         * types, and the model's own key was wrong 4/4 on an NBI clearance
+         * whose heading it had transcribed correctly every time.
+         */
+        'require_certain_type' => true,
+
+        /*
+         * A document whose type expires must have brought a date with it.
+         * `CredentialExpiryScanner` reads `expires_at`, so a licence filed
+         * with a null date is a licence that never appears in a renewal queue
+         * — invisible rather than wrong, which is worse.
+         */
+        'require_expiry_for_expiring_types' => true,
+
+        /*
+         * Already lapsed is held. Filing an expired document is legitimate and
+         * happens often — for the record, or mid-renewal — which is why the
+         * upload form reports it rather than refusing it. But it is never the
+         * thing to do silently: somebody should see that what just went into
+         * the file cannot be used.
+         */
+        'hold_expired' => true,
+    ],
+
     'labels' => [
         'drivers_license' => "Driver's Licence",
         'government_id' => 'Government ID',

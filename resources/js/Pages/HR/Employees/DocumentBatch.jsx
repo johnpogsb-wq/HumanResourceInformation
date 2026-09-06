@@ -82,6 +82,12 @@ export default function DocumentBatch({
     const [reading, setReading] = useState(false);
     const [failed, setFailed] = useState(null);
 
+    // How many of the last batch the system filed for itself. Kept beside the
+    // held rows rather than folded into them: "18 went in, 2 need you" is the
+    // reading, and a screen showing only the 2 makes the batch look like it
+    // mostly failed.
+    const [autoFiled, setAutoFiled] = useState(0);
+
     const form = useForm({});
 
     const employeeOptions = useMemo(
@@ -106,6 +112,7 @@ export default function DocumentBatch({
         setReading(true);
         setFailed(null);
         setRows([]);
+        setAutoFiled(0);
 
         try {
             const body = new FormData();
@@ -113,6 +120,7 @@ export default function DocumentBatch({
 
             const { data } = await axios.post('/hr/employees/documents/batch/examine', body);
 
+            setAutoFiled(data.filed ?? 0);
             setRows(data.documents);
         } catch (error) {
             setFailed(
@@ -147,9 +155,14 @@ export default function DocumentBatch({
     const submit = () => {
         const body = new FormData();
 
-        files.forEach((file) => body.append('files[]', file));
-
+        /*
+         * Only the held files go back up. The ones the system filed for itself
+         * are already on their records, and re-uploading them would file them
+         * twice — `store()` pairs files with assignments by position, so both
+         * lists are built in this one pass to keep the pairing true.
+         */
         rows.forEach((row, position) => {
+            body.append('files[]', files[row.index]);
             body.append(`assignments[${position}][employee_id]`, row.employee_id ?? '');
             body.append(`assignments[${position}][type]`, row.type ?? 'other');
             body.append(`assignments[${position}][title]`, row.title ?? '');
@@ -183,7 +196,7 @@ export default function DocumentBatch({
             <Card>
                 <CardHeader
                     title="Drop a stack of scans"
-                    description={`Up to ${maxFiles} images at a time. Each one is read and matched to the person it names — nothing is filed until you say so.`}
+                    description={`Up to ${maxFiles} images at a time. Each one is read and matched to the person it names. Anything every check agrees on is filed straight away; the rest come back here for you.`}
                 />
                 <CardBody className="space-y-3">
                     {/* Honest when the feature is dark, rather than offering a
@@ -238,10 +251,49 @@ export default function DocumentBatch({
                 </CardBody>
             </Card>
 
+            {/* What the batch did on its own, said before the exceptions.
+                Showing only the held rows would make a batch that mostly
+                worked look like a batch that mostly failed. */}
+            {autoFiled > 0 && !reading && (
+                <Card className="mt-6 border-success/30">
+                    <CardBody className="flex flex-wrap items-start gap-3">
+                        <CheckCircle2
+                            className="mt-0.5 h-5 w-5 shrink-0 text-success"
+                            aria-hidden="true"
+                        />
+                        <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-foreground">
+                                {autoFiled} document{autoFiled === 1 ? '' : 's'} filed
+                                automatically
+                            </p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                Every check agreed on {autoFiled === 1 ? 'it' : 'these'} — the
+                                owner was found, the type was read off the document itself, and
+                                the dates hold up. {autoFiled === 1 ? 'It is' : 'They are'} on
+                                the employee&rsquo;s 201 file now, marked as filed by the
+                                scanner so it can be told from a hand-typed entry.
+                                {rows.length > 0 &&
+                                    ` ${rows.length} still need${rows.length === 1 ? 's' : ''} you.`}
+                            </p>
+                        </div>
+                    </CardBody>
+                </Card>
+            )}
+
+            {/* The whole batch went in. Without this the screen would simply
+                empty itself, which reads as "nothing happened". */}
+            {autoFiled > 0 && rows.length === 0 && !reading && (
+                <div className="mt-4 text-center">
+                    <Button href="/hr/employees" variant="outline">
+                        Back to Employees
+                    </Button>
+                </div>
+            )}
+
             {rows.length > 0 && (
                 <Card className="mt-6">
                     <CardHeader
-                        title="Check before filing"
+                        title="These need you"
                         description={`${assigned} of ${rows.length} have an employee. The rest are skipped.`}
                         action={
                             <Button
@@ -284,6 +336,29 @@ export default function DocumentBatch({
                                             {formatBytes(row.size)}
                                         </span>
                                     </div>
+
+                                    {/* Why this one did not file itself.
+                                        Named, because "held" with no cause
+                                        sends somebody to work out what the
+                                        system already knows — and because the
+                                        reason is usually the exact field they
+                                        have to fix. */}
+                                    {row.held_for?.length > 0 && (
+                                        <ul className="mb-2 space-y-0.5">
+                                            {row.held_for.map((reason) => (
+                                                <li
+                                                    key={reason}
+                                                    className="flex items-start gap-1.5 text-xs text-muted-foreground"
+                                                >
+                                                    <CircleAlert
+                                                        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning"
+                                                        aria-hidden="true"
+                                                    />
+                                                    {reason}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
 
                                     {/* What the scan actually read, so the match
                                         can be judged rather than taken on faith. */}

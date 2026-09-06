@@ -22,10 +22,26 @@ use Illuminate\Support\Collection;
  * driver — the same reasoning that has DeploymentReadinessChecker reuse the
  * two scanners instead of judging a lapsed licence itself.
  *
- * **Nothing is filed by this class on its own.** `examine()` proposes; a person
- * confirms; `file()` writes what they confirmed. Filing a document under the
- * wrong employee is the error the single-document path refuses outright, and
- * doing it forty at a time unattended would be the same mistake at scale.
+ * **`process()` files what it can defend and hands back the rest.** That is a
+ * change from what this class used to do — propose everything and write
+ * nothing until a person had touched all forty rows — and the reasoning is
+ * about where a person is *spent* rather than about trusting the model more.
+ * Retyping forty documents to catch the two that are wrong puts the same
+ * attention on the thirty-eight that are right, and attention spread evenly
+ * over forty rows is attention nobody is really paying by row thirty. So the
+ * system files the ones every check agrees on, and the person opens a screen
+ * holding only the exceptions, where their reading is worth something.
+ *
+ * Every gate is in `config('scanner.autofile')`, every one of them is a
+ * failure this scanner has actually produced, and every one of them *holds*
+ * rather than refuses — a held document lands in the same review table it
+ * always did and is filed by hand exactly as before. Nothing is discarded and
+ * nothing is decided that a person cannot see afterwards: an auto-filed row
+ * carries `filed_automatically`, so "the system decided this" can always be
+ * told from "somebody typed this".
+ *
+ * `examine()` is still here and still writes nothing — it is what runs with
+ * `autofile.enabled` off, and what `process()` calls before deciding.
  */
 class BulkDocumentFiler
 {
@@ -67,6 +83,56 @@ class BulkDocumentFiler
     }
 
     /**
+     * Reads the batch, files everything that clears every gate, and returns
+     * what it could not.
+     *
+     * The one entry point the batch screen uses. It is `examine()` plus a
+     * decision per row, and the decision is deliberately made here rather than
+     * in the controller: what may be filed unattended is a rule about
+     * documents, and a second copy of it in an HTTP layer would be a second
+     * place to loosen it.
+     *
+     * @param  array<int, UploadedFile>  $files
+     * @param  Collection<int, Employee>  $candidates  narrowed by the caller's own scope
+     * @return array{filed: int, documents: array<int, array<string, mixed>>}
+     */
+    public function process(array $files, Collection $candidates): array
+    {
+        $rows = $this->examine($files, $candidates);
+        $filed = 0;
+
+        if (! config('scanner.autofile.enabled')) {
+            return ['filed' => 0, 'documents' => $rows];
+        }
+
+        foreach ($rows as $index => $row) {
+            if (! $row['auto']) {
+                continue;
+            }
+
+            $employee = $candidates->firstWhere('id', $row['employee_id']);
+
+            // Re-found from the scoped collection rather than trusted from the
+            // row, so the same list that gated the reading gates the write.
+            if ($employee === null) {
+                continue;
+            }
+
+            $this->store($employee, $row, $files[$index], automatic: true);
+
+            $rows[$index]['filed'] = true;
+            $filed++;
+        }
+
+        return [
+            'filed' => $filed,
+            // Only what still needs somebody. A row already filed would be a
+            // second chance to file it.
+            'documents' => array_values(array_filter($rows, fn ($row) => ! ($row['filed'] ?? false))),
+        ];
+    }
+
+    /**
      * Writes the assignments a person confirmed.
      *
      * Keyed by the index the review screen showed, so a file whose match was
@@ -96,16 +162,7 @@ class BulkDocumentFiler
                 continue;
             }
 
-            $type = in_array($assignment['type'] ?? null, EmployeeDocument::TYPES, true)
-                ? $assignment['type']
-                : 'other';
-
-            $this->employees->storeDocument($employee, [
-                'type' => $type,
-                'title' => $assignment['title'] ?: config("scanner.labels.{$type}", 'Document'),
-                'issued_at' => $assignment['issued_at'] ?: null,
-                'expires_at' => $assignment['expires_at'] ?: null,
-            ], $file);
+            $this->store($employee, $assignment, $file, automatic: false);
 
             $filed++;
         }
@@ -113,10 +170,132 @@ class BulkDocumentFiler
         return compact('filed', 'skipped');
     }
 
+    /**
+     * Whether this reading may be filed with nobody looking, and why not.
+     *
+     * Reasons are returned rather than a bare false: "held" with no cause is
+     * the batch filer telling somebody to go and find out what it already
+     * knows.
+     *
+     * @param  array<string, mixed>  $row  a row from examineOne()
+     * @param  array<string, mixed>|null  $reading
+     * @return array{auto: bool, held_for: array<int, string>}
+     */
+    private function verdict(array $row, ?array $reading, Collection $candidates): array
+    {
+        $rules = config('scanner.autofile');
+        $held = [];
+
+        if (! $rules['enabled']) {
+            return ['auto' => false, 'held_for' => []];
+        }
+
+        if ($reading === null) {
+            return ['auto' => false, 'held_for' => ['The scanner could not read this file.']];
+        }
+
+        if ($row['employee_id'] === null) {
+            $held[] = $row['matched_by'] === self::AMBIGUOUS
+                ? 'More than one employee fits this name.'
+                : 'No employee on file matches this document.';
+        } elseif (! in_array($row['matched_by'], $rules['match_strengths'], true)) {
+            $held[] = 'Matched by name only, and this batch files on a number.';
+        }
+
+        if ($rules['require_certain_type'] && ! ($reading['type_certain'] ?? false)) {
+            $held[] = $row['type']
+                ? 'The type was inferred rather than read — confirm it.'
+                : 'The document type could not be decided.';
+        }
+
+        /*
+         * A name that contradicts the match. Only reached when the owner was
+         * found by a *number*, since a name match cannot contradict itself —
+         * and it is exactly the case worth holding: a number keyed against the
+         * wrong person puts somebody else's licence in this file.
+         */
+        if ($row['employee_id'] !== null) {
+            $employee = $candidates->firstWhere('id', $row['employee_id']);
+
+            if (
+                $employee
+                && $this->scanner->nameMatches($reading['name_on_document'] ?? null, $employee) === false
+                && ! in_array($row['type'], config('scanner.names_may_differ', []), true)
+            ) {
+                $held[] = 'The name printed on this document is somebody else.';
+            }
+        }
+
+        $expiring = in_array($row['type'], config('credentials.expiring_types', []), true);
+
+        if ($rules['require_expiry_for_expiring_types'] && $expiring && empty($row['expires_at'])) {
+            $held[] = 'This type expires and no expiry date was read.';
+        }
+
+        if ($rules['hold_expired'] && ($row['expiry']['state'] ?? null) === 'expired') {
+            $held[] = 'This document has already expired.';
+        }
+
+        return ['auto' => $held === [], 'held_for' => $held];
+    }
+
+    /**
+     * The one write.
+     *
+     * Both paths land here — the person who confirmed a row and the batch that
+     * filed itself — so the two cannot come to disagree about what a filed
+     * document looks like. `automatic` is the only thing that differs, and it
+     * is recorded rather than inferred: "the system decided this" has to stay
+     * distinguishable from "somebody typed this" for as long as the row exists.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    private function store(
+        Employee $employee,
+        array $values,
+        UploadedFile $file,
+        bool $automatic,
+    ): void {
+        $type = in_array($values['type'] ?? null, EmployeeDocument::TYPES, true)
+            ? $values['type']
+            : 'other';
+
+        $this->employees->storeDocument($employee, [
+            'type' => $type,
+            'title' => ($values['title'] ?? null) ?: config("scanner.labels.{$type}", 'Document'),
+            'issued_at' => ($values['issued_at'] ?? null) ?: null,
+            'expires_at' => ($values['expires_at'] ?? null) ?: null,
+            'filed_automatically' => $automatic,
+        ], $file);
+    }
+
     /** @param  Collection<int, Employee>  $candidates */
     private function examineOne(UploadedFile $file, int $index, Collection $candidates): array
     {
         $reading = $this->scanner->scan($file);
+        $row = $this->describeReading($file, $index, $reading, $candidates);
+
+        // The verdict is attached to every row, including the ones nothing can
+        // be done with — a screen that only labelled the filable ones would
+        // leave "why not this one?" unanswered for exactly the rows somebody
+        // is looking at.
+        return $row + $this->verdict($row, $reading, $candidates);
+    }
+
+    /**
+     * The reading itself, as a row — who it names, what it is, and how well
+     * either was established.
+     *
+     * @param  array<string, mixed>|null  $reading
+     * @param  Collection<int, Employee>  $candidates
+     * @return array<string, mixed>
+     */
+    private function describeReading(
+        UploadedFile $file,
+        int $index,
+        ?array $reading,
+        Collection $candidates,
+    ): array {
 
         $base = [
             'index' => $index,

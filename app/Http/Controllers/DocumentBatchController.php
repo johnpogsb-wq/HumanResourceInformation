@@ -56,7 +56,15 @@ class DocumentBatchController extends Controller
     }
 
     /**
-     * Reads the batch and proposes an owner for each file.
+     * Reads the batch, files what clears every gate, and returns what did not.
+     *
+     * The route is still named `examine` because that is what it does to every
+     * file; what changed is that a reading every check agrees on is now filed
+     * here rather than waiting for somebody to retype it. The gates are
+     * `config('scanner.autofile')` and live in `BulkDocumentFiler` — not in
+     * this method, because what may be filed unattended is a rule about
+     * documents and a copy of it in an HTTP layer would be a second place to
+     * loosen it.
      *
      * JSON, like the single-document scan: the browser cannot re-attach files
      * to a re-rendered form, so an Inertia response here would leave a review
@@ -74,11 +82,21 @@ class DocumentBatchController extends Controller
             'files.*.mimes' => 'Images only — a PDF is uploaded on the employee’s own record.',
         ]);
 
+        $result = $filer->process(
+            array_values($request->file('files')),
+            $this->scoped($request),
+        );
+
         return response()->json([
-            'documents' => $filer->examine(
-                array_values($request->file('files')),
-                $this->scoped($request),
-            ),
+            'filed' => $result['filed'],
+            /*
+             * Only the held rows come back. Each keeps its `index` into the
+             * batch the browser still holds, which is what lets the review
+             * screen re-upload exactly those files — a held row is a smaller
+             * batch, not a gap in the old one, and `store()` pairs files with
+             * assignments by position.
+             */
+            'documents' => $result['documents'],
         ]);
     }
 

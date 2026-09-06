@@ -137,6 +137,14 @@ class EmployeeService
             'mime_type' => $file->getClientMimeType(),
             'file_size' => $file->getSize(),
             'uploaded_by' => auth()->id(),
+            /*
+             * Whether the batch filer decided this row itself. Defaults false,
+             * so every hand-filed document — which is every one that does not
+             * come through `BulkDocumentFiler::process()` — reads as what it
+             * is. `uploaded_by` still names the person who started the batch;
+             * this records how the row was reached, not who reached it.
+             */
+            'filed_automatically' => (bool) ($data['filed_automatically'] ?? false),
         ]);
     }
 

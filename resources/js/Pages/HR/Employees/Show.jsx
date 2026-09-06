@@ -931,9 +931,33 @@ export default function Show({
                                         </TD>
 
                                         <TD>
-                                            <Badge variant="muted">
-                                                {titleCase(document.type)}
-                                            </Badge>
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                                <Badge variant="muted">
+                                                    {titleCase(document.type)}
+                                                </Badge>
+
+                                                {/* Said on the row, not only
+                                                    in the table: filing
+                                                    without a person is only
+                                                    defensible if "the system
+                                                    decided this" can be told
+                                                    from "somebody typed this"
+                                                    by whoever is reading the
+                                                    file, not by whoever can
+                                                    write a query. */}
+                                                {document.filed_automatically && (
+                                                    <Badge
+                                                        variant="info"
+                                                        title="Filed by the document scanner — every check agreed"
+                                                    >
+                                                        <ScanLine
+                                                            className="h-3 w-3"
+                                                            aria-hidden="true"
+                                                        />
+                                                        Auto
+                                                    </Badge>
+                                                )}
+                                            </div>
                                         </TD>
 
                                         <TD className="whitespace-nowrap text-sm text-muted-foreground">
