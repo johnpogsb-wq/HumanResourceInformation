@@ -21,8 +21,17 @@ import { cn } from '@/lib/utils';
 export function Card({ className, href, floating = false, children, ...props }) {
     const classes = cn(
         'rounded-lg border border-border bg-card text-card-foreground shadow-sm transition-shadow duration-200',
+        /*
+         * On the dashboard the border steps back and the shadow does the
+         * separating. It could not before: the card was the same colour as the
+         * page, so the outline was the only thing saying where it ended, and a
+         * saturated blue hairline around every card is what the screen read as.
+         * With the card surface now lighter than the ground, a soft wide
+         * shadow is enough, and the border is left as a whisper rather than an
+         * edge.
+         */
         floating &&
-            'rounded-xl border-border/60 shadow-[0_2px_10px_-2px_hsl(var(--foreground)/0.08)]',
+            'rounded-xl border-border/70 shadow-[0_1px_2px_-1px_hsl(var(--foreground)/0.06),0_8px_20px_-8px_hsl(var(--foreground)/0.10)]',
         href &&
             (floating
                 ? 'block transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_18px_30px_-12px_hsl(var(--foreground)/0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40'
@@ -64,7 +73,9 @@ export function CardHeader({ className, title, description, action, children, ..
     return (
         <div
             className={cn(
-                'flex flex-col gap-3 border-b border-border px-5 py-4',
+                // The rule under a title separates two parts of one card, not
+                // two cards — so it is lighter than the card's own edge.
+                'flex flex-col gap-3 border-b border-border/60 px-5 py-4',
                 'sm:flex-row sm:items-start sm:justify-between sm:gap-4',
                 className,
             )}

@@ -7,11 +7,26 @@
         --background: 210 62.5% 96.9%;
         --foreground: 212 64.3% 11%;
 
-        /* #EDF5FB — per the brand spec. */
-        --card: 206 63.6% 95.7%;
+        /*
+         * A card has to be lighter than the page it sits on, and in light mode
+         * it was darker — #EDF5FB against a #F1F6FB ground, 1.2% apart and on
+         * the wrong side of it. A surface that does not separate from its
+         * background has to be drawn with an outline instead, which is exactly
+         * what every card looked like: a blue box rather than a raised sheet.
+         *
+         * The dark block already had this right (its card is 2.9% *lighter*
+         * than its page), so this is light mode being brought into line rather
+         * than a new idea.
+         *
+         * #EDF5FB stays as the brand's own tint — it is still the page and
+         * still the sidebar, which is where the colour is doing identity work.
+         * A card is a sheet laid on that, and a sheet is lighter than what it
+         * covers.
+         */
+        --card: 206 60% 99.2%;
         --card-foreground: 212 64.3% 11%;
 
-        --popover: 206 63.6% 95.7%;
+        --popover: 206 60% 99.2%;
         --popover-foreground: 212 64.3% 11%;
 
         --primary: 203 100% 40%;
@@ -36,9 +51,25 @@
         --warning-foreground: 45 28.6% 97.3%;
         --info: 203 100% 40%;
 
-        /* Border is rgba(0,125,204,0.15) — hue + fixed alpha. */
-        --border: 203 100% 40%;
-        --border-opacity: 0.15;
+        /*
+         * A soft blue-grey, not the brand blue.
+         *
+         * This was rgba(0,125,204,0.15) — the primary at full saturation,
+         * faded. Faded saturated blue is still *blue*: every card edge and
+         * every table rule read as a coloured outline drawn around the
+         * content rather than as the quiet boundary between two surfaces, and
+         * on the dashboard that meant a grid of blue rectangles.
+         *
+         * Desaturating and lightening it, then carrying more alpha, gives the
+         * same visible weight with none of the colour. It also brings light
+         * mode into line with the dark block, whose border has always been a
+         * desaturated grey-blue (206 22.7% 64.5%) rather than the primary.
+         *
+         * `--input` deliberately keeps the brand hue: a field is a thing you
+         * are invited to act on, and its edge is allowed to say so.
+         */
+        --border: 206 30% 72%;
+        --border-opacity: 0.5;
         --input: 203 100% 40%;
         --input-opacity: 0.22;
         --ring: 203 100% 40%;
