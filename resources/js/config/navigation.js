@@ -8,7 +8,6 @@ import {
     CalendarRange,
     ClipboardList,
     Clock,
-    Contact,
     Database,
     DoorOpen,
     FileText,
@@ -94,8 +93,8 @@ export const NAV_GROUPS = [
                          * everybody. See EmployeePolicy::viewDirectory.
                          */
                         id: 'employee-directory',
-                        label: 'Org Directory',
-                        icon: Contact,
+                        label: 'Departments',
+                        icon: Building2,
                         href: '/hr/directory',
                     },
                     {
@@ -114,13 +113,25 @@ export const NAV_GROUPS = [
                         href: '/hr/clients',
                         roles: ['admin', 'hr_staff'],
                     },
-                    {
-                        id: 'employee-departments',
-                        label: 'Departments',
-                        icon: Building2,
-                        href: '/hr/departments',
-                        roles: ['admin', 'hr_staff'],
-                    },
+                    /*
+                     * The master-data Departments screen has left this list.
+                     *
+                     * Two entries called "Departments" would have been two
+                     * answers to one word, and the one people actually open is
+                     * the screen above — which walks the org chart and holds
+                     * the people. Editing a department is a rarer act than
+                     * reading one, and it did not earn a permanent line here.
+                     *
+                     * The route is untouched: `/hr/departments` still works,
+                     * `/settings/organization` still redirects to it, and
+                     * Positions still files against what it maintains. Only
+                     * the nav entry is gone, so restoring it is one object.
+                     *
+                     * `ALL_HREFS` is derived from this list, so `bestMatch()`
+                     * now finds nothing on `/hr/departments` — correct, in the
+                     * same way it finds nothing on a settings page: there is
+                     * no entry for it to light.
+                     */
                     {
                         id: 'employee-positions',
                         label: 'Positions',

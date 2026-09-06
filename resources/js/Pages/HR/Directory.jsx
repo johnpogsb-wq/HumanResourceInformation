@@ -289,7 +289,7 @@ export default function Directory({ departments, unassigned, filters, total }) {
     const shown = departments.reduce((sum, department) => sum + department.headcount, 0);
 
     return (
-        <AppLayout title="Org Directory">
+        <AppLayout title="Departments">
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
                 <StatCard
                     label="People Listed"
