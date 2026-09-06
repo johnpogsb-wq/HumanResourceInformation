@@ -1,4 +1,4 @@
-import { router, useForm } from '@inertiajs/react';
+import { useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import { Building2, Plus, UserX, Users } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
@@ -10,7 +10,6 @@ import {
     Field,
     Input,
     Modal,
-    SearchInput,
     MeterCard,
     StatCard,
     TBody,
@@ -47,13 +46,6 @@ export default function Departments({ departments, filters, summary }) {
             },
         });
     };
-
-    const search = (value) =>
-        router.get(
-            '/hr/departments',
-            { search: value || undefined },
-            { preserveState: true, preserveScroll: true, replace: true },
-        );
 
     const activeRate = summary.total > 0 ? (summary.active / summary.total) * 100 : 0;
 
@@ -106,14 +98,6 @@ export default function Departments({ departments, filters, summary }) {
                     description="Employee records, KPI scoping, and payroll reporting all group by these."
                     action={
                         <div className="flex flex-col gap-2 sm:flex-row">
-                            <div className="w-full sm:w-56">
-                                <SearchInput
-                                    defaultValue={filters.search ?? ''}
-                                    onChange={(event) => search(event.target.value)}
-                                    placeholder="Search name or code"
-                                    aria-label="Search departments"
-                                />
-                            </div>
                             <Button onClick={open}>
                                 <Plus className="h-4 w-4" />
                                 New Department

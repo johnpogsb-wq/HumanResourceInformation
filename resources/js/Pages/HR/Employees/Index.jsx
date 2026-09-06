@@ -1,5 +1,5 @@
 import { Link, router, WhenVisible } from '@inertiajs/react';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import {
     Building2,
     CalendarClock,
@@ -17,7 +17,6 @@ import {
     Badge,
     Card,
     Button,
-    SearchInput,
     Select,
     MeterCard,
     StatCard,
@@ -89,29 +88,6 @@ export default function Index({
     can,
     pendingEndorsements = 0,
 }) {
-    const [search, setSearch] = useState(filters.search ?? '');
-    const isFirstRender = useRef(true);
-
-    // Debounce the search box so typing does not fire a request per keystroke.
-    useEffect(() => {
-        if (isFirstRender.current) {
-            isFirstRender.current = false;
-            return;
-        }
-
-        const timer = setTimeout(() => {
-            router.get(
-                '/hr/employees',
-                { ...filters, search: search || undefined },
-                { preserveState: true, preserveScroll: true, replace: true },
-            );
-        }, 350);
-
-        return () => clearTimeout(timer);
-        // `filters` is server state and stable between renders for a given page.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [search]);
-
     const applyFilter = (key, value) => {
         router.get(
             '/hr/employees',
@@ -215,15 +191,6 @@ export default function Index({
 
             <Card>
                 <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center">
-                    <div className="lg:w-72">
-                        <SearchInput
-                            value={search}
-                            onChange={(event) => setSearch(event.target.value)}
-                            placeholder="Search name, number, or email…"
-                            aria-label="Search employees"
-                        />
-                    </div>
-
                     <div className="flex flex-1 flex-wrap gap-2 lg:justify-end">
                         {/* The agency split comes first: it is the widest cut
                             of the workforce, and the client filter beside it
@@ -297,6 +264,23 @@ export default function Index({
                                 { value: 'inactive', label: 'Inactive' },
                             ]}
                         />
+
+                        {/* The search box is gone from this row, but a search
+                            can still arrive — the topbar's quick search lands
+                            here with `?search=`. Without a chip the list would
+                            be narrowed by something with no control anywhere on
+                            the screen, which is the one thing this system will
+                            not do to a list. */}
+                        {filters.search && (
+                            <button
+                                type="button"
+                                onClick={() => applyFilter('search', '')}
+                                className="flex h-9 shrink-0 items-center gap-1.5 self-end rounded-full border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                            >
+                                Matching “{filters.search}”
+                                <X className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                        )}
 
                         {/* What a dashboard tile asked for, said out loud. */}
                         {tileFilter && (

@@ -1,5 +1,5 @@
 import { Link, router, useForm } from '@inertiajs/react';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { CheckCircle2, Inbox, Radio, UserCheck, XCircle } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
@@ -9,7 +9,6 @@ import {
     Field,
     Modal,
     Pagination,
-    SearchInput,
     Select,
     StatCard,
     TBody,
@@ -38,34 +37,10 @@ const STATUS_FILTERS = [
  * anywhere on it — an endorsement arrives over the API or it does not arrive.
  */
 export default function Index({ endorsements, filters, statistics }) {
-    const [search, setSearch] = useState(filters.search ?? '');
-
-    // Debounced so typing does not fire a request per keystroke. The first
-    // render must not re-request what the server already sent.
-    const first = useRef(true);
-
-    useEffect(() => {
-        if (first.current) {
-            first.current = false;
-
-            return undefined;
-        }
-
-        const timer = setTimeout(() => {
-            router.get(
-                '/hr/endorsements',
-                { search: search || undefined, status: filters.status },
-                { preserveState: true, replace: true },
-            );
-        }, 300);
-
-        return () => clearTimeout(timer);
-    }, [search]);
-
     const applyStatus = (status) => {
         router.get(
             '/hr/endorsements',
-            { search: search || undefined, status },
+            { search: filters.search || undefined, status },
             { preserveState: true, replace: true },
         );
     };
@@ -131,14 +106,6 @@ export default function Index({ endorsements, filters, statistics }) {
 
             <Card floating>
                 <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center">
-                    <div className="w-full lg:max-w-xs">
-                        <SearchInput
-                            value={search}
-                            onChange={(event) => setSearch(event.target.value)}
-                            placeholder="Search name, reference, or email…"
-                        />
-                    </div>
-
                     <div className="w-full lg:max-w-[13rem]">
                         <Select
                             value={filters.status}

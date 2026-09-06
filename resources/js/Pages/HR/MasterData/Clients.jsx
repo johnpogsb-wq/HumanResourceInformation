@@ -1,4 +1,4 @@
-import { router, useForm } from '@inertiajs/react';
+import { useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import { Briefcase, FileWarning, Plus, Users } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
@@ -11,7 +11,6 @@ import {
     Field,
     Input,
     Modal,
-    SearchInput,
     Select,
     MeterCard,
     StatCard,
@@ -61,13 +60,6 @@ export default function Clients({ clients, filters, summary, wageRegions }) {
             },
         });
     };
-
-    const search = (value) =>
-        router.get(
-            '/hr/clients',
-            { search: value || undefined },
-            { preserveState: true, preserveScroll: true, replace: true },
-        );
 
     const deployedRate = summary.total > 0 ? (summary.deployed / summary.total) * 100 : 0;
     const set = (field) => (event) => form.setData(field, event.target.value);
@@ -131,14 +123,6 @@ export default function Clients({ clients, filters, summary, wageRegions }) {
                     description="The companies PrimePower deploys employees to. Payroll and billing group by these."
                     action={
                         <div className="flex flex-col gap-2 sm:flex-row">
-                            <div className="w-full sm:w-56">
-                                <SearchInput
-                                    defaultValue={filters.search ?? ''}
-                                    onChange={(event) => search(event.target.value)}
-                                    placeholder="Search name or code"
-                                    aria-label="Search clients"
-                                />
-                            </div>
                             <Button onClick={open}>
                                 <Plus className="h-4 w-4" />
                                 New Client

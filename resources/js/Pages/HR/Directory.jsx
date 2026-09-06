@@ -1,6 +1,7 @@
 import { Link, router } from '@inertiajs/react';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import {
+    X,
     Building2,
     ChevronDown,
     ChevronRight,
@@ -11,7 +12,7 @@ import {
     Users,
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Badge, Card, CardBody, CardHeader, SearchInput, StatCard } from '@/Components/ui';
+import { Badge, Card, CardBody, CardHeader, StatCard } from '@/Components/ui';
 import { cn, initials } from '@/lib/utils';
 
 /**
@@ -254,29 +255,6 @@ function DepartmentBlock({
 }
 
 export default function Directory({ departments, unassigned, filters, total }) {
-    const [search, setSearch] = useState(filters.search ?? '');
-    const first = useRef(true);
-
-    // Debounced, so typing does not fire a request per keystroke. The first
-    // render must not re-request what the server already sent.
-    useEffect(() => {
-        if (first.current) {
-            first.current = false;
-
-            return undefined;
-        }
-
-        const timer = setTimeout(() => {
-            router.get(
-                '/hr/directory',
-                { search: search || undefined },
-                { preserveState: true, replace: true },
-            );
-        }, 300);
-
-        return () => clearTimeout(timer);
-    }, [search]);
-
     /*
      * Which departments are open. Closed to begin with — the screen opens on
      * the org chart, and expanding is the question being asked.
@@ -340,19 +318,30 @@ export default function Directory({ departments, unassigned, filters, total }) {
 
             <Card className="mb-5">
                 <CardBody className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <div className="w-full sm:max-w-sm">
-                        <SearchInput
-                            value={search}
-                            onChange={(event) => setSearch(event.target.value)}
-                            placeholder="Search a name, number, or email…"
-                            aria-label="Search the directory"
-                        />
-                    </div>
+                    {/* A search arriving by URL still narrows this list and
+                        still opens the departments it matched, so it has to be
+                        visible and removable — a list narrowed by something
+                        with no control on screen is a list nobody can
+                        explain. */}
+                    {searching ? (
+                        <button
+                            type="button"
+                            onClick={() => router.get('/hr/directory')}
+                            className="flex h-9 shrink-0 items-center gap-1.5 self-start rounded-full border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                        >
+                            Matching “{filters.search}”
+                            <X className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                    ) : (
+                        <p className="text-xs text-muted-foreground">
+                            Names, roles, and work contacts only.
+                        </p>
+                    )}
 
                     <p className="text-xs text-muted-foreground sm:ml-auto">
                         {searching
                             ? `${shown + unassigned.headcount} matching`
-                            : 'Names, roles, and work contacts only.'}
+                            : `${total} listed`}
                     </p>
                 </CardBody>
             </Card>

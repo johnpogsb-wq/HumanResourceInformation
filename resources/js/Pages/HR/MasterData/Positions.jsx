@@ -349,14 +349,6 @@ export default function Positions({
                     description="Open a title to see who holds it. Moving somebody changes their record, not this list."
                     action={
                         <div className="flex flex-col gap-2 sm:flex-row">
-                            <div className="w-full sm:w-52">
-                                <SearchInput
-                                    defaultValue={filters.search ?? ''}
-                                    onChange={(event) => filter('search', event.target.value)}
-                                    placeholder="Search title or code"
-                                    aria-label="Search positions"
-                                />
-                            </div>
                             <Select
                                 value={filters.department_id ?? ''}
                                 onChange={(event) =>
