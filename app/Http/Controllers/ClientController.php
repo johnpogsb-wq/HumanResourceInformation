@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Client;
+use App\Models\Employee;
 use App\Models\Setting;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -36,6 +37,26 @@ class ClientController extends Controller
             'employees',
             'employees as active_employees_count' => fn ($query) => $query->where('status', 'active'),
         ])
+            ->with([
+                /*
+                 * Who is on site, so a client card can be opened rather than
+                 * only counted. Eager-loaded in one query: a dozen clients
+                 * fetched one at a time on expand would be a dozen round trips
+                 * for a set the page is about to hold anyway.
+                 *
+                 * Active only — a client's deployment is who is there now, and
+                 * somebody who has left is a record the archive keeps.
+                 */
+                'employees' => fn ($query) => $query
+                    ->where('status', 'active')
+                    ->with('position:id,title')
+                    ->orderBy('last_name')
+                    ->orderBy('first_name')
+                    ->select([
+                        'id', 'employee_number', 'first_name', 'middle_name',
+                        'last_name', 'suffix', 'photo_path', 'position_id', 'client_id',
+                    ]),
+            ])
             ->search($search)
             ->orderBy('name')
             ->get();
@@ -61,6 +82,25 @@ class ClientController extends Controller
                 'is_active' => $client->is_active,
                 'employees_count' => $client->employees_count,
                 'active_employees_count' => $client->active_employees_count,
+
+                /*
+                 * A name, a number, a job, a photo — and nothing else.
+                 *
+                 * This is master data behind `manageOrganization`, answering
+                 * "who is on this client's site". It needs no salary, no
+                 * government number and no 201 file, so it carries none. The
+                 * same narrowing `DirectoryController::card()` makes, for the
+                 * same reason: what keeps a screen safe is the field list.
+                 */
+                'employees' => $client->employees->map(fn (Employee $employee) => [
+                    'id' => $employee->id,
+                    'employee_number' => $employee->employee_number,
+                    'full_name' => $employee->full_name,
+                    'position' => $employee->position?->title,
+                    'photo_url' => $employee->photo_path
+                        ? asset('storage/'.$employee->photo_path)
+                        : null,
+                ]),
             ]),
             'filters' => ['search' => $search],
             'wageRegions' => $regions
