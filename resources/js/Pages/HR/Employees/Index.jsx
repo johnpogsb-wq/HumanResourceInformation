@@ -1,7 +1,6 @@
 import { Link, router, WhenVisible } from '@inertiajs/react';
 import { useState } from 'react';
 import {
-    Building2,
     CalendarClock,
     Inbox,
     Loader2,
@@ -330,7 +329,7 @@ export default function Index({
                             <TH sortKey="employee_number" sort={sort} onSort={applySort}>
                                 Employee
                             </TH>
-                            <TH>Assignment</TH>
+                            <TH>Department</TH>
                             <TH>Position</TH>
                             <TH sortKey="employment_status" sort={sort} onSort={applySort}>
                                 Employment
@@ -383,28 +382,25 @@ export default function Index({
                                             </Link>
                                         </TD>
 
-                                        {/* One column, two meanings: an
-                                            internal employee belongs to a
-                                            department, a deployed one belongs
-                                            to a client. Showing both as
-                                            separate columns would leave one
-                                            of them blank on every row. */}
-                                        <TD className="text-sm">
-                                            {employee.client ? (
-                                                <span className="flex items-center gap-1.5">
-                                                    <Building2
-                                                        className="h-3.5 w-3.5 shrink-0 text-primary"
-                                                        aria-hidden="true"
-                                                    />
-                                                    <span className="truncate text-foreground">
-                                                        {employee.client.name}
-                                                    </span>
-                                                </span>
-                                            ) : (
-                                                <span className="text-muted-foreground">
-                                                    {employee.department?.name ?? '—'}
-                                                </span>
-                                            )}
+                                        {/* One column, one meaning.
+                                            It used to hold two: the department
+                                            for internal staff and the client
+                                            for deployed staff, whichever
+                                            existed. That made a column nobody
+                                            could read down — "Fleet
+                                            Maintenance" and "Pacific Coast
+                                            Beverages" are not the same kind of
+                                            fact, and sorting or scanning it
+                                            answered neither question.
+
+                                            The department is the one every
+                                            employee has, so it is the one this
+                                            column holds. Who a deployed person
+                                            is billed to is on their own record
+                                            and on the client screen, which is
+                                            where that question is asked. */}
+                                        <TD className="truncate text-sm text-muted-foreground">
+                                            {employee.department?.name ?? '—'}
                                         </TD>
 
                                         <TD className="text-sm text-muted-foreground">

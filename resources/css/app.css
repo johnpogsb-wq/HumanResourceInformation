@@ -85,7 +85,14 @@
         --sidebar-accent: 204 62% 89%;
         --sidebar-accent-foreground: 203 100% 40%;
         --sidebar-muted: 208 33.6% 42.5%;
-        --sidebar-border: 203 100% 40%;
+        /*
+         * The same soft blue-grey as `--border`, and it has to be kept in step
+         * with it: both are multiplied by the single `--border-opacity`, so
+         * raising that for the page's rules tripled the strength of every line
+         * in here while this one was still the brand blue at full saturation.
+         * A sidebar drawn in bright blue rules was the result.
+         */
+        --sidebar-border: 206 30% 72%;
 
         --logo-primary: 0 68.8% 54.7%;
         --logo-subtitle: 0 9.1% 4.3%;

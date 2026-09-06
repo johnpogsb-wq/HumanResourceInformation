@@ -77,7 +77,14 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
 
             <aside
                 className={cn(
-                    'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-sidebar-border bg-sidebar',
+                    /*
+                     * No right border. The sidebar surface is already a shade
+                     * off the page — that is what separates it, and a rule
+                     * down the full height of the window on top of that reads
+                     * as a line drawn *between* two panes rather than as the
+                     * edge of one.
+                     */
+                    'fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar',
                     'transition-all duration-300 lg:translate-x-0',
                     collapsed ? 'w-sidebar-collapsed' : 'w-sidebar',
                     mobileOpen ? 'translate-x-0' : '-translate-x-full',
@@ -86,7 +93,10 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                 {/* Logo — and, when collapsed, the only toggle there is. */}
                 <div
                     className={cn(
-                        'flex h-16 shrink-0 items-center border-b border-sidebar-border',
+                        // No rule under the logo either: it sits on the same
+                        // surface as the nav, and a full-width line says they
+                        // are two panels when they are one.
+                        'flex h-16 shrink-0 items-center',
                         collapsed ? 'justify-center px-2' : 'justify-between px-4',
                     )}
                 >
