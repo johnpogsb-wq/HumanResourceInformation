@@ -17,7 +17,6 @@ import {
     Badge,
     Card,
     Button,
-    Select,
     MeterCard,
     StatCard,
     TBody,
@@ -35,47 +34,91 @@ const titleCase = (value) =>
         .replace(/[_-]/g, ' ')
         .replace(/\b\w/g, (character) => character.toUpperCase());
 
-const EMPLOYMENT_STATUSES = [
-    'regular',
-    'probationary',
-    'contractual',
-    'project-based',
-    'resigned',
-    'terminated',
-];
+const CATEGORY_LABELS = {
+    internal: 'Internal staff',
+    external: 'External (deployed)',
+};
+
+const RECORD_STATUS_LABELS = {
+    active: 'Active',
+    on_leave: 'On leave',
+    inactive: 'Inactive',
+};
 
 /**
- * How a filter the dropdowns cannot show describes itself.
+ * Every narrowing currently applied, as something a person can read and undo.
  *
- * Each of these is set by a dashboard tile and has no control on this screen:
- * `hired_within` is a rolling window, `without_documents` is the absence of a
- * relationship, and a comma-separated `employment_status` is the donut's
- * grouping — "Contractual" there is contractual *and* project-based, which no
- * single dropdown option can say.
+ * The five dropdowns are gone from this screen, but the filters they set have
+ * not: the dashboard tiles link here, this screen's own tiles drill into
+ * themselves, and the topbar quick search lands here with `?search=`. So the
+ * narrowing arrives with no control on the page unless something draws it —
+ * and a list narrowed by an invisible filter is a list nobody can explain.
  *
- * A list narrowed by a filter with no visible control is a list nobody can
- * explain, so each draws a removable chip instead.
+ * Chips are the better half of that trade anyway. Five selects reading "All
+ * staff / All clients / All departments…" spend a row saying *nothing is
+ * filtered*; a chip only exists when there is something to say, and it says
+ * the value rather than the axis.
+ *
+ * Ids are resolved to names here, because "Department 3" is not a thing
+ * anybody recognises.
  */
-function tileFilterLabel(filters) {
+function activeFilters(filters, { departments = [], clients = [] }) {
+    const chips = [];
+    const named = (list, id, key = 'name') =>
+        list.find((row) => String(row.id) === String(id))?.[key];
+
+    if (filters.search) chips.push({ key: 'search', label: `Matching “${filters.search}”` });
+
+    if (filters.employment_category) {
+        chips.push({
+            key: 'employment_category',
+            label: CATEGORY_LABELS[filters.employment_category] ?? filters.employment_category,
+        });
+    }
+
+    if (filters.client_id) {
+        chips.push({
+            key: 'client_id',
+            label: named(clients, filters.client_id) ?? 'One client',
+        });
+    }
+
+    if (filters.department_id) {
+        chips.push({
+            key: 'department_id',
+            label: named(departments, filters.department_id) ?? 'One department',
+        });
+    }
+
+    if (filters.employment_status) {
+        // The dashboard donut groups two statuses into one slice, so this can
+        // be a comma list that no single dropdown option could ever have said.
+        chips.push({
+            key: 'employment_status',
+            label: String(filters.employment_status).split(',').map(titleCase).join(' or '),
+        });
+    }
+
+    if (filters.status) {
+        chips.push({
+            key: 'status',
+            label: RECORD_STATUS_LABELS[filters.status] ?? titleCase(filters.status),
+        });
+    }
+
+    // Set by dashboard tiles, and never by anything on this screen.
     if (filters.hired_within) {
-        return {
+        chips.push({
             key: 'hired_within',
             label: `Hired in the last ${filters.hired_within} days`,
-        };
+        });
     }
 
     if (filters.without_documents) {
-        return { key: 'without_documents', label: 'No documents on file' };
+        chips.push({ key: 'without_documents', label: 'No documents on file' });
     }
 
-    if (String(filters.employment_status ?? '').includes(',')) {
-        return {
-            key: 'employment_status',
-            label: filters.employment_status.split(',').map(titleCase).join(' or '),
-        };
-    }
-
-    return null;
+    return chips;
 }
 
 export default function Index({
@@ -109,7 +152,7 @@ export default function Index({
     const rows = employees.data ?? [];
     const meta = employees.meta ?? {};
     const hasMore = (meta.current_page ?? 1) < (meta.last_page ?? 1);
-    const tileFilter = tileFilterLabel(filters);
+    const chips = activeFilters(filters, { departments, clients });
 
     /*
      * Clicking a figure opens the rows it counted, keeping whatever the
@@ -191,110 +234,51 @@ export default function Index({
 
             <Card>
                 <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center">
-                    <div className="flex flex-1 flex-wrap gap-2 lg:justify-end">
-                        {/* The agency split comes first: it is the widest cut
-                            of the workforce, and the client filter beside it
-                            only means anything for external staff. */}
-                        <Select
-                            value={filters.employment_category ?? ''}
-                            onChange={(event) =>
-                                applyFilter('employment_category', event.target.value)
-                            }
-                            placeholder="All staff"
-                            className="w-full sm:w-40"
-                            aria-label="Filter by internal or external"
-                            options={[
-                                { value: 'internal', label: 'Internal Staff' },
-                                { value: 'external', label: 'External (Deployed)' },
-                            ]}
-                        />
+                    <div className="flex flex-1 flex-wrap items-center gap-2">
+                        {/* Whatever the list is narrowed to, named and
+                            removable. Nothing at all when nothing is applied,
+                            which is the row's usual state — five dropdowns all
+                            reading "All …" spent a whole row announcing that
+                            no filter was on. */}
+                        {chips.length > 0 && (
+                            <>
+                                <span className="text-xs text-muted-foreground">Showing</span>
 
-                        <Select
-                            value={filters.client_id ?? ''}
-                            onChange={(event) => applyFilter('client_id', event.target.value)}
-                            placeholder="All clients"
-                            className="w-full sm:w-52"
-                            aria-label="Filter by client"
-                            options={clients.map((client) => ({
-                                value: client.id,
-                                // The headcount is the figure the agency is
-                                // asked for; showing it here saves opening the
-                                // filter five times to compare.
-                                label: `${client.name} (${client.employees_count})`,
-                            }))}
-                        />
+                                {chips.map((chip) => (
+                                    <button
+                                        key={chip.key}
+                                        type="button"
+                                        onClick={() => applyFilter(chip.key, '')}
+                                        title={`Remove this filter`}
+                                        className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                                    >
+                                        {chip.label}
+                                        <X className="h-3.5 w-3.5" aria-hidden="true" />
+                                    </button>
+                                ))}
 
-                        <Select
-                            value={filters.department_id ?? ''}
-                            onChange={(event) =>
-                                applyFilter('department_id', event.target.value)
-                            }
-                            placeholder="All departments"
-                            className="w-full sm:w-48"
-                            aria-label="Filter by department"
-                            options={departments.map((department) => ({
-                                value: department.id,
-                                label: department.name,
-                            }))}
-                        />
-
-                        <Select
-                            value={filters.employment_status ?? ''}
-                            onChange={(event) =>
-                                applyFilter('employment_status', event.target.value)
-                            }
-                            placeholder="All employment statuses"
-                            className="w-full sm:w-52"
-                            aria-label="Filter by employment status"
-                            options={EMPLOYMENT_STATUSES.map((status) => ({
-                                value: status,
-                                label: titleCase(status),
-                            }))}
-                        />
-
-                        <Select
-                            value={filters.status ?? ''}
-                            onChange={(event) => applyFilter('status', event.target.value)}
-                            placeholder="All record statuses"
-                            className="w-full sm:w-44"
-                            aria-label="Filter by record status"
-                            options={[
-                                { value: 'active', label: 'Active' },
-                                { value: 'on_leave', label: 'On Leave' },
-                                { value: 'inactive', label: 'Inactive' },
-                            ]}
-                        />
-
-                        {/* The search box is gone from this row, but a search
-                            can still arrive — the topbar's quick search lands
-                            here with `?search=`. Without a chip the list would
-                            be narrowed by something with no control anywhere on
-                            the screen, which is the one thing this system will
-                            not do to a list. */}
-                        {filters.search && (
-                            <button
-                                type="button"
-                                onClick={() => applyFilter('search', '')}
-                                className="flex h-9 shrink-0 items-center gap-1.5 self-end rounded-full border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
-                            >
-                                Matching “{filters.search}”
-                                <X className="h-3.5 w-3.5" aria-hidden="true" />
-                            </button>
+                                {/* One press back to the whole list. With
+                                    several chips on, clearing them one at a
+                                    time is four presses to undo one click from
+                                    the dashboard. */}
+                                {chips.length > 1 && (
+                                    <Link
+                                        href="/hr/employees"
+                                        className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                                    >
+                                        Clear all
+                                    </Link>
+                                )}
+                            </>
                         )}
 
-                        {/* What a dashboard tile asked for, said out loud. */}
-                        {tileFilter && (
-                            <button
-                                type="button"
-                                onClick={() => applyFilter(tileFilter.key, '')}
-                                className="flex h-9 shrink-0 items-center gap-1.5 self-end rounded-full border border-info/30 bg-info/10 px-3 text-xs font-medium text-info transition-colors hover:bg-info/20"
-                            >
-                                {tileFilter.label}
-                                <X className="h-3.5 w-3.5" aria-hidden="true" />
-                            </button>
-                        )}
-
-                        {/* Two ways in, beside each other: a spreadsheet of a
+                        {/* The actions end the row. `ml-auto` rather than the
+                            container justifying to the end: the chips have to
+                            start at the left edge, or they read as part of the
+                            button group rather than as a description of the
+                            list. */}
+                        <div className="ml-auto flex flex-wrap items-center gap-2">
+                            {/* Two ways in, beside each other: a spreadsheet of a
                             workforce that already exists, and a stack of scans
                             for the files they arrive with. Splitting them
                             across the screen would make the bulk paths look
@@ -311,31 +295,32 @@ export default function Index({
                             record. Import stays because digitising a workforce
                             that already works here is not hiring: there is no
                             endorsement for somebody on their sixth year. */}
-                        {can.create && (
-                            <Button variant="outline" href="/hr/employees/import">
-                                <Upload className="h-4 w-4" />
-                                Import
-                            </Button>
-                        )}
+                            {can.create && (
+                                <Button variant="outline" href="/hr/employees/import">
+                                    <Upload className="h-4 w-4" />
+                                    Import
+                                </Button>
+                            )}
 
-                        {can.fileDocuments && (
-                            <Button variant="outline" href="/hr/employees/documents/batch">
-                                <ScanLine className="h-4 w-4" />
-                                File Scans
-                            </Button>
-                        )}
+                            {can.fileDocuments && (
+                                <Button variant="outline" href="/hr/employees/documents/batch">
+                                    <ScanLine className="h-4 w-4" />
+                                    File Scans
+                                </Button>
+                            )}
 
-                        {can.create && (
-                            <Button href="/hr/endorsements">
-                                <Inbox className="h-4 w-4" />
-                                New Hires
-                                {pendingEndorsements > 0 && (
-                                    <span className="ml-0.5 grid min-w-5 place-items-center rounded-full bg-primary-foreground/20 px-1.5 text-[11px] font-semibold leading-5">
-                                        {pendingEndorsements}
-                                    </span>
-                                )}
-                            </Button>
-                        )}
+                            {can.create && (
+                                <Button href="/hr/endorsements">
+                                    <Inbox className="h-4 w-4" />
+                                    New Hires
+                                    {pendingEndorsements > 0 && (
+                                        <span className="ml-0.5 grid min-w-5 place-items-center rounded-full bg-primary-foreground/20 px-1.5 text-[11px] font-semibold leading-5">
+                                            {pendingEndorsements}
+                                        </span>
+                                    )}
+                                </Button>
+                            )}
+                        </div>
                     </div>
                 </div>
 
