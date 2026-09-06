@@ -221,20 +221,34 @@ Light and dark both work because components reference tokens, not values.
   their input rather than by what they are. Moving them changed no route,
   controller, or permission: `ALL_HREFS` is derived from every group, so
   `bestMatch()` still lights the right entry.
-- **Settings is no exception — its seven sections are sidebar `children` too.**
-  This went the other way first: a flat link to `/settings/appearance`, on the
-  reasoning that `SettingsLayout` already rendered the same seven beside the
-  page and a sidebar copy would duplicate them. Living with it showed the
-  duplication was the cheaper problem. The in-page column cost the settings
-  forms width they needed — at 1024px the app sidebar takes 260px and the
-  section list took another 224px, leaving about 468px, squeezed at exactly
-  the width where a two-column layout was meant to start helping. The in-page
-  list is gone; the sidebar is the only copy again, and settings pages get the
-  same full-width canvas as every other screen. `SETTINGS_SECTIONS` stays
-  exported as the single description of what Settings *is*: the sidebar
-  children mirror it, and the two must agree on labels **and** on `roles` —
-  Appearance and Security are open to every signed-in user, the other five are
-  admin-only, and the server enforces the same split with a 403.
+- **Settings is not in the sidebar at all, and that is the third answer.**
+  It began as a 224px section column beside the page, which at 1024px left the
+  forms about 468px — squeezed at exactly the width where a two-column layout
+  was meant to start helping. So it became a sidebar entry with seven
+  `children` like every module, and the column was deleted. That was still
+  wrong in a different way: it filed "change my password" and "back up the
+  database" level with Payroll. Settings is not a sixth module — it configures
+  the app and the account rather than doing the company's work — so it now
+  hangs off the two places an account is reached, the **user card at the foot
+  of the sidebar** and the **top right of the topbar**. Nothing about the
+  routes or the permissions moved with it.
+  - The seven sections are back on the page as a **row**, not the column that
+    was deleted. That distinction is the whole point: a column costs width,
+    which these forms have none of; a tab row costs height, which they have.
+    It scrolls sideways rather than wrapping on a phone.
+  - `bestMatch()` correctly finds nothing on a settings page, because
+    `ALL_HREFS` is derived from the nav groups and Settings has left them. The
+    two gears say for themselves when they are current — a control that never
+    shows it is current is one people click twice.
+  - **`/settings` lands on the first section the person may open.** It always
+    redirected to General, which is admin-only: harmless while the only way in
+    was a role-filtered sidebar entry, and a 403 the moment the gear became a
+    door shown to everybody.
+  - `SETTINGS_SECTIONS` is now the *only* description of what Settings is —
+    one fewer thing to drift. Still exported, because the server enforces the
+    same `admin` split with a 403 and the tab row must not disagree about
+    which five those are: Appearance and Security are open to every signed-in
+    user, the other five are admin-only.
 - Chart marks use `--chart-1`, held apart from `--primary` because chart fills
   have to sit inside an OKLCH lightness band that `--primary` misses in dark mode.
 - **A summary tile that counts something must be able to show it.** Every
@@ -337,9 +351,14 @@ It exists because `CredentialExpiryScanner` is only as good as the `expires_at`
 someone typed: a licence keyed a year late is a driver the system believes is
 legal to dispatch.
 
-- **It never writes to the database.** It fills a form; HR corrects it; the
-  existing `StoreEmployeeDocumentRequest` validates the save exactly as it does
-  a hand-typed entry. Same shape as PayrollReadiness warning without blocking.
+- **`DocumentScanner` itself never writes to the database.** It fills a form;
+  HR corrects it; the existing `StoreEmployeeDocumentRequest` validates the
+  save exactly as it does a hand-typed entry. Same shape as PayrollReadiness
+  warning without blocking. The **one** place a reading becomes a stored fact
+  unattended is `BulkDocumentFiler::process()`, behind six config gates and
+  marked on the row — see "Batch filing" below. Everywhere else, including
+  every single-document upload and every 201-form scan, a person still
+  confirms.
 - **Everything the model returns is untrusted input.** The type is checked
   against `EmployeeDocument::TYPES` (a hallucinated type becomes `null`), dates
   are re-parsed through Carbon, and **the name check runs in PHP, not in the
@@ -764,6 +783,38 @@ workforce that already exists.
   - Behind `EmployeePolicy::fileDocumentBatch`, a class-level ability for the
     same reason `viewArchive` is one: it is asked before any record is in hand.
     The scope is re-derived at the write, never trusted from the form.
+  - **`process()` files what it can defend and hands back the rest.** This is
+    the one place in the system where a reading becomes a stored fact without
+    a person confirming it, and it is a decision about where attention is
+    *spent* rather than about trusting the model more: retyping twenty
+    documents to catch the two that are wrong puts the same care on the
+    eighteen that are right, and care spread evenly over twenty rows is care
+    nobody is really taking by row fifteen. `examine()` still exists, still
+    writes nothing, and is what runs with the switch off.
+  - **Six gates, in `config('scanner.autofile')`, each a failure this scanner
+    has actually produced.** The owner must be found by a strength the batch
+    accepts (`number` is a value already on the 201 file — the only evidence
+    in a reading with a person behind it; `name` is one exact match and no
+    other). The type must be `type_certain` — the three weaker sources are
+    exactly the ones measured wrong. A name contradicting a number match is
+    held, because a number keyed against the wrong person puts somebody else's
+    licence in this file. An expiring type with no date read is held, since
+    `CredentialExpiryScanner` reads `expires_at` and a null one is a licence
+    that never reaches a renewal queue — invisible rather than wrong. An
+    already-lapsed document is held: filing one is legitimate and common,
+    doing it silently is not.
+  - **Every gate *holds*, never refuses.** A held row lands in the review
+    table the screen always had, with the reason named — "held" with no cause
+    sends somebody to work out what the system already knows.
+  - **`employee_documents.filed_automatically` is what makes this defensible
+    rather than merely convenient.** It is on `EmployeeDocumentResource` and
+    badged on the 201 file, so "the system decided this" can be told from
+    "somebody typed this" by whoever reads the record, not only by whoever can
+    write a query. `uploaded_by` still names the person who fed the batch
+    through. Both paths write through one private `store()`, so the confirmed
+    row and the automatic one cannot come to look different.
+  - `SCANNER_AUTOFILE=false` restores the old behaviour exactly, and a test
+    asserts that rather than the comment being the only claim.
 ## Record checks (AI & Analytics)
 
 **Record Checks (`/hr/record-checks`)** asks the question the other two checkers
