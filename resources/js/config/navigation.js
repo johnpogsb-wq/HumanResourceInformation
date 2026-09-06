@@ -359,84 +359,27 @@ export const NAV_GROUPS = [
             },
         ],
     },
-    {
-        label: 'System',
-        items: [
-            {
-                id: 'settings',
-                label: 'Settings',
-                icon: Settings,
-                /*
-                 * The seven sections live here, like every other module's
-                 * screens.
-                 *
-                 * They were briefly a single flat link instead, on the
-                 * reasoning that SettingsLayout already rendered the same
-                 * seven beside the page and a sidebar copy would duplicate
-                 * it. Living with it showed the duplication was the cheaper
-                 * problem: the in-page list cost the settings forms a column
-                 * of width they needed, and at 1024px left them squeezed into
-                 * about 468px. The list is gone from the page now, so this is
-                 * the only copy again — and the settings pages get the full
-                 * width every other screen has.
-                 *
-                 * Roles mirror SETTINGS_SECTIONS exactly. Appearance and
-                 * Security are the two any signed-in person may open; the
-                 * rest reconfigure the company rather than the person.
-                 */
-                children: [
-                    {
-                        id: 'settings-general',
-                        label: 'General',
-                        icon: Settings,
-                        href: '/settings/general',
-                        roles: ['admin'],
-                    },
-                    {
-                        id: 'settings-appearance',
-                        label: 'Appearance',
-                        icon: Palette,
-                        href: '/settings/appearance',
-                    },
-                    {
-                        id: 'settings-notifications',
-                        label: 'Notifications',
-                        icon: Bell,
-                        href: '/settings/notifications',
-                        roles: ['admin'],
-                    },
-                    {
-                        id: 'settings-users',
-                        label: 'Users & Access',
-                        icon: Users,
-                        href: '/settings/users',
-                        roles: ['admin'],
-                    },
-                    {
-                        id: 'settings-security',
-                        label: 'Security',
-                        icon: Shield,
-                        href: '/settings/security',
-                    },
-                    {
-                        id: 'settings-data',
-                        label: 'Data & Backup',
-                        icon: Database,
-                        href: '/settings/data',
-                        roles: ['admin'],
-                    },
-                    {
-                        id: 'settings-integrations',
-                        label: 'Integrations',
-                        icon: Plug,
-                        href: '/settings/integrations',
-                        roles: ['admin'],
-                    },
-                ],
-            },
-        ],
-    },
 ];
+
+/*
+ * Settings is deliberately not in this list.
+ *
+ * It sat here as a "System" group of seven children, alongside the five
+ * modules — which put "change my password" and "back up the database" at the
+ * same level as Payroll. Settings is not a sixth module: it configures the
+ * app and the account rather than doing the company's work, and it is reached
+ * from where an account is reached, which is the user card at the foot of this
+ * sidebar and the top right of the topbar.
+ *
+ * Nothing about the routes or permissions moved with it, and `ALL_HREFS` is
+ * derived from the groups above — so `bestMatch()` simply finds nothing on a
+ * settings page, which is correct: there is no sidebar entry for it to light.
+ *
+ * `SettingsLayout` carries the seven sections now, as a row of tabs across the
+ * top. That is not the old left-hand column coming back: the column cost the
+ * forms 224px of width at exactly the size where they needed it, and a tab row
+ * costs height, which these pages have.
+ */
 
 /** Strips the query string and hash, leaving a comparable path. */
 function pathOf(url) {

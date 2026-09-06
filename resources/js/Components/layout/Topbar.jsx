@@ -1,6 +1,6 @@
 import { Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
-import { Bell, Menu, Search, ShieldAlert } from 'lucide-react';
+import { Bell, Menu, Search, Settings, ShieldAlert } from 'lucide-react';
 import Dropdown from '@/Components/Dropdown';
 import ThemeToggle from '@/Components/layout/ThemeToggle';
 import { cn, initials } from '@/lib/utils';
@@ -13,8 +13,13 @@ const ROLE_LABELS = {
 };
 
 export default function Topbar({ title, actions, onOpenMobile }) {
-    const { auth, pendingApprovals = 0, expiringCredentials = 0 } = usePage().props;
+    const page = usePage();
+    const { auth, pendingApprovals = 0, expiringCredentials = 0 } = page.props;
     const user = auth?.user;
+
+    // Settings has no sidebar entry to light any more, so the gear says for
+    // itself whether it is current.
+    const settingsActive = page.url.split('?')[0].startsWith('/settings');
 
     const [query, setQuery] = useState('');
 
@@ -116,6 +121,32 @@ export default function Topbar({ title, actions, onOpenMobile }) {
                         )}
                     </Link>
 
+                    {/* Settings sits in the top right beside the two
+                        indicators, and is no longer a sidebar entry: it
+                        configures the app and the account rather than doing
+                        the company's work, so it does not belong filed beside
+                        Payroll.
+
+                        Its own icon as well as a line in the menu below,
+                        because it is the one thing here people reach for
+                        repeatedly — a gear behind a dropdown is two clicks
+                        for what every other app does in one. It shows when it
+                        is current, since no sidebar entry can any more. */}
+                    <Link
+                        href="/settings"
+                        aria-label="Settings"
+                        title="Settings"
+                        aria-current={settingsActive ? 'page' : undefined}
+                        className={cn(
+                            'grid h-9 w-9 place-items-center rounded-md transition-colors',
+                            settingsActive
+                                ? 'bg-secondary text-foreground'
+                                : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                        )}
+                    >
+                        <Settings className="h-4.5 w-4.5" aria-hidden="true" />
+                    </Link>
+
                     <div className="ml-1 hidden sm:block">
                         <Dropdown>
                             <Dropdown.Trigger>
@@ -140,7 +171,15 @@ export default function Topbar({ title, actions, onOpenMobile }) {
                                         {ROLE_LABELS[user?.role] ?? 'Employee'}
                                     </p>
                                 </div>
-                                <Dropdown.Link href="/profile">Profile</Dropdown.Link>
+                                {/* Named, not "Profile": that link has pointed
+                                    at Settings > Security since the starter
+                                    kit's own profile page was replaced, and a
+                                    label describing a screen that no longer
+                                    exists is how a menu stops being trusted. */}
+                                <Dropdown.Link href="/settings">Settings</Dropdown.Link>
+                                <Dropdown.Link href="/settings/security">
+                                    Password &amp; sessions
+                                </Dropdown.Link>
                                 <Dropdown.Link href="/logout" method="post" as="button">
                                     Log Out
                                 </Dropdown.Link>

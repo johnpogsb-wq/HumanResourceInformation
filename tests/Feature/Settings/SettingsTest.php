@@ -21,6 +21,30 @@ class SettingsTest extends TestCase
         $this->actingAs($this->admin())->get('/settings')->assertRedirect('/settings/general');
     }
 
+    /**
+     * `/settings` always sent everybody to General, which is admin-only.
+     *
+     * That was harmless while the only way in was a sidebar entry whose
+     * children were already filtered by role — nobody without the right could
+     * reach the root. Settings is now one door in the topbar and one in the
+     * user card, shown to everybody, so the door has to open onto a room they
+     * are allowed in.
+     */
+    public function test_the_settings_root_lands_somewhere_every_role_may_open(): void
+    {
+        foreach ([User::ROLE_HR_STAFF, User::ROLE_SUPERVISOR, User::ROLE_EMPLOYEE] as $role) {
+            $this->actingAs(User::factory()->create(['role' => $role]))
+                ->get('/settings')
+                ->assertRedirect('/settings/appearance');
+        }
+
+        // And the destination really is open to them — a redirect into a 403
+        // would be the same bug one hop further along.
+        $this->actingAs(User::factory()->create(['role' => User::ROLE_EMPLOYEE]))
+            ->get('/settings/appearance')
+            ->assertOk();
+    }
+
     public function test_the_old_profile_url_now_points_at_security(): void
     {
         $this->actingAs($this->admin())->get('/profile')->assertRedirect('/settings/security');

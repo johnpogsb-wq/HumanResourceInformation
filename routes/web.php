@@ -41,6 +41,7 @@ use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\UserAccessController;
 use App\Http\Controllers\ThirteenthMonthController;
 use App\Http\Controllers\TimekeepingController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => redirect()->route('dashboard'));
@@ -359,7 +360,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
 | administrator-only; Appearance and Security belong to every signed-in user.
 */
 Route::middleware(['auth', 'verified'])->prefix('settings')->name('settings.')->group(function () {
-    Route::get('/', fn () => redirect()->route('settings.general'));
+    /*
+     * The first section this person may actually open.
+     *
+     * It always landed on General, which is admin-only — fine while the only
+     * way in was a sidebar entry whose children were already filtered by role,
+     * and wrong the moment Settings became a single door in the topbar and the
+     * user card. A rank-and-file user clicking the gear would have been shown
+     * a 403 for a screen they never asked for.
+     */
+    Route::get('/', fn (Request $request) => redirect()->route(
+        $request->user()->isAdmin() ? 'settings.general' : 'settings.appearance',
+    ));
 
     Route::get('general', [SettingsController::class, 'general'])->name('general');
     Route::put('general', [SettingsController::class, 'updateGeneral'])->name('general.update');

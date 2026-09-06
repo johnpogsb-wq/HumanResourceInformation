@@ -1,6 +1,6 @@
 import { Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, LogOut, PanelLeftClose } from 'lucide-react';
+import { ChevronDown, LogOut, PanelLeftClose, Settings } from 'lucide-react';
 import PrimePowerLogo, { LogoMark } from '@/Components/layout/PrimePowerLogo';
 import { NAV_GROUPS, isHrefActive, isItemActive, visibleGroups } from '@/config/navigation';
 import { cn, initials } from '@/lib/utils';
@@ -25,6 +25,14 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
     const role = user?.role ?? 'employee';
 
     const groups = useMemo(() => visibleGroups(NAV_GROUPS, role), [role]);
+
+    /*
+     * Settings is not in NAV_GROUPS, so `bestMatch()` finds nothing on a
+     * settings page and no nav entry lights. The gear in the user card below
+     * has to answer for itself instead — a control that never shows it is
+     * current is one people click twice.
+     */
+    const settingsActive = currentUrl.split('?')[0].startsWith('/settings');
 
     // Accordion: at most one module open at a time.
     const [expandedModule, setExpandedModule] = useState(null);
@@ -290,12 +298,23 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                             collapsed && 'justify-center',
                         )}
                     >
-                        <span
-                            className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground"
-                            title={collapsed ? user?.name : undefined}
-                        >
-                            {initials(user?.name)}
-                        </span>
+                        {/* Collapsed, the avatar is the only thing left in this
+                            block, so it carries the link — the gear beside it
+                            would have nowhere to sit. */}
+                        {collapsed ? (
+                            <Link
+                                href="/settings"
+                                aria-label="Settings"
+                                title={`${user?.name} — settings`}
+                                className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground transition-opacity hover:opacity-90"
+                            >
+                                {initials(user?.name)}
+                            </Link>
+                        ) : (
+                            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">
+                                {initials(user?.name)}
+                            </span>
+                        )}
 
                         {!collapsed && (
                             <>
@@ -307,6 +326,31 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                         {user?.email}
                                     </p>
                                 </div>
+
+                                {/* Settings lives here rather than up in the
+                                    nav list: it configures the app and the
+                                    account, which is what this block is about,
+                                    and it is not a sixth module to file beside
+                                    Payroll.
+
+                                    Its own button rather than the whole row
+                                    being a link — the row already holds the
+                                    logout button, and an interactive control
+                                    inside a link is neither valid nor
+                                    predictable to click. */}
+                                <Link
+                                    href="/settings"
+                                    aria-label="Settings"
+                                    title="Settings"
+                                    className={cn(
+                                        'shrink-0 rounded-md p-1.5 transition-colors',
+                                        settingsActive
+                                            ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                                            : 'text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                                    )}
+                                >
+                                    <Settings className="h-4 w-4" aria-hidden="true" />
+                                </Link>
 
                                 <Link
                                     href="/logout"
