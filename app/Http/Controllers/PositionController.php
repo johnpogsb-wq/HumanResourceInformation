@@ -106,16 +106,28 @@ class PositionController extends Controller
              * so a new person can be filed against it.
              */
             'moveTargets' => Position::with('department:id,name')
+                ->withCount(['employees' => fn ($query) => $query->where('status', 'active')])
                 ->where('is_active', true)
                 ->orderBy('title')
-                ->get(['id', 'title', 'code', 'department_id'])
+                ->get()
                 ->map(fn (Position $position) => [
                     'value' => $position->id,
-                    'label' => $position->department
-                        ? "{$position->title} · {$position->department->name}"
-                        : $position->title,
+                    'title' => $position->title,
+                    'code' => $position->code,
                     'department' => $position->department?->name,
                     'department_id' => $position->department_id,
+                    'salary_grade' => $position->salary_grade,
+                    /*
+                     * The band comes along because the question being asked in
+                     * the picker is "where does this person go", and a title's
+                     * band is part of that answer. It is not this screen's job
+                     * to compare it against what they earn — that is Salaries &
+                     * Adjustments, and putting a rate here would put salary on
+                     * a screen that has never carried it.
+                     */
+                    'min_salary' => $position->min_salary ? (float) $position->min_salary : null,
+                    'max_salary' => $position->max_salary ? (float) $position->max_salary : null,
+                    'employees_count' => $position->employees_count,
                 ]),
             'filters' => $filters,
             'departments' => Department::orderBy('name')->get(['id', 'name'])

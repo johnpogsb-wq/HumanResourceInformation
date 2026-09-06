@@ -1,6 +1,14 @@
 import { Link, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
-import { ArrowRight, Briefcase, ChevronDown, Plus, TriangleAlert, Users } from 'lucide-react';
+import {
+    ArrowRightLeft,
+    Briefcase,
+    Check,
+    ChevronDown,
+    Plus,
+    TriangleAlert,
+    Users,
+} from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
     Badge,
@@ -49,7 +57,7 @@ function Band({ min, max }) {
  * government number, and no 201 file; the same narrowing the org directory
  * makes, for the same reason.
  */
-function HolderRow({ employee, positionId, targets, onMove }) {
+function HolderRow({ employee, onMove }) {
     return (
         <div className="flex items-center gap-3 border-b border-border px-4 py-2.5 last:border-0">
             {employee.photo_url ? (
@@ -76,18 +84,22 @@ function HolderRow({ employee, positionId, targets, onMove }) {
                 </p>
             </div>
 
-            {/* The move sits on the person, not on the position, because that
-                is whose record changes. It only proposes — the confirmation
-                names what the change costs before anything is written. */}
-            <div className="w-full max-w-[15rem] shrink-0">
-                <Select
-                    value={positionId}
-                    onChange={(event) => onMove(employee, Number(event.target.value))}
-                    aria-label={`Move ${employee.full_name} to another position`}
-                    className="w-full"
-                    options={targets}
-                />
-            </div>
+            {/* A button, not a dropdown on every row.
+                A select per person put a 240px control against every name and
+                truncated the option inside it to "HR Officer · Human Resourc",
+                so the list read as a column of half-sentences rather than as a
+                list of people. The destination is a question asked once, about
+                one person, and it is asked in a dialog where the titles have
+                room to be read and compared. */}
+            <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0"
+                onClick={() => onMove(employee)}
+            >
+                <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                <span className="hidden sm:inline">Move</span>
+            </Button>
         </div>
     );
 }
@@ -103,7 +115,7 @@ function HolderRow({ employee, positionId, targets, onMove }) {
  * is a real state on an org chart, and hiding it would make the list quietly
  * shorter than the master data it is supposed to be showing.
  */
-function PositionBlock({ position, open, onToggle, targets, onMove }) {
+function PositionBlock({ position, open, onToggle, onMove }) {
     const holders = position.employees ?? [];
 
     return (
@@ -160,13 +172,7 @@ function PositionBlock({ position, open, onToggle, targets, onMove }) {
                         </p>
                     ) : (
                         holders.map((employee) => (
-                            <HolderRow
-                                key={employee.id}
-                                employee={employee}
-                                positionId={position.id}
-                                targets={targets}
-                                onMove={onMove}
-                            />
+                            <HolderRow key={employee.id} employee={employee} onMove={onMove} />
                         ))
                     )}
                 </div>
@@ -192,8 +198,11 @@ export default function Positions({
      */
     const [expanded, setExpanded] = useState(() => new Set());
 
-    /** The move being confirmed: { employee, from, to }. */
+    /** The move being made: { employee, from, to } — `to` is null until picked. */
     const [moving, setMoving] = useState(null);
+
+    /** Narrows the destination table inside the dialog, not the page. */
+    const [targetSearch, setTargetSearch] = useState('');
 
     const form = useForm(BLANK);
     const moveForm = useForm({ position_id: '' });
@@ -233,19 +242,34 @@ export default function Positions({
     };
 
     /*
-     * Proposed here, written only after the dialog. Firing the move straight
-     * off the dropdown would make an undoable change to somebody's record out
-     * of a mis-click on a select — and the thing worth saying (the department
-     * follows, the pay does not) has to be said *before* it happens, not in a
-     * toast afterwards.
+     * Opens the dialog with nowhere chosen yet. The destination is picked from
+     * a table inside it rather than from a control on the row: a move is an
+     * undoable change to somebody's record, and the two things worth saying —
+     * the department follows, the pay does not — have to be readable *before*
+     * it happens rather than in a toast afterwards.
      */
-    const proposeMove = (employee, toId, fromPosition) => {
-        const to = moveTargets.find((target) => target.value === toId);
+    const proposeMove = (employee, fromPosition) =>
+        setMoving({ employee, from: fromPosition, to: null });
 
-        if (!to || toId === fromPosition.id) return;
+    const pickTarget = (target) => setMoving((current) => ({ ...current, to: target }));
 
-        setMoving({ employee, from: fromPosition, to });
-    };
+    /*
+     * Everywhere they could go, minus where they already are. Filtered by the
+     * dialog's own search rather than the page's, because these are different
+     * questions: the page filter narrows what is being *read*, this one narrows
+     * what is being *chosen from*, and reusing one for the other would move the
+     * list behind the reader.
+     */
+    const destinations = moveTargets.filter((target) => {
+        if (!moving || target.value === moving.from.id) return false;
+        if (!targetSearch.trim()) return true;
+
+        const needle = targetSearch.trim().toLowerCase();
+
+        return [target.title, target.code, target.department]
+            .filter(Boolean)
+            .some((field) => field.toLowerCase().includes(needle));
+    });
 
     const confirmMove = () => {
         /*
@@ -259,8 +283,14 @@ export default function Positions({
 
         moveForm.patch(`/hr/employees/${moving.employee.id}/position`, {
             preserveScroll: true,
-            onSuccess: () => setMoving(null),
+            onSuccess: closeMove,
         });
+    };
+
+    /** Closing clears the search too, so the next move starts on the whole list. */
+    const closeMove = () => {
+        setMoving(null);
+        setTargetSearch('');
     };
 
     const activeRate = summary.total > 0 ? (summary.active / summary.total) * 100 : 0;
@@ -369,8 +399,7 @@ export default function Positions({
                         position={position}
                         open={isOpen(position.id)}
                         onToggle={() => toggle(position.id)}
-                        targets={moveTargets}
-                        onMove={(employee, toId) => proposeMove(employee, toId, position)}
+                        onMove={(employee) => proposeMove(employee, position)}
                     />
                 ))
             )}
@@ -378,60 +407,150 @@ export default function Positions({
             {/* --- Moving somebody between titles --- */}
             <Modal
                 show={moving !== null}
-                onClose={() => setMoving(null)}
-                title={moving ? `Move ${moving.employee.full_name}?` : ''}
+                onClose={closeMove}
+                title={moving ? `Move ${moving.employee.full_name}` : ''}
+                description={
+                    moving
+                        ? `Currently ${moving.from.title}${moving.from.department ? ` in ${moving.from.department}` : ''}. Pick where they go.`
+                        : undefined
+                }
+                maxWidth="2xl"
                 footer={
                     <>
-                        <Button variant="secondary" onClick={() => setMoving(null)}>
+                        <Button variant="secondary" onClick={closeMove}>
                             Cancel
                         </Button>
-                        <Button onClick={confirmMove} disabled={moveForm.processing}>
-                            Move
+                        {/* Nothing to confirm until somewhere is chosen, so the
+                            button says so by being unavailable rather than by
+                            failing when pressed. */}
+                        <Button
+                            onClick={confirmMove}
+                            disabled={!moving?.to || moveForm.processing}
+                        >
+                            {moving?.to ? `Move to ${moving.to.title}` : 'Pick a position'}
                         </Button>
                     </>
                 }
             >
                 {moving && (
                     <div className="space-y-4">
-                        <div className="flex flex-wrap items-center gap-2 text-sm">
-                            <Badge variant="muted">{moving.from.title}</Badge>
-                            <ArrowRight
-                                className="h-4 w-4 text-muted-foreground"
-                                aria-hidden="true"
-                            />
-                            <Badge variant="info">{moving.to.label}</Badge>
+                        <SearchInput
+                            value={targetSearch}
+                            onChange={(event) => setTargetSearch(event.target.value)}
+                            placeholder="Search a title, code, or department"
+                            aria-label="Search positions to move to"
+                        />
+
+                        {/* The destinations as rows rather than as options in a
+                            select. A title, its department and its band are
+                            three things worth comparing across a list, and a
+                            dropdown shows one truncated line at a time. */}
+                        <div className="max-h-[19rem] overflow-y-auto rounded-lg border border-border">
+                            {destinations.length === 0 ? (
+                                <p className="px-4 py-8 text-center text-xs text-muted-foreground">
+                                    No other position matches that.
+                                </p>
+                            ) : (
+                                destinations.map((target) => {
+                                    const chosen = moving.to?.value === target.value;
+
+                                    return (
+                                        <button
+                                            key={target.value}
+                                            type="button"
+                                            onClick={() => pickTarget(target)}
+                                            aria-pressed={chosen}
+                                            className={cn(
+                                                'flex w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left transition-colors last:border-0',
+                                                chosen
+                                                    ? 'bg-primary/10'
+                                                    : 'hover:bg-secondary/60',
+                                            )}
+                                        >
+                                            <span
+                                                className={cn(
+                                                    'grid h-8 w-8 shrink-0 place-items-center rounded-lg',
+                                                    chosen
+                                                        ? 'bg-primary text-primary-foreground'
+                                                        : 'bg-primary/10 text-primary',
+                                                )}
+                                            >
+                                                {chosen ? (
+                                                    <Check
+                                                        className="h-4 w-4"
+                                                        aria-hidden="true"
+                                                    />
+                                                ) : (
+                                                    <Briefcase
+                                                        className="h-4 w-4"
+                                                        aria-hidden="true"
+                                                    />
+                                                )}
+                                            </span>
+
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block truncate text-sm font-medium text-foreground">
+                                                    {target.title}
+                                                </span>
+                                                <span className="block truncate text-[11px] text-muted-foreground">
+                                                    <span className="font-mono">
+                                                        {target.code}
+                                                    </span>
+                                                    {target.department &&
+                                                        ` · ${target.department}`}
+                                                </span>
+                                            </span>
+
+                                            <span className="hidden shrink-0 sm:block">
+                                                <Band
+                                                    min={target.min_salary}
+                                                    max={target.max_salary}
+                                                />
+                                            </span>
+
+                                            <Badge variant="muted">
+                                                {target.employees_count}
+                                            </Badge>
+                                        </button>
+                                    );
+                                })
+                            )}
                         </div>
 
-                        <ul className="space-y-1.5 text-xs text-muted-foreground">
-                            {/* A position belongs to a department, so a record
-                                filed under one while holding the other's title
-                                is not a state anybody chose. Said here rather
-                                than discovered on the employee's record. */}
-                            {moving.to.department_id !== moving.from.department_id && (
+                        {/* What the move costs, drawn only once there is a move
+                            to describe. */}
+                        {moving.to && (
+                            <ul className="space-y-1.5 rounded-lg bg-secondary/50 p-3 text-xs text-muted-foreground">
+                                {/* A position belongs to a department, so a
+                                    record filed under one while holding the
+                                    other's title is not a state anybody chose. */}
+                                {moving.to.department_id !== moving.from.department_id && (
+                                    <li>
+                                        Their department changes from{' '}
+                                        <span className="font-medium text-foreground">
+                                            {moving.from.department ?? 'none'}
+                                        </span>{' '}
+                                        to{' '}
+                                        <span className="font-medium text-foreground">
+                                            {moving.to.department ?? 'none'}
+                                        </span>
+                                        , because the position belongs to it.
+                                    </li>
+                                )}
                                 <li>
-                                    Their department changes from{' '}
                                     <span className="font-medium text-foreground">
-                                        {moving.from.department ?? 'none'}
+                                        Pay does not change.
                                     </span>{' '}
-                                    to{' '}
-                                    <span className="font-medium text-foreground">
-                                        {moving.to.department ?? 'none'}
-                                    </span>
-                                    , because the position belongs to it.
+                                    A rate is a decision with a date and a reason behind it —
+                                    record it on Salaries &amp; Adjustments if a raise goes with
+                                    this move.
                                 </li>
-                            )}
-                            <li>
-                                <span className="font-medium text-foreground">
-                                    Pay does not change.
-                                </span>{' '}
-                                A rate is a decision with a date and a reason behind it — record
-                                it on Salaries &amp; Adjustments if a raise goes with this move.
-                            </li>
-                            <li>
-                                Attendance, leave, and payslips already filed keep the title
-                                they were filed under.
-                            </li>
-                        </ul>
+                                <li>
+                                    Attendance, leave, and payslips already filed keep the title
+                                    they were filed under.
+                                </li>
+                            </ul>
+                        )}
                     </div>
                 )}
             </Modal>

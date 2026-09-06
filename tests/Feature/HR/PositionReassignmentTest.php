@@ -105,7 +105,8 @@ class PositionReassignmentTest extends TestCase
                 ->has('positions', 2)
                 // But not somewhere a person can be moved to.
                 ->has('moveTargets', 1)
-                ->where('moveTargets.0.label', 'Driver · Operations'),
+                ->where('moveTargets.0.title', 'Driver')
+                ->where('moveTargets.0.department', 'Operations'),
             );
     }
 
