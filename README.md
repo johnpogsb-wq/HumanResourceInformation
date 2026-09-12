@@ -21,8 +21,17 @@ Performance Management.**
 | **Routing (JS)** | Ziggy | ^2.0 |
 | **Version Control** | Git / GitHub | — |
 | **CI/CD** | GitHub Actions | Tests on push/PR to `main` |
-| **DevOps** | Hostforge | Domain / Hosting |
+| **DevOps** | Hostforge | Domain / hosting for the HRIS (one PHP host) |
+| **DevOps** | Vercel | Hosting for the public landing page (`landing/`) only |
 | **Local Dev Server** | Laravel Herd | — |
+
+**The HRIS and the landing page are two deployments, and only the landing page
+is on Vercel.** The HRIS cannot be: its React pages are Inertia pages that a
+Laravel controller renders and fills with data in the same request, so there
+is no standalone frontend bundle to host anywhere. `landing/` is a genuinely
+separate static React site — its own `package.json`, its own build, no
+database — joined to the HRIS by one plain link. See
+[landing/README.md](landing/README.md).
 
 - **Inertia.js** is the bridge between Laravel and React — server-driven
   routing, no separate SPA API needed. Inertia renders pages *and* a
@@ -49,8 +58,12 @@ core2/
 ├── resources/js/     ← React frontend (all the .jsx pages and components)
 ├── resources/css/    ← Frontend styling
 │
-└── resources/views/app.blade.php   ← the ONE line that ties them together:
-                                        @vite(['resources/js/app.jsx', …])
+├── resources/views/app.blade.php   ← the ONE line that ties them together:
+│                                       @vite(['resources/js/app.jsx', …])
+│
+└── landing/          ← a genuinely separate project: the public landing page.
+                         Own package.json, own build, deployed to Vercel.
+                         Knows nothing about the HRIS but its sign-in URL.
 ```
 
 **What is *not* separated is the deployment** — this ships as one app, not
