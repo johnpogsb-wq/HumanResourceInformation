@@ -11,10 +11,12 @@ use App\Models\OvertimeRequest;
 use App\Models\PayrollPeriod;
 use App\Models\PayrollRun;
 use App\Models\PerformanceReview;
+use App\Models\User;
 use App\Services\CredentialExpiryScanner;
 use App\Services\EmployeeService;
 use App\Services\LeaveService;
 use App\Services\PerformanceScorer;
+use App\Services\TimekeepingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -63,6 +65,7 @@ class DashboardController extends Controller
 
         return Inertia::render('Dashboard', [
             'can' => ['viewCompanyFigures' => $canViewCompanyFigures],
+            'profile' => $this->profile($request->user(), $today),
             'statistics' => $this->statistics($scoped),
             'headcountByDepartment' => $this->headcountByDepartment(),
             'headcountTrend' => $this->headcountTrend($today),
@@ -86,6 +89,108 @@ class DashboardController extends Controller
                     'date_hired' => $employee->date_hired?->toDateString(),
                 ]),
         ]);
+    }
+
+    /**
+     * The signed-in person's own record, and the ways into it.
+     *
+     * Everything else on this screen is the company looking at itself: how
+     * many people, whose leave is waiting, what payroll came to. None of it
+     * answers the first question somebody actually has on landing here, which
+     * is *where do I go* — and for a rank-and-file login, which is most of the
+     * workforce, none of the figures above are even theirs to act on.
+     *
+     * **`employee` is null for a login with no 201 file, and that is a real
+     * case rather than a defensive check.** An administrator need not be an
+     * employee at all — a pure system account has no record, no department,
+     * and no payslip — so the card falls back to the account itself and drops
+     * the links that would 404 for them.
+     *
+     * **Salary is here, and it is here because it is the reader's own.**
+     * `EmployeePolicy::viewSensitive` returns true for HR *and* for the person
+     * the record belongs to — an employee has always been able to open their
+     * own 201 file and read their own rate. The gate is asked rather than
+     * assumed, so the day somebody widens this card to another person's record
+     * the compensation block stops being drawn on its own. Government numbers
+     * and the bank account stay out regardless: they are what a stolen dump is
+     * worth stealing, and nothing on a landing page needs them.
+     *
+     * @return array<string, mixed>
+     */
+    private function profile(User $user, Carbon $today): array
+    {
+        $employee = $user->employee()
+            // `full_name` is built from four columns, so a narrower select
+            // would silently drop the middle initial and the suffix.
+            ->with([
+                'department:id,name',
+                'position:id,title',
+                'client:id,name',
+                'supervisor:id,first_name,middle_name,last_name,suffix',
+            ])
+            ->first();
+
+        return [
+            // The employee record names the person; the account only names the
+            // login. They are meant to agree and nothing reconciles them, so
+            // the record wins where there is one.
+            'name' => $employee?->full_name ?? $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
+            'employee' => $employee === null ? null : [
+                'id' => $employee->id,
+                'employee_number' => $employee->employee_number,
+                'photo_url' => $employee->photo_path ? asset('storage/'.$employee->photo_path) : null,
+                'position' => $employee->position?->title,
+                'department' => $employee->department?->name,
+                'client' => $employee->client?->name,
+                'employment_status' => $employee->employment_status,
+                'employment_category' => $employee->employment_category,
+                'date_hired' => $employee->date_hired?->toDateString(),
+                'supervisor' => $employee->supervisor?->full_name,
+
+                // Asked of the policy, not inferred from "it is their own
+                // record" — see the note above.
+                'compensation' => $user->can('viewSensitive', $employee) ? [
+                    'basic_salary' => (float) $employee->basic_salary,
+                    'pay_frequency' => $employee->pay_frequency,
+                ] : null,
+
+                'attendance' => $this->ownAttendance($employee, $today),
+            ],
+        ];
+    }
+
+    /**
+     * How the reader's own month is going: days in, days missed.
+     *
+     * Counted from `attendance_logs` in one grouped query rather than a row
+     * per day, and "came in" is `TimekeepingService::PRESENT_STATUSES` rather
+     * than a fourth private copy of that list — a day somebody was late for is
+     * still a day they were there, and four screens already agree on that.
+     *
+     * @return array{month: string, from: string, to: string, present: int, absent: int}
+     */
+    private function ownAttendance(Employee $employee, Carbon $today): array
+    {
+        $from = $today->copy()->startOfMonth();
+        $to = $today->copy()->endOfMonth();
+
+        $counts = AttendanceLog::query()
+            ->where('employee_id', $employee->id)
+            ->whereBetween('log_date', [$from->toDateString(), $to->toDateString()])
+            ->selectRaw('status, count(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        return [
+            'month' => $today->format('F Y'),
+            'from' => $from->toDateString(),
+            'to' => $to->toDateString(),
+            'present' => (int) collect(TimekeepingService::PRESENT_STATUSES)
+                ->sum(fn (string $status) => (int) ($counts[$status] ?? 0)),
+            'absent' => (int) ($counts[AttendanceLog::STATUS_ABSENT] ?? 0),
+        ];
     }
 
     /**

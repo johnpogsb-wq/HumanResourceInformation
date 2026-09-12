@@ -223,7 +223,7 @@ class CivilRegistryScanTest extends TestCase
 
     private function scannerReturning(array $reading, array $registry = []): DocumentScanner
     {
-        config(['scanner.driver' => 'ollama', 'scanner.ollama.host' => 'http://127.0.0.1:11434']);
+        config(['scanner.driver' => 'gemini', 'scanner.gemini.api_key' => 'test-key']);
 
         return new class($reading, $registry) extends DocumentScanner
         {

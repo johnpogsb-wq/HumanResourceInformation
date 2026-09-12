@@ -70,5 +70,17 @@ class FortifyServiceProvider extends ServiceProvider
         // one unreachable, the hand-written pair is gone and this points
         // Fortify at the page they used to render.
         Fortify::confirmPasswordView(fn () => Inertia::render('Auth/ConfirmPassword'));
+
+        /*
+         * The second factor, asked for after the password and before the
+         * session is issued.
+         *
+         * One screen for both answers — a six-digit code from the authenticator
+         * app, or one of the recovery codes — because they are the same
+         * question ("prove you still hold the factor") reached by two routes,
+         * and somebody whose phone is flat is having a bad enough day without
+         * hunting for a second page.
+         */
+        Fortify::twoFactorChallengeView(fn () => Inertia::render('Auth/TwoFactorChallenge'));
     }
 }

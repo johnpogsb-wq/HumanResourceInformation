@@ -27,20 +27,38 @@ class OvertimeRequestPolicy
         return $this->supervises($user, $request);
     }
 
-    /** Anyone with a 201 file can file overtime for themselves. */
+    /**
+     * Everybody files their own, HR included.
+     *
+     * This used to exempt `isHrAdmin()`, and the exemption made HR both the
+     * filer and an approver of the same request — the one thing the rest of
+     * this module is built to prevent. It also meant an overtime claim could
+     * be entered by somebody who was not there, against a person who never
+     * asked for it, and paid out of `PayrollService::approvedOvertimeHours()`
+     * with nothing on the record saying whose account it was.
+     *
+     * The same line LeaveRequestPolicy::create draws, for the same reason.
+     */
     public function create(User $user): bool
     {
-        return $user->isHrAdmin() || $user->employee !== null;
+        return $user->employee !== null;
     }
 
-    /** Only a pending request can still be edited, and only by its owner. */
+    /**
+     * Only a pending request can still be edited, and only by its owner.
+     *
+     * HR is deliberately outside this now. A request says what somebody
+     * claims they worked, which only the person who was there can restate;
+     * HR that disagrees has `decide()`, and rejecting with a reason leaves a
+     * record where a silent edit would leave none.
+     */
     public function update(User $user, OvertimeRequest $request): bool
     {
         if ($request->status !== OvertimeRequest::STATUS_PENDING) {
             return false;
         }
 
-        return $user->isHrAdmin() || $request->employee?->user_id === $user->id;
+        return $request->employee?->user_id === $user->id;
     }
 
     /**

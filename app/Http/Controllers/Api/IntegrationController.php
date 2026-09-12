@@ -7,10 +7,12 @@ use App\Http\Resources\DriverResource;
 use App\Models\AttendanceLog;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
+use App\Models\PayrollPeriod;
 use App\Models\PayrollRun;
 use App\Services\DeploymentReadinessChecker;
 use App\Services\EmployeeService;
 use App\Services\LeaveService;
+use App\Services\PayrollService;
 use App\Services\TimekeepingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -47,6 +49,7 @@ class IntegrationController extends Controller
         private readonly DeploymentReadinessChecker $readiness,
         private readonly TimekeepingService $timekeeping,
         private readonly LeaveService $leave,
+        private readonly PayrollService $payroll,
     ) {}
 
     /**
@@ -300,6 +303,298 @@ class IntegrationController extends Controller
                     ->filter(fn (array $line) => collect($line['numbers'])->contains(null))
                     ->pluck('employee_number')
                     ->values(),
+            ],
+        ]);
+    }
+
+    /**
+     * POST /api/v1/payroll/runs/{run}/disbursement — for **Financial
+     * Management (Accounts Payable)**.
+     *
+     * The other end of `/register`. Finance takes the disbursement list, the
+     * bank credits it, and this says so — which is what moves a run from
+     * `approved` to `paid` and lets every employee's payslip screen open.
+     *
+     * **The loop was open before this.** `/register` handed Finance a list and
+     * nothing came back, so a run sat at `approved` until somebody in HR
+     * remembered to tick it — and "approved" and "the money actually arrived"
+     * are different facts that the system was reporting as one.
+     *
+     * **The amount is checked, not trusted.** Finance sends what the bank
+     * credited and this compares it against the run's own total. They must
+     * agree: a file that disbursed less than the register said is somebody
+     * unpaid, and marking the run `paid` over it would bury that. `409` and a
+     * stated difference is the only honest answer — the same reason `/register`
+     * carries a `control_total` for Finance to check *before* they send it.
+     */
+    public function confirmDisbursement(Request $request, PayrollRun $run): JsonResponse
+    {
+        $validated = $request->validate([
+            /*
+             * The bank's own reference. Required, and it is the whole audit
+             * trail for "which transfer paid this run" — without it the only
+             * record that the money moved is a status column.
+             */
+            'bank_reference' => ['required', 'string', 'max:120'],
+
+            // What the bank actually credited, checked below against the run.
+            'amount' => ['required', 'numeric', 'min:0'],
+
+            'disbursed_at' => ['required', 'date'],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        /*
+         * Already confirmed: the stored reference is returned with 200 rather
+         * than the run being marked paid twice. A timeout on Finance's side is
+         * indistinguishable from a failure, so they resend — and the same
+         * contract the three write doors offer applies here.
+         */
+        if ($run->status === PayrollRun::STATUS_PAID) {
+            return response()->json([
+                'data' => [
+                    'run_number' => $run->run_number,
+                    'status' => $run->status,
+                    'already_confirmed' => true,
+                    'bank_reference' => $run->disbursement_reference,
+                    'disbursed_at' => $run->disbursed_at?->toIso8601String(),
+                ],
+            ], 200);
+        }
+
+        /*
+         * The status is checked *before* the ability, and the order is
+         * deliberate.
+         *
+         * `PayrollRunPolicy::markPaid` couples who may do this with the run
+         * being approved, so authorising first would answer **403** for a
+         * draft — and for Finance that is the wrong answer. They *are*
+         * allowed; the run is simply not ready, which is "retry later". The
+         * cost is that an under-privileged token learns a run's status from
+         * this endpoint, and that is a payroll run's stage rather than
+         * anybody's personal data.
+         *
+         * A draft is still being corrected and a cancelled one was withdrawn.
+         * A bank transfer against either is a fact somebody needs to look at,
+         * not a status this system should quietly accept.
+         */
+        abort_unless(
+            $run->status === PayrollRun::STATUS_APPROVED,
+            409,
+            "This run is {$run->status}. Only an approved run can be confirmed as disbursed.",
+        );
+
+        /*
+         * The ability this system already had for exactly this act, rather
+         * than a new one — and rather than `approve`, which is a *different*
+         * decision and is coupled to `for_approval`. Reaching for `approve`
+         * here was the first attempt and it refused every caller, which is
+         * how the existing one was found.
+         */
+        Gate::authorize('markPaid', $run);
+
+        $expected = round((float) $run->total_net, 2);
+        $credited = round((float) $validated['amount'], 2);
+
+        // A centavo of tolerance, because the two figures are sums of rounded
+        // currency reached by two systems — not one number twice.
+        abort_if(
+            abs($expected - $credited) >= 0.01,
+            409,
+            "The amount credited ({$credited}) does not match this run's net total ({$expected}). "
+                .'Difference: '.round($credited - $expected, 2).'. Nothing has been marked paid.',
+        );
+
+        $this->payroll->markPaid($run);
+
+        $run->update([
+            'disbursement_reference' => $validated['bank_reference'],
+            'disbursed_at' => $validated['disbursed_at'],
+            'disbursement_notes' => $validated['notes'] ?? null,
+        ]);
+
+        return response()->json([
+            'data' => [
+                'run_number' => $run->run_number,
+                'status' => $run->fresh()->status,
+                'already_confirmed' => false,
+                'bank_reference' => $validated['bank_reference'],
+                'disbursed_at' => $run->fresh()->disbursed_at?->toIso8601String(),
+                'amount' => $credited,
+            ],
+        ]);
+    }
+
+    /**
+     * GET /api/v1/payroll/journal-summary/{period} — for **Financial
+     * Management (General Ledger, Accounts Payable, Tax)**.
+     *
+     * The one thing Finance cannot get from any other endpoint here: payroll
+     * as a **journal entry**, debits and credits, ready to post. `/runs`
+     * answers "which runs exist", `/register` answers "who gets paid what",
+     * and `/contributions` answers "what do we owe the agencies". None of them
+     * is a journal, and Finance cannot post a period to the ledger without one.
+     *
+     * **Keyed by period rather than by run, and that is deliberate.** A ledger
+     * is posted per accounting period; a run is this system's own unit of work,
+     * and there can be more than one in a period. Asking Finance to add up
+     * runs themselves would be asking them to re-derive a total this system
+     * already holds — and the day their sum disagrees with ours, the
+     * disagreement surfaces in a trial balance rather than on a screen.
+     *
+     * **Every figure is read back from stored payslips, never recomputed** —
+     * the same rule `contributions()` and `ComplianceReportBuilder` follow. A
+     * new SSS circular in `config/payroll.php` must not silently rewrite an
+     * entry that was already posted to the ledger.
+     *
+     * **Only reportable runs are included.** A draft is still being corrected,
+     * and a journal entry built from one is a number Finance would post and
+     * then have to reverse.
+     */
+    public function journalSummary(Request $request, PayrollPeriod $period): JsonResponse
+    {
+        /*
+         * Gated on the run policy rather than a new ability. The question
+         * "may this caller read payroll money" has one answer in this system
+         * and it already lives there; a second gate would be a second answer
+         * waiting to disagree.
+         */
+        Gate::authorize('viewAny', PayrollRun::class);
+
+        $runs = PayrollRun::query()
+            ->where('payroll_period_id', $period->id)
+            ->reportable()
+            ->with('payslips')
+            ->get();
+
+        /*
+         * 409 rather than 404 or an empty entry, the same distinction
+         * `payrollRegister()` draws. The period exists and its runs are simply
+         * not finalised yet — that is "retry later", not "wrong id", and
+         * Finance needs to tell them apart. An empty journal would be worse
+         * than either: a period posted as zero reads as a month nobody was
+         * paid.
+         */
+        abort_if(
+            $runs->isEmpty(),
+            409,
+            'No approved or paid run exists for this period yet. A draft is still being corrected.',
+        );
+
+        $payslips = $runs->flatMap->payslips;
+
+        $sum = fn (string $column) => round((float) $payslips->sum($column), 2);
+
+        /*
+         * Time not worked is a **contra to salary expense**, not a payable.
+         * Nobody is owed the money somebody lost to lateness — the company
+         * simply spent less. Filing it as a liability would put four figures on
+         * the balance sheet that will never be paid to anyone, which is the
+         * kind of error that is found in an audit rather than in a reconciliation.
+         */
+        $timeNotWorked = round(
+            $sum('late_deduction')
+            + $sum('undertime_deduction')
+            + $sum('absence_deduction')
+            + $sum('unpaid_leave_deduction'),
+            2,
+        );
+
+        $employerTotal = round(
+            $sum('sss_employer') + $sum('philhealth_employer') + $sum('pagibig_employer'),
+            2,
+        );
+
+        $debits = [
+            // The earnings side, split the way the ledger wants it rather than
+            // as one "salaries" line: an accountant asking "what did overtime
+            // cost us this month" should not have to open a payslip.
+            ['account' => 'Basic Pay Expense', 'amount' => $sum('basic_pay')],
+            ['account' => 'Overtime Expense', 'amount' => $sum('overtime_pay')],
+            ['account' => 'Night Differential Expense', 'amount' => $sum('night_diff_pay')],
+            ['account' => 'Holiday Premium Expense', 'amount' => $sum('holiday_pay')],
+            ['account' => 'Allowances Expense', 'amount' => $sum('allowances_total')],
+
+            // The employer's own share, which is a cost to the company and not
+            // withheld from anybody. It appears again as a payable below —
+            // debit the expense, credit what is owed — so the two net out.
+            ['account' => 'SSS Contributions Expense (Employer)', 'amount' => $sum('sss_employer')],
+            ['account' => 'PhilHealth Contributions Expense (Employer)', 'amount' => $sum('philhealth_employer')],
+            ['account' => 'Pag-IBIG Contributions Expense (Employer)', 'amount' => $sum('pagibig_employer')],
+        ];
+
+        $credits = array_values(array_filter([
+            // Reduces the expense above rather than owing anybody — see the
+            // note on $timeNotWorked.
+            ['account' => 'Salaries Expense — Time Not Worked (contra)', 'amount' => $timeNotWorked],
+
+            // What the agencies are owed: the employee's withholding and the
+            // employer's share land in one payable each, because one cheque
+            // goes to each agency.
+            ['account' => 'SSS Payable', 'amount' => round($sum('sss_employee') + $sum('sss_employer'), 2)],
+            ['account' => 'PhilHealth Payable', 'amount' => round($sum('philhealth_employee') + $sum('philhealth_employer'), 2)],
+            ['account' => 'Pag-IBIG Payable', 'amount' => round($sum('pagibig_employee') + $sum('pagibig_employer'), 2)],
+            ['account' => 'Withholding Tax Payable (BIR)', 'amount' => $sum('withholding_tax')],
+
+            /*
+             * A loan repayment is the company collecting on a receivable, not
+             * earning anything. Core 3 approved the loan and answers to the
+             * employee for it; this figure is what payroll took off the
+             * payslip, and Core 3's balance has to move by exactly this.
+             */
+            ['account' => 'Employee Loans Receivable', 'amount' => $sum('loans_deduction')],
+            ['account' => 'Other Deductions Payable', 'amount' => $sum('other_deductions')],
+
+            // What the bank actually disburses. This is the figure Accounts
+            // Payable pays out, and it is the same total `/register` lists per
+            // employee.
+            ['account' => 'Net Pay Payable', 'amount' => $sum('net_pay')],
+        ], fn (array $line) => $line['amount'] != 0.0));
+
+        $totalDebits = round(array_sum(array_column($debits, 'amount')), 2);
+        $totalCredits = round(array_sum(array_column($credits, 'amount')), 2);
+
+        return response()->json([
+            'data' => [
+                'debits' => array_values(array_filter($debits, fn ($l) => $l['amount'] != 0.0)),
+                'credits' => $credits,
+            ],
+            'meta' => [
+                'period' => $period->name,
+                'start_date' => $period->start_date?->toDateString(),
+                'end_date' => $period->end_date?->toDateString(),
+                'pay_date' => $period->pay_date?->toDateString(),
+
+                // Which runs this entry was built from, so a reconciliation
+                // that disagrees has somewhere to start.
+                'runs' => $runs->map(fn (PayrollRun $run) => [
+                    'run_number' => $run->run_number,
+                    'status' => $run->status,
+                    'employee_count' => $run->employee_count,
+                ])->values(),
+
+                'employee_count' => $payslips->count(),
+                'total_debits' => $totalDebits,
+                'total_credits' => $totalCredits,
+
+                /*
+                 * **The reason this endpoint reports rather than just returns.**
+                 *
+                 * A journal entry that does not balance cannot be posted, and
+                 * the figures here are read back from stored payslips — so if
+                 * a payslip was ever written with `net_pay` that did not equal
+                 * `gross_pay - deductions_total`, this is where it shows. Saying
+                 * so is the difference between Finance catching it now and
+                 * finding it in a trial balance at month end.
+                 *
+                 * Compared with a tolerance because these are two sums of
+                 * rounded currency, not one number twice: a centavo of drift
+                 * across four hundred payslips is arithmetic, not a defect.
+                 */
+                'balanced' => abs($totalDebits - $totalCredits) < 0.01,
+                'out_of_balance_by' => round($totalDebits - $totalCredits, 2),
+
+                'generated_at' => now()->toIso8601String(),
             ],
         ]);
     }

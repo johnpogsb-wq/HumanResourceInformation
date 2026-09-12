@@ -87,6 +87,14 @@ class PayrollRun extends Model
         return [
             'processed_at' => 'datetime',
             'approved_at' => 'datetime',
+
+            /*
+             * When the bank credited it, which is a third date and not the
+             * same as either above. A transfer sent on Friday and confirmed on
+             * Monday is one event with two of its own, and `updated_at` would
+             * only ever hold the second.
+             */
+            'disbursed_at' => 'datetime',
             'total_gross' => 'decimal:2',
             'total_deductions' => 'decimal:2',
             'total_net' => 'decimal:2',

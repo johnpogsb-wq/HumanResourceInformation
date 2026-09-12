@@ -35,8 +35,17 @@ class DataAccessLogger
 
     public const EVENT_EXPORTED = 'exported';
 
-    /** Both read events, for filtering the Security screen's log by kind. */
-    public const EVENTS = [self::EVENT_ACCESSED, self::EVENT_EXPORTED];
+    /** A batch written from a file — see imported() for why it is here. */
+    public const EVENT_IMPORTED = 'imported';
+
+    /**
+     * The events this logger writes, for filtering the Security screen's log
+     * by kind. `imported` is a *write* and the other two are reads, but they
+     * share this class because they share the thing that makes them worth
+     * recording: each is an act on many people's records at once, which the
+     * per-model audit rows describe one at a time and never as one act.
+     */
+    public const EVENTS = [self::EVENT_ACCESSED, self::EVENT_EXPORTED, self::EVENT_IMPORTED];
 
     /**
      * One person opened one record's file.
@@ -77,6 +86,36 @@ class DataAccessLogger
             type: $subject,
             id: null,
             details: ['report' => $report, ...$context],
+        );
+    }
+
+    /**
+     * A batch of records was written from a file.
+     *
+     * The counterpart to `exported()`, and it exists because the per-row
+     * report an importer produces is *flashed to the session* — it is on
+     * screen once and gone on the next page load. An import that quietly
+     * dropped twelve rows would then have no record anywhere, which is the
+     * opposite of what a retention policy is for: the rows that did not land
+     * are exactly the ones somebody comes looking for a month later.
+     *
+     * Same null-`auditable_id` split as an export: a batch is about many rows.
+     * The individual writes are audited on their own models as usual — this
+     * row is the batch, not a substitute for them.
+     *
+     * @param  string  $source  what was fed in, e.g. "attendance:biometric"
+     * @param  class-string  $subject  the model the rows were written to
+     * @param  array<string, mixed>  $context  counts and the rows refused —
+     *                                         a count with no reasons cannot
+     *                                         be acted on later
+     */
+    public function imported(string $source, string $subject, array $context = []): void
+    {
+        $this->write(
+            event: self::EVENT_IMPORTED,
+            type: $subject,
+            id: null,
+            details: ['source' => $source, ...$context],
         );
     }
 

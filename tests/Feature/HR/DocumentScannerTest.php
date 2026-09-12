@@ -32,33 +32,52 @@ class DocumentScannerTest extends TestCase
     }
 
     /**
-     * The local driver needs no key — a host is the whole configuration.
-     * Whether Ollama is actually up is not asked here: a server that is down
-     * fails inside read(), which is where every other failure is handled.
+     * Every driver is hosted, so a key is the whole configuration in each
+     * case — and each reads its *own* key rather than a shared one. A driver
+     * that fell back to another's key would draw the Scan button on a
+     * misconfiguration and fail on every upload instead of staying dark.
      */
-    public function test_the_ollama_driver_needs_no_api_key(): void
+    public function test_each_driver_reads_its_own_key(): void
     {
         config([
-            'scanner.driver' => 'ollama',
-            'scanner.api_key' => null,
-            'scanner.ollama.host' => 'http://127.0.0.1:11434',
+            'scanner.driver' => 'openrouter',
+            'scanner.openrouter.api_key' => null,
+            // Present, and belonging to somebody else.
+            'scanner.gemini.api_key' => 'test-key',
+            'scanner.api_key' => 'test-key',
         ]);
+
+        $this->assertFalse(app(DocumentScanner::class)->isEnabled());
+
+        config(['scanner.openrouter.api_key' => 'test-key']);
 
         $this->assertTrue(app(DocumentScanner::class)->isEnabled());
     }
 
-    public function test_the_ollama_driver_is_off_without_a_host(): void
+    /**
+     * The local driver was removed, and an `.env` still naming it must go
+     * dark rather than fall through to a working one.
+     *
+     * A real upgrade path: every machine that ran this before had
+     * `SCANNER_DRIVER=ollama` in its `.env`, and `.env` is not in the repo —
+     * so pulling this change leaves the old value in place. Going dark says
+     * "the scanner is off" on a screen somebody is looking at; falling
+     * through to Gemini would silently start sending 201-file photographs
+     * abroad from a machine whose owner never chose that.
+     */
+    public function test_the_removed_local_driver_goes_dark(): void
     {
-        config(['scanner.driver' => 'ollama', 'scanner.ollama.host' => null]);
+        config(['scanner.driver' => 'ollama', 'scanner.gemini.api_key' => 'test-key']);
 
         $this->assertFalse(app(DocumentScanner::class)->isEnabled());
     }
 
-    // --- The deployment driver ---------------------------------------------
+    // --- The default driver ------------------------------------------------
 
     /**
-     * Ollama cannot run on a small server, so a deployed instance reaches a
-     * hosted model instead. The key is the whole configuration.
+     * Gemini is the default and the one to prefer: free at this tier, and a
+     * single named processor rather than a broker. The key is the whole
+     * configuration.
      */
     public function test_the_gemini_driver_needs_a_key(): void
     {
@@ -70,24 +89,25 @@ class DocumentScannerTest extends TestCase
     }
 
     /**
-     * The three drivers answer the same shape, so everything downstream of
-     * read() — the type check, the date pair, the name match — is unchanged by
-     * which one ran. A regression here would only show up in production on
-     * whichever driver the tests do not exercise.
+     * The drivers answer the same shape, so everything downstream of read() —
+     * the type check, the date pair, the name match — is unchanged by which
+     * one ran. A regression here would only show up in production on whichever
+     * driver the tests do not exercise.
      */
     public function test_every_driver_returns_the_same_normalised_shape(): void
     {
         $expected = [
             'type', 'type_source', 'type_certain', 'title', 'heading', 'document_number', 'issued_at', 'expires_at',
+            'never_expires',
             'name_on_document', 'name_matches', 'number_matches', 'number_format_ok',
             'expiry', 'name_may_differ', 'registry', 'confidence', 'note',
         ];
 
-        foreach (['ollama', 'gemini', 'anthropic'] as $driver) {
+        foreach (['gemini', 'openrouter', 'anthropic'] as $driver) {
             config([
                 'scanner.driver' => $driver,
-                'scanner.ollama.host' => 'http://127.0.0.1:11434',
                 'scanner.gemini.api_key' => 'test-key',
+                'scanner.openrouter.api_key' => 'test-key',
                 'scanner.api_key' => 'test-key',
             ]);
 
@@ -292,6 +312,97 @@ class DocumentScannerTest extends TestCase
 
         $this->assertNull($fields['issued_at']);
         $this->assertSame('2027-03-01', $fields['expires_at']);
+    }
+
+    /**
+     * A TIN is issued for life, so an expiry read off one is the model
+     * answering a question the card does not have.
+     *
+     * The prompt used to assert the opposite in as many words — it listed
+     * 'an expiry date ("TIN ID ISSUE / EXPIRY DATE")' among the things an
+     * authentic BIR card carries — so this was the system *instructing* the
+     * hallucination. Kept, the date would put a permanent number into
+     * `CredentialExpiryScanner`'s renewal queue to be chased forever.
+     */
+    public function test_a_tin_id_is_never_given_an_expiry(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'government_id',
+            'title' => 'Republic of the Philippines Department of Finance BUREAU OF INTERNAL REVENUE',
+            'document_number' => '123-456-789',
+            'issued_at' => '2024-03-01',
+            // What the model actually does with a control number or an issue
+            // date once it believes the card must carry an expiry.
+            'expires_at' => '2029-03-01',
+        ])->scan(UploadedFile::fake()->image('tin.jpg'));
+
+        $this->assertNull($fields['expires_at']);
+        $this->assertTrue($fields['never_expires']);
+
+        // The rest of the reading is untouched: this clears one field, it does
+        // not reject the document or doubt the type.
+        $this->assertSame('government_id', $fields['type']);
+        $this->assertSame('2024-03-01', $fields['issued_at']);
+        // Kept as printed: `documentNumber()` strips the caption a scan puts
+        // in front of a number, not the punctuation inside it.
+        $this->assertSame('123-456-789', $fields['document_number']);
+    }
+
+    /**
+     * **The assertion this rule exists to stay safe for.** A passport is a
+     * `government_id` too, and it expires — so the fact could not be stated
+     * per type, and `'government_id' => ['expires_at']` would have thrown away
+     * a correctly read passport expiry to catch a TIN ID's invented one. That
+     * is the expensive direction: an expiry silently dropped is a credential
+     * that never reaches a renewal queue, which is invisible rather than
+     * wrong.
+     */
+    public function test_a_passport_keeps_its_expiry(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'government_id',
+            'title' => 'Republic of the Philippines Department of Foreign Affairs PASSPORT',
+            'issued_at' => '2023-08-14',
+            'expires_at' => '2033-08-13',
+        ])->scan(UploadedFile::fake()->image('passport.jpg'));
+
+        $this->assertSame('2033-08-13', $fields['expires_at']);
+        $this->assertFalse($fields['never_expires']);
+    }
+
+    /**
+     * A clearance names an issuing agency in its letterhead and prints a real
+     * "VALID UNTIL" date, so the card list must not be read against it. The
+     * scoping is the config's own key rather than a type named in the code.
+     */
+    public function test_a_clearance_is_not_swept_up_by_the_card_list(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'clearance',
+            'title' => 'Republic of the Philippines Department of Justice NATIONAL BUREAU OF INVESTIGATION',
+            'expires_at' => '2027-01-31',
+        ])->scan(UploadedFile::fake()->image('nbi.jpg'));
+
+        $this->assertSame('2027-01-31', $fields['expires_at']);
+        $this->assertFalse($fields['never_expires']);
+    }
+
+    /**
+     * One flag, both grains. The panel reads `never_expires` and nothing else,
+     * so a type that never expires as a class has to answer through the same
+     * field a single card does — otherwise the component is back to knowing
+     * two rules, which is where a TIN ID fell through the first time.
+     */
+    public function test_a_type_that_never_expires_answers_through_the_same_flag(): void
+    {
+        $fields = $this->scannerReturning([
+            'type' => 'psa',
+            'title' => 'Philippine Statistics Authority Certificate of Live Birth',
+            'expires_at' => '2030-01-01',
+        ])->scan(UploadedFile::fake()->image('psa.jpg'));
+
+        $this->assertNull($fields['expires_at']);
+        $this->assertTrue($fields['never_expires']);
     }
 
     /**

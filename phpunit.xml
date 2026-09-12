@@ -19,6 +19,17 @@
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
+        <!--
+            Pinned, because a relative-path request in a test builds its URL
+            from this and the scheme decides what the security headers do. It
+            was unset, so it fell through to the developer's own .env — and
+            pressing "Secure" in Herd rewrites that to https://, which flipped
+            every `$this->get('/login')` in the suite to a TLS request and made
+            the HSTS assertions fail on a machine where nothing about the code
+            had changed. The suite must not depend on how one laptop happens to
+            serve the site.
+        -->
+        <env name="APP_URL" value="http://localhost"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>

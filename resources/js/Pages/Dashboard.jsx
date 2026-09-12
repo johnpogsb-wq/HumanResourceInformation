@@ -1,9 +1,13 @@
 import { Link } from '@inertiajs/react';
 import {
+    Building2,
     CalendarClock,
     CalendarDays,
+    ChevronRight,
     ClipboardCheck,
     Clock,
+    IdCard,
+    Shield,
     UserCheck,
     UserPlus,
     Users,
@@ -236,6 +240,7 @@ export default function Dashboard({
     leaveSummary,
     payrollSummary,
     onboardingSummary,
+    profile,
     can,
 }) {
     const headcountChange = statistics.headcount_change ?? 0;
@@ -256,6 +261,10 @@ export default function Dashboard({
 
     return (
         <AppLayout title="Dashboard" breadcrumbs={[{ label: 'Overview' }]}>
+            {/* Whose screen this is, above the company's own figures. For a
+                rank-and-file login it is the only band here they can act on. */}
+            <ProfileCard profile={profile} />
+
             {/* Headline figures */}
             <div className="mb-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
                 {/* Each tile links to the screen its figure came from, so a
@@ -705,5 +714,211 @@ export default function Dashboard({
                 </CardBody>
             </Card>
         </AppLayout>
+    );
+}
+
+const titleCase = (value) =>
+    String(value ?? '')
+        .replace(/[_-]/g, ' ')
+        .replace(/\b\w/g, (character) => character.toUpperCase());
+
+/**
+ * Who the reader is, and the four screens that are theirs.
+ *
+ * Everything else on this dashboard is the company looking at itself — how
+ * many people, whose leave is waiting, what payroll came to. None of it
+ * answers the first question somebody actually has on landing here, which is
+ * *where do I go*, and for a rank-and-file login none of those figures are
+ * even theirs to act on.
+ *
+ * **Every part of it is a link, which is the point rather than a flourish.** A
+ * card that states a department and cannot open it has told the reader
+ * something they already knew about themselves.
+ *
+ * The client is deliberately the one thing here that is *not* linked:
+ * `/hr/clients` is behind `manageOrganization`, so for the employees most
+ * likely to be deployed to one it would be a link into a 403. Drawing that is
+ * worse than drawing none — it says there is something behind it *and* that
+ * the reader is not trusted with it.
+ */
+function ProfileCard({ profile }) {
+    const { name, email, role, employee } = profile;
+
+    /*
+     * A login with no 201 file is a real case, not a defensive check: an
+     * administrator need not be an employee at all, and a pure system account
+     * has no record, no attendance, and no payslip. It gets the one link that
+     * does exist for it rather than four that would 404.
+     */
+    const links = employee
+        ? [
+              { label: 'My 201 File', href: `/hr/employees/${employee.id}`, icon: IdCard },
+              {
+                  label: 'My Attendance',
+                  href: `/hr/timekeeping/employee/${employee.id}`,
+                  icon: Clock,
+              },
+              { label: 'My Leave', href: '/hr/leave', icon: CalendarDays },
+              { label: 'My Payslips', href: '/hr/payroll/payslips', icon: Wallet },
+          ]
+        : [{ label: 'Account & Security', href: '/settings/security', icon: Shield }];
+
+    const identity = employee ? `/hr/employees/${employee.id}` : '/settings/security';
+
+    return (
+        <Card floating className="mb-5">
+            <CardBody className="space-y-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <Link
+                        href={identity}
+                        className="group flex min-w-0 flex-1 items-center gap-4 rounded-lg transition-colors"
+                    >
+                        {employee?.photo_url ? (
+                            <img
+                                src={employee.photo_url}
+                                alt=""
+                                className="h-14 w-14 shrink-0 rounded-full object-cover ring-2 ring-border"
+                            />
+                        ) : (
+                            <span className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-primary/10 text-base font-semibold text-primary">
+                                {initials(name)}
+                            </span>
+                        )}
+
+                        <span className="min-w-0">
+                            <span className="block truncate text-base font-semibold text-foreground group-hover:text-primary">
+                                {name}
+                            </span>
+                            <span className="mt-0.5 block truncate text-sm text-muted-foreground">
+                                {employee
+                                    ? [employee.position, employee.department]
+                                          .filter(Boolean)
+                                          .join(' · ') || 'No position assigned'
+                                    : email}
+                            </span>
+                        </span>
+                    </Link>
+
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        {employee?.employee_number && (
+                            <Badge variant="primary">{employee.employee_number}</Badge>
+                        )}
+                        {employee?.employment_status ? (
+                            <Badge status={employee.employment_status} />
+                        ) : (
+                            <Badge variant="muted">{titleCase(role)}</Badge>
+                        )}
+                    </div>
+                </div>
+
+                {employee && (
+                    <>
+                        <dl className="grid gap-4 border-t border-border pt-4 sm:grid-cols-3">
+                            <ProfileFact
+                                label="Department"
+                                value={employee.department}
+                                href="/hr/directory"
+                                icon={Building2}
+                            />
+                            {/* Not a link — see the note on the component. */}
+                            <ProfileFact
+                                label={
+                                    employee.employment_category === 'external'
+                                        ? 'Deployed to'
+                                        : 'Client'
+                                }
+                                value={employee.client ?? 'Internal staff'}
+                            />
+                            <ProfileFact label="Supervisor" value={employee.supervisor} />
+                        </dl>
+
+                        <dl className="grid gap-4 border-t border-border pt-4 sm:grid-cols-3">
+                            {/*
+                             * Absent from the payload entirely for a reader the
+                             * policy refuses, so there is nothing here to hide
+                             * with a class. Their own rate, on their own screen.
+                             */}
+                            {employee.compensation && (
+                                <ProfileFact
+                                    label="Basic Salary"
+                                    value={`${formatCurrency(employee.compensation.basic_salary)} · ${titleCase(
+                                        employee.compensation.pay_frequency,
+                                    )}`}
+                                    href="/hr/payroll/payslips"
+                                    icon={Wallet}
+                                />
+                            )}
+
+                            {/* Both halves of the month, because "18 days in"
+                                and "2 days missed" are different questions and
+                                the second is the one somebody acts on. */}
+                            <ProfileFact
+                                label={`Days In · ${employee.attendance.month}`}
+                                value={`${employee.attendance.present} day(s)`}
+                                href={`/hr/timekeeping/employee/${employee.id}?from=${employee.attendance.from}&to=${employee.attendance.to}`}
+                                icon={Clock}
+                            />
+                            <ProfileFact
+                                label="Absences This Month"
+                                value={`${employee.attendance.absent} day(s)`}
+                                href={`/hr/timekeeping/employee/${employee.id}?from=${employee.attendance.from}&to=${employee.attendance.to}`}
+                                icon={CalendarClock}
+                            />
+                        </dl>
+                    </>
+                )}
+
+                <div className="grid gap-2 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {links.map(({ label, href, icon: Icon }) => (
+                        <Link
+                            key={href}
+                            href={href}
+                            className="flex items-center gap-2.5 rounded-lg border border-border px-3 py-2.5 text-sm text-foreground transition-colors hover:border-primary/30 hover:bg-secondary/60"
+                        >
+                            <Icon
+                                className="h-4 w-4 shrink-0 text-primary"
+                                aria-hidden="true"
+                            />
+                            <span className="min-w-0 flex-1 truncate">{label}</span>
+                            <ChevronRight
+                                className="h-4 w-4 shrink-0 text-muted-foreground"
+                                aria-hidden="true"
+                            />
+                        </Link>
+                    ))}
+                </div>
+            </CardBody>
+        </Card>
+    );
+}
+
+/** One labelled fact, a link only when there is somewhere it may open. */
+function ProfileFact({ label, value, href, icon: Icon }) {
+    const body = (
+        <>
+            <dt className="text-xs text-muted-foreground">{label}</dt>
+            <dd className="mt-0.5 flex items-center gap-1.5 truncate text-sm text-foreground">
+                {Icon && (
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+                )}
+                <span className="truncate">{value || '—'}</span>
+            </dd>
+        </>
+    );
+
+    if (!href || !value) {
+        return <div className="min-w-0">{body}</div>;
+    }
+
+    return (
+        <Link href={href} className="group min-w-0 rounded-md transition-colors">
+            <dt className="text-xs text-muted-foreground">{label}</dt>
+            <dd className="mt-0.5 flex items-center gap-1.5 truncate text-sm text-foreground group-hover:text-primary">
+                {Icon && (
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+                )}
+                <span className="truncate">{value}</span>
+            </dd>
+        </Link>
     );
 }

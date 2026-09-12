@@ -7,6 +7,7 @@ use App\Models\Employee;
 use App\Models\EmployeeLoan;
 use App\Models\PayrollPeriod;
 use App\Models\PayrollRun;
+use App\Models\Payslip;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -299,6 +300,351 @@ class IntegrationApiTest extends TestCase
         $this->getJson('/api/v1/payroll/runs')->assertForbidden();
         $this->postJson('/api/v1/loans', [])->assertForbidden();
     }
+    // --- Financial Management: payroll as a journal entry -------------------
+
+    /**
+     * The assertion the whole endpoint exists for.
+     *
+     * A journal entry that does not balance cannot be posted, and every figure
+     * here is **read back from stored payslips** rather than recomputed. So if
+     * a payslip were ever written with a `net_pay` that did not equal
+     * `gross_pay - deductions_total`, this is where it would surface — which is
+     * the difference between Finance catching it now and finding it in a trial
+     * balance at month end.
+     */
+    public function test_the_journal_entry_balances(): void
+    {
+        Sanctum::actingAs(User::factory()->hrStaff()->create());
+
+        $run = $this->payrollRun(PayrollRun::STATUS_PAID);
+        $this->payslipOn($run, [
+            'basic_pay' => 20000,
+            'overtime_pay' => 1500,
+            'allowances_total' => 2000,
+            'sss_employee' => 900,
+            'philhealth_employee' => 500,
+            'pagibig_employee' => 200,
+            'withholding_tax' => 1200,
+            'late_deduction' => 300,
+            'loans_deduction' => 1000,
+            'sss_employer' => 1800,
+            'philhealth_employer' => 500,
+            'pagibig_employer' => 200,
+        ]);
+
+        $response = $this->getJson("/api/v1/payroll/journal-summary/{$run->payroll_period_id}")
+            ->assertOk();
+
+        $response->assertJsonPath('meta.balanced', true);
+        $this->assertSame(0.0, (float) $response->json('meta.out_of_balance_by'));
+        $this->assertSame(
+            $response->json('meta.total_debits'),
+            $response->json('meta.total_credits'),
+        );
+    }
+
+    /**
+     * Time not worked is a **contra to salary expense**, not a payable.
+     *
+     * Nobody is owed the money somebody lost to lateness — the company simply
+     * spent less. Filing it as a liability would put figures on the balance
+     * sheet that will never be paid to anyone, which is the kind of error
+     * found in an audit rather than in a reconciliation.
+     */
+    public function test_time_not_worked_is_a_contra_and_not_a_liability(): void
+    {
+        Sanctum::actingAs(User::factory()->hrStaff()->create());
+
+        $run = $this->payrollRun(PayrollRun::STATUS_PAID);
+        $this->payslipOn($run, [
+            'basic_pay' => 20000,
+            'late_deduction' => 250,
+            'absence_deduction' => 1000,
+            'unpaid_leave_deduction' => 500,
+            'undertime_deduction' => 100,
+        ]);
+
+        $credits = collect(
+            $this->getJson("/api/v1/payroll/journal-summary/{$run->payroll_period_id}")
+                ->assertOk()
+                ->json('data.credits'),
+        );
+
+        $contra = $credits->firstWhere('account', 'Salaries Expense — Time Not Worked (contra)');
+
+        $this->assertNotNull($contra, 'Time not worked was not reported at all.');
+        $this->assertSame(1850.0, (float) $contra['amount'], 'The four deductions are one contra line.');
+    }
+
+    /**
+     * The employer's share is a cost *and* a payable, so it appears on both
+     * sides and nets out. A journal that only credited the liability would
+     * understate what payroll cost the company by exactly that amount.
+     */
+    public function test_the_employer_share_appears_as_both_expense_and_payable(): void
+    {
+        Sanctum::actingAs(User::factory()->hrStaff()->create());
+
+        $run = $this->payrollRun(PayrollRun::STATUS_PAID);
+        $this->payslipOn($run, [
+            'basic_pay' => 20000,
+            'sss_employee' => 900,
+            'sss_employer' => 1800,
+        ]);
+
+        $body = $this->getJson("/api/v1/payroll/journal-summary/{$run->payroll_period_id}")
+            ->assertOk()
+            ->json();
+
+        $expense = collect($body['data']['debits'])
+            ->firstWhere('account', 'SSS Contributions Expense (Employer)');
+        $payable = collect($body['data']['credits'])->firstWhere('account', 'SSS Payable');
+
+        $this->assertSame(1800.0, (float) $expense['amount']);
+        // One cheque goes to SSS, so the employee's withholding and the
+        // employer's share land in one payable.
+        $this->assertSame(2700.0, (float) $payable['amount']);
+    }
+
+    /**
+     * A draft is still being corrected, so a journal built from one is a number
+     * Finance would post and then have to reverse.
+     *
+     * **409 rather than 404 or an empty entry**, the same distinction
+     * `/register` draws: the period exists and is simply not finalised. An
+     * empty journal would be the worst of the three — a period posted as zero
+     * reads as a month nobody was paid.
+     */
+    public function test_a_period_with_only_a_draft_run_answers_409(): void
+    {
+        Sanctum::actingAs(User::factory()->hrStaff()->create());
+
+        $run = $this->payrollRun(PayrollRun::STATUS_DRAFT);
+        $this->payslipOn($run, ['basic_pay' => 20000]);
+
+        $this->getJson("/api/v1/payroll/journal-summary/{$run->payroll_period_id}")
+            ->assertStatus(409);
+    }
+
+    /** Nothing on this endpoint is readable without a token. */
+    public function test_the_journal_summary_needs_a_token(): void
+    {
+        $run = $this->payrollRun(PayrollRun::STATUS_PAID);
+
+        $this->getJson("/api/v1/payroll/journal-summary/{$run->payroll_period_id}")
+            ->assertUnauthorized();
+    }
+
+    /**
+     * A period is posted as a whole, so more than one run in it is summed —
+     * and the runs are named in the meta so a reconciliation that disagrees
+     * has somewhere to start.
+     */
+    public function test_every_reportable_run_in_the_period_is_included(): void
+    {
+        Sanctum::actingAs(User::factory()->hrStaff()->create());
+
+        $first = $this->payrollRun(PayrollRun::STATUS_PAID);
+        $this->payslipOn($first, ['basic_pay' => 10000]);
+
+        // A second run over the same period — approved, so also reportable.
+        $second = PayrollRun::create([
+            'payroll_period_id' => $first->payroll_period_id,
+            'run_number' => 'PR-2026-9999',
+            'status' => PayrollRun::STATUS_APPROVED,
+            'employee_count' => 0,
+            'total_gross' => 0,
+            'total_deductions' => 0,
+            'total_net' => 0,
+        ]);
+        $this->payslipOn($second, ['basic_pay' => 5000]);
+
+        $body = $this->getJson("/api/v1/payroll/journal-summary/{$first->payroll_period_id}")
+            ->assertOk()
+            ->json();
+
+        $basic = collect($body['data']['debits'])->firstWhere('account', 'Basic Pay Expense');
+
+        $this->assertSame(15000.0, (float) $basic['amount'], 'Both runs should be summed.');
+        $this->assertCount(2, $body['meta']['runs']);
+        $this->assertSame(2, $body['meta']['employee_count']);
+    }
+    // --- Financial Management: confirming the money left the bank ----------
+
+    /**
+     * The other end of `/register`, and what closes a loop that was open.
+     *
+     * Before this, the register handed Finance a list and nothing came back —
+     * a run sat at `approved` until somebody in HR remembered to tick it, so
+     * *approved* and *the money arrived* were two facts the system reported as
+     * one.
+     */
+    public function test_finance_can_confirm_a_disbursement(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => User::ROLE_ADMIN]));
+
+        $run = $this->payrollRun(PayrollRun::STATUS_APPROVED);
+        $run->update(['total_net' => 407610.55]);
+
+        $this->postJson("/api/v1/payroll/runs/{$run->id}/disbursement", [
+            'bank_reference' => 'BPI-TRF-99120044',
+            'amount' => 407610.55,
+            'disbursed_at' => '2026-09-20T09:15:00+08:00',
+        ])->assertOk()->assertJsonPath('data.status', PayrollRun::STATUS_PAID);
+
+        $run->refresh();
+
+        $this->assertSame(PayrollRun::STATUS_PAID, $run->status);
+        $this->assertSame('BPI-TRF-99120044', $run->disbursement_reference);
+        $this->assertNotNull($run->disbursed_at);
+    }
+
+    /**
+     * **The assertion this endpoint exists for.** A file that disbursed less
+     * than the register said is somebody unpaid, and marking the run `paid`
+     * over it would bury that — so the amount is checked against the run's own
+     * total rather than trusted, and a mismatch is refused with the difference
+     * stated.
+     */
+    public function test_a_mismatched_amount_is_refused_and_nothing_is_marked_paid(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => User::ROLE_ADMIN]));
+
+        $run = $this->payrollRun(PayrollRun::STATUS_APPROVED);
+        $run->update(['total_net' => 407610.55]);
+
+        $this->postJson("/api/v1/payroll/runs/{$run->id}/disbursement", [
+            'bank_reference' => 'BPI-TRF-SHORT',
+            // Short by ₱10,000 — one employee's pay, near enough.
+            'amount' => 397610.55,
+            'disbursed_at' => '2026-09-20T09:15:00+08:00',
+        ])->assertStatus(409);
+
+        $this->assertSame(PayrollRun::STATUS_APPROVED, $run->fresh()->status);
+        $this->assertNull($run->fresh()->disbursement_reference);
+    }
+
+    /**
+     * A centavo of tolerance, because the two figures are sums of rounded
+     * currency reached by two systems — not one number twice.
+     */
+    public function test_a_centavo_of_rounding_is_tolerated(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => User::ROLE_ADMIN]));
+
+        $run = $this->payrollRun(PayrollRun::STATUS_APPROVED);
+        $run->update(['total_net' => 100000.00]);
+
+        $this->postJson("/api/v1/payroll/runs/{$run->id}/disbursement", [
+            'bank_reference' => 'BPI-TRF-ROUND',
+            'amount' => 100000.004,
+            'disbursed_at' => '2026-09-20T09:15:00+08:00',
+        ])->assertOk();
+    }
+
+    /**
+     * A draft is still being corrected and a cancelled run was withdrawn. A
+     * bank transfer against either is a fact somebody needs to look at rather
+     * than a status this system should quietly accept.
+     */
+    public function test_only_an_approved_run_can_be_confirmed(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => User::ROLE_ADMIN]));
+
+        $draft = $this->payrollRun(PayrollRun::STATUS_DRAFT);
+
+        $this->postJson("/api/v1/payroll/runs/{$draft->id}/disbursement", [
+            'bank_reference' => 'BPI-TRF-EARLY',
+            'amount' => 0,
+            'disbursed_at' => '2026-09-20T09:15:00+08:00',
+        ])->assertStatus(409);
+
+        $this->assertSame(PayrollRun::STATUS_DRAFT, $draft->fresh()->status);
+    }
+
+    /**
+     * A timeout on Finance's side is indistinguishable from a failure, so they
+     * resend — and the stored reference comes back with 200 rather than the run
+     * being marked paid twice.
+     */
+    public function test_a_resent_confirmation_is_idempotent(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => User::ROLE_ADMIN]));
+
+        $run = $this->payrollRun(PayrollRun::STATUS_APPROVED);
+        $run->update(['total_net' => 5000]);
+
+        $body = [
+            'bank_reference' => 'BPI-TRF-ONCE',
+            'amount' => 5000,
+            'disbursed_at' => '2026-09-20T09:15:00+08:00',
+        ];
+
+        $this->postJson("/api/v1/payroll/runs/{$run->id}/disbursement", $body)
+            ->assertOk()
+            ->assertJsonPath('data.already_confirmed', false);
+
+        $this->postJson("/api/v1/payroll/runs/{$run->id}/disbursement", $body)
+            ->assertOk()
+            ->assertJsonPath('data.already_confirmed', true)
+            ->assertJsonPath('data.bank_reference', 'BPI-TRF-ONCE');
+    }
+
+    /**
+     * Gated on `PayrollRunPolicy::markPaid`, the ability this system already
+     * had for exactly this act — not on `approve`, which is a different
+     * decision and is coupled to `for_approval`.
+     *
+     * That policy says `isHrAdmin()`, so **HR staff may confirm** and this
+     * test asserts it rather than inventing a stricter rule for the API than
+     * the screen has. Two answers to "who may mark a run paid" is the thing
+     * worth avoiding; the separation of duties that matters is on `approve`,
+     * which is admin-only and refuses the person who processed the run.
+     */
+    public function test_hr_staff_may_confirm_a_disbursement(): void
+    {
+        Sanctum::actingAs(User::factory()->hrStaff()->create());
+
+        $run = $this->payrollRun(PayrollRun::STATUS_APPROVED);
+        $run->update(['total_net' => 5000]);
+
+        $this->postJson("/api/v1/payroll/runs/{$run->id}/disbursement", [
+            'bank_reference' => 'BPI-TRF-OK',
+            'amount' => 5000,
+            'disbursed_at' => '2026-09-20T09:15:00+08:00',
+        ])->assertOk();
+    }
+
+    /** A rank-and-file token has no business marking money as paid. */
+    public function test_a_rank_and_file_token_cannot_confirm_a_disbursement(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => User::ROLE_EMPLOYEE]));
+
+        $run = $this->payrollRun(PayrollRun::STATUS_APPROVED);
+        $run->update(['total_net' => 5000]);
+
+        $this->postJson("/api/v1/payroll/runs/{$run->id}/disbursement", [
+            'bank_reference' => 'BPI-TRF-NOPE',
+            'amount' => 5000,
+            'disbursed_at' => '2026-09-20T09:15:00+08:00',
+        ])->assertForbidden();
+    }
+
+    /**
+     * Required, and it is the whole audit trail for "which transfer paid this
+     * run" — without it the only record that money moved is a status column.
+     */
+    public function test_a_bank_reference_is_required(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => User::ROLE_ADMIN]));
+
+        $run = $this->payrollRun(PayrollRun::STATUS_APPROVED);
+
+        $this->postJson("/api/v1/payroll/runs/{$run->id}/disbursement", [
+            'amount' => 0,
+            'disbursed_at' => '2026-09-20T09:15:00+08:00',
+        ])->assertJsonValidationErrors('bank_reference');
+    }
 
     /**
      * A payroll run in a given state.
@@ -338,5 +684,38 @@ class IntegrationApiTest extends TestCase
             'total_deductions' => 0,
             'total_net' => 0,
         ]);
+    }
+
+    /**
+     * One payslip on a run, with the figures a journal needs.
+     *
+     * `gross_pay`, `deductions_total` and `net_pay` are derived here rather
+     * than passed in, because that is the identity the endpoint's balance check
+     * rests on — a test that set all three by hand could assert a balance the
+     * arithmetic never had.
+     */
+    private function payslipOn(PayrollRun $run, array $figures): Payslip
+    {
+        $earnings = ['basic_pay', 'overtime_pay', 'night_diff_pay', 'holiday_pay', 'allowances_total'];
+        $withheld = [
+            'sss_employee', 'philhealth_employee', 'pagibig_employee', 'withholding_tax',
+            'late_deduction', 'undertime_deduction', 'absence_deduction',
+            'unpaid_leave_deduction', 'loans_deduction', 'other_deductions',
+        ];
+
+        $gross = array_sum(array_map(fn ($k) => (float) ($figures[$k] ?? 0), $earnings));
+        $deductions = array_sum(array_map(fn ($k) => (float) ($figures[$k] ?? 0), $withheld));
+
+        static $sequence = 0;
+        $sequence++;
+
+        return Payslip::create(array_merge([
+            'payroll_run_id' => $run->id,
+            'employee_id' => Employee::factory()->create()->id,
+            'payslip_number' => sprintf('PS-2026-%05d', $sequence),
+            'gross_pay' => $gross,
+            'deductions_total' => $deductions,
+            'net_pay' => $gross - $deductions,
+        ], $figures));
     }
 }

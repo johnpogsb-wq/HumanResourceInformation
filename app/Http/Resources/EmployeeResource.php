@@ -95,6 +95,64 @@ class EmployeeResource extends JsonResource
 
             'documents' => EmployeeDocumentResource::collection($this->whenLoaded('documents')),
 
+            /*
+             * Educational & qualification records.
+             *
+             * Outside `mergeWhen($canSeeSensitive)` deliberately: a school and
+             * a forklift ticket are not salary or a TIN. They are what an
+             * employee is *qualified* for, which is the half of a 201 file a
+             * supervisor deciding who to send on a run legitimately needs —
+             * and the row-level gate above already decided whose record this
+             * is. Withholding them would leave that decision to be made off a
+             * screen somebody keeps outside the system.
+             */
+            'educations' => $this->whenLoaded('educations', fn () => $this->educations
+                ->sortByDesc(fn ($education) => $education->rank())
+                ->values()
+                ->map(fn ($education) => [
+                    'id' => $education->id,
+                    'level' => $education->level,
+                    'level_label' => $education->levelLabel(),
+                    'school' => $education->school,
+                    'course' => $education->course,
+                    'year_graduated' => $education->year_graduated,
+                    'honors' => $education->honors,
+                ])),
+
+            // Derived from the rows above rather than stored, so it cannot go
+            // stale when a degree is added — see Employee::highestEducation().
+            'highest_education' => $this->whenLoaded(
+                'educations',
+                fn () => $this->highestEducation()?->levelLabel(),
+            ),
+
+            'trainings' => $this->whenLoaded('trainings', fn () => $this->trainings
+                ->sortByDesc(fn ($training) => $training->completed_at?->timestamp ?? 0)
+                ->values()
+                ->map(fn ($training) => [
+                    'id' => $training->id,
+                    'title' => $training->title,
+                    'provider' => $training->provider,
+                    'reference_number' => $training->reference_number,
+                    'completed_at' => $training->completed_at?->toDateString(),
+                    'expires_at' => $training->expires_at?->toDateString(),
+                    'hours' => $training->hours,
+                    'remarks' => $training->remarks,
+                    // null means "does not expire", not "not read" — the same
+                    // distinction the document scanner draws.
+                    'expiry_state' => $training->expiryState(),
+                ])),
+
+            'skills' => $this->whenLoaded('skills', fn () => $this->skills
+                ->sortBy('name')
+                ->values()
+                ->map(fn ($skill) => [
+                    'id' => $skill->id,
+                    'name' => $skill->name,
+                    'proficiency' => $skill->proficiency,
+                    'proficiency_label' => $skill->proficiencyLabel(),
+                ])),
+
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
             'deleted_at' => $this->deleted_at?->toIso8601String(),

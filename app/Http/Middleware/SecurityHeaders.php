@@ -49,14 +49,37 @@ class SecurityHeaders
         $response = $next($request);
 
         foreach (self::HEADERS as $header => $value) {
+            // Allow embedding in IDE webviews (Antigravity/VS Code) during local development
+            if (app()->isLocal() && in_array($header, ['X-Frame-Options', 'Content-Security-Policy'], true)) {
+                continue;
+            }
+
             $response->headers->set($header, $value);
         }
 
-        // Only over TLS. Sent on a plain-HTTP response it is ignored by the
-        // browser anyway, and this app is served over http://core2.test in
-        // development — pinning that host to HTTPS would lock the developer
-        // out of their own machine for the max-age.
-        if ($request->secure()) {
+        /*
+         * Only over TLS, and never in local development.
+         *
+         * The scheme check alone used to be the whole guard, on the reasoning
+         * that development is served over plain http so the branch could not
+         * fire. That reasoning was an assumption about the environment rather
+         * than a rule, and it stopped being true the moment somebody pressed
+         * "Secure" in Herd: the site began answering on https with a
+         * self-signed certificate, and one click through the browser's warning
+         * would have pinned `core2.test` to HTTPS for a year — `includeSubDomains`
+         * taking every `*.core2.test` with it.
+         *
+         * That is not a warning that can be undone by turning TLS back off.
+         * HSTS lives in the browser, so the host stays unreachable over http
+         * until the max-age expires or the developer digs it out of the
+         * browser's internal settings — which is exactly the lockout the old
+         * comment set out to avoid.
+         *
+         * HSTS is a production control. A local environment has no business
+         * issuing a year-long promise about a hostname that only resolves on
+         * one machine.
+         */
+        if ($request->secure() && ! app()->isLocal()) {
             $response->headers->set(
                 'Strict-Transport-Security',
                 'max-age=31536000; includeSubDomains',

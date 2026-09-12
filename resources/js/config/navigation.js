@@ -23,6 +23,7 @@ import {
     Palette,
     Plug,
     Receipt,
+    ScanLine,
     Settings,
     Shield,
     ShieldAlert,
@@ -30,6 +31,7 @@ import {
     Target,
     TrendingUp,
     TriangleAlert,
+    User,
     Users,
     Wallet,
     Wallet2,
@@ -62,6 +64,15 @@ export const NAV_GROUPS = [
                 label: 'Employee Information',
                 icon: IdCard,
                 children: [
+                    {
+                        /*
+                         * The signed-in user's own 201 file and personal records.
+                         */
+                        id: 'employee-my-profile',
+                        label: 'My Profile',
+                        icon: User,
+                        href: '/hr/my-profile',
+                    },
                     {
                         /*
                          * The way into the workforce, so it sits above the
@@ -103,16 +114,6 @@ export const NAV_GROUPS = [
                         icon: Users,
                         href: '/hr/employees',
                     },
-                    // Master data. HR maintains the org structure while filing
-                    // people, so it sits with the records rather than under
-                    // Settings, where it used to live.
-                    {
-                        id: 'employee-clients',
-                        label: 'Clients',
-                        icon: Handshake,
-                        href: '/hr/clients',
-                        roles: ['admin', 'hr_staff'],
-                    },
                     /*
                      * The master-data Departments screen has left this list.
                      *
@@ -139,6 +140,93 @@ export const NAV_GROUPS = [
                         href: '/hr/positions',
                         roles: ['admin', 'hr_staff'],
                     },
+                    /*
+                     * Clients, back where Positions leaves off.
+                     *
+                     * This had its own group for a while, `Client Management`,
+                     * on the reasoning that a client is not a person — it is
+                     * who the workforce is sent to — and deserved to sit beside
+                     * `Employee Management` rather than inside it. That still
+                     * holds; it moved back anyway. One more heading in a
+                     * five-item sidebar is a cost the screen itself pays for
+                     * every visitor, and this is the shorter path to the same
+                     * screen for the two roles who open it at all.
+                     */
+                    {
+                        id: 'clients',
+                        label: 'Clients',
+                        icon: Handshake,
+                        href: '/hr/clients',
+                        roles: ['admin', 'hr_staff'],
+                    },
+                ],
+            },
+            {
+                /*
+                 * The four screens that *judge* the 201 file rather than hold
+                 * it, under one entry beside the module they read.
+                 *
+                 * Loose in Employee Information they read as four more record
+                 * screens, which is the wrong claim about all four: none of
+                 * them stores anything, and each answers a question the file
+                 * itself does not — what is lapsing (`CredentialExpiryScanner`),
+                 * what was never filed (`OnboardingChecker`), where the records
+                 * disagree (`RecordIntegrityChecker`), and whether the person
+                 * can be sent to a client tomorrow (`DeploymentReadinessChecker`,
+                 * which composes the first two).
+                 *
+                 * A sibling entry rather than a nesting, because the sidebar
+                 * renders exactly two levels — group and children — and this is
+                 * the same shape Timekeeping and Leave already take inside Time
+                 * & Attendance.
+                 *
+                 * Named for what they do, not for how they do it. They spent a
+                 * while under "AI & Analytics" and not one of them calls a
+                 * model — they are config-driven rule engines over dates,
+                 * regexes and string comparisons, and Record Checks says so in
+                 * its own docblock, deliberately. "Compliance" was the obvious
+                 * alternative and is taken: in this system it means SSS, BIR
+                 * and PhilHealth remittance, under Payroll.
+                 */
+                id: 'employee-checks',
+                label: 'Checks & Readiness',
+                icon: ShieldCheck,
+                children: [
+                    {
+                        id: 'employee-credentials',
+                        label: 'Credentials',
+                        icon: ShieldAlert,
+                        href: '/hr/credentials',
+                    },
+                    {
+                        id: 'employee-onboarding',
+                        label: '201 File Status',
+                        icon: FileWarning,
+                        href: '/hr/onboarding',
+                    },
+                    {
+                        /*
+                         * Where the records disagree with each other. Open to
+                         * the same roles as the directory it reads — a
+                         * supervisor sees the findings on their own reports.
+                         */
+                        id: 'employee-record-checks',
+                        label: 'Record Checks',
+                        icon: ListChecks,
+                        href: '/hr/record-checks',
+                    },
+                    {
+                        /*
+                         * Last, because it is the verdict the three above feed:
+                         * it re-uses the credential and onboarding scanners
+                         * rather than re-deriving either, so the four screens
+                         * cannot disagree about the same driver.
+                         */
+                        id: 'employee-deployment',
+                        label: 'Deployment Readiness',
+                        icon: BadgeCheck,
+                        href: '/hr/deployment',
+                    },
                 ],
             },
         ],
@@ -151,17 +239,49 @@ export const NAV_GROUPS = [
                 label: 'Timekeeping & Attendance',
                 icon: Clock,
                 children: [
+                    /*
+                     * "Records", not "Daily Records": the screen is one row
+                     * per employee for a cutoff now, and the days sit under
+                     * the person rather than being the list. It absorbed the
+                     * Reports entry that used to sit further down, which
+                     * showed the same figures with no way into them.
+                     */
                     {
                         id: 'tk-daily',
-                        label: 'Daily Records',
+                        label: 'Records',
                         icon: ListChecks,
                         href: '/hr/timekeeping',
+                    },
+                    /*
+                     * Beside Records, because the pair is enter-then-read:
+                     * a cutoff is encoded here and counted there, off the
+                     * same table.
+                     */
+                    {
+                        id: 'tk-period',
+                        label: 'Period DTR',
+                        icon: ClipboardList,
+                        href: '/hr/timekeeping/period',
+                        roles: ['admin', 'hr_staff'],
                     },
                     {
                         id: 'tk-overtime',
                         label: 'Overtime',
                         icon: Clock,
                         href: '/hr/timekeeping/overtime',
+                    },
+                    /*
+                     * An employee cannot edit a time record and never should
+                     * be able to, so a discrepancy on their DTR is raised
+                     * here and decided before it changes anything. No `roles`:
+                     * the people who file these are the people the queue is
+                     * for.
+                     */
+                    {
+                        id: 'tk-adjustments',
+                        label: 'DTR Corrections',
+                        icon: FileWarning,
+                        href: '/hr/timekeeping/adjustments',
                     },
                     {
                         id: 'tk-schedules',
@@ -176,10 +296,24 @@ export const NAV_GROUPS = [
                         href: '/hr/timekeeping/holidays',
                     },
                     {
-                        id: 'tk-reports',
-                        label: 'Reports',
-                        icon: Gauge,
-                        href: '/hr/timekeeping/reports',
+                        /*
+                         * The automated DTR checker, back beside the records
+                         * it reads. `AttendanceExceptionScanner` is a
+                         * config-driven rule engine over `attendance_logs`
+                         * plus the leave cross-check — no model, and its
+                         * thresholds live in `config/timekeeping.php`.
+                         *
+                         * "Exceptions" rather than "Attendance Exceptions":
+                         * the longer name was earned by sitting in a group
+                         * that mixed modules, where the word alone said
+                         * nothing about which records. Inside Timekeeping its
+                         * siblings are Records, Overtime and Holidays, and the
+                         * subject is not in question.
+                         */
+                        id: 'tk-exceptions',
+                        label: 'Exceptions',
+                        icon: TriangleAlert,
+                        href: '/hr/timekeeping/exceptions',
                     },
                     {
                         id: 'tk-history',
@@ -302,71 +436,89 @@ export const NAV_GROUPS = [
         ],
     },
     /*
-     * The screens that read across modules rather than maintaining one.
+     * The group that is about the AI, and holds only what actually is.
      *
-     * Everything else in the sidebar is a place records are *kept*; these are
-     * places records are *judged*. Each one runs a config-driven rule engine
-     * over data that already exists somewhere else — Credentials over document
-     * expiry, 201 File Status over what was never filed, Exceptions over the
-     * DTR, and Deployment Readiness over all three at once. None of them owns
-     * a table.
+     * It briefly held six screens on the reasoning that what unites them is
+     * reading across modules rather than maintaining one. True of all six, and
+     * the wrong name for it: five were config-driven rule engines — dates,
+     * regexes, string comparisons — and a group labelled "AI" whose members
+     * call no model is a claim the first click disproves. Worse, the one
+     * feature that *is* AI was not in it. They are back under the modules
+     * whose records they read; the criterion was fine, the label was not.
      *
-     * That is also why they were scattered before: Credentials and 201 File
-     * Status sat under Employee Information and Exceptions under Timekeeping,
-     * as though each belonged to the module it happened to read from. Grouping
-     * them says what they actually are.
+     * What is left is the screen that measures the scanner, which belongs to
+     * the AI in the only way a screen can: it is where the accuracy figures
+     * come from. The scanner itself has no entry because it is not a screen —
+     * it fills a form on the 201-file upload and runs the batch filer, both
+     * reached from the Employees list.
      */
     {
         label: 'AI & Analytics',
         items: [
             {
-                id: 'analytics-deployment',
-                label: 'Deployment Readiness',
-                icon: ShieldCheck,
-                href: '/hr/deployment',
+                id: 'analytics-workforce',
+                label: 'Workforce Analytics',
+                icon: TrendingUp,
+                href: '/hr/analytics/workforce',
+                roles: ['admin', 'hr_staff'],
             },
             {
-                id: 'analytics-credentials',
-                label: 'Credentials',
-                icon: ShieldAlert,
-                href: '/hr/credentials',
+                id: 'analytics-attendance',
+                label: 'Attendance & Cost Insights',
+                icon: Gauge,
+                href: '/hr/analytics/attendance',
+                roles: ['admin', 'hr_staff'],
             },
             {
-                id: 'analytics-onboarding',
-                label: '201 File Status',
-                icon: FileWarning,
-                href: '/hr/onboarding',
+                id: 'ai-document-batch',
+                label: 'AI Batch Scanner',
+                icon: ScanLine,
+                href: '/hr/employees/documents/batch',
+                roles: ['admin', 'hr_staff'],
             },
             {
-                id: 'analytics-exceptions',
-                label: 'Attendance Exceptions',
-                icon: TriangleAlert,
-                href: '/hr/timekeeping/exceptions',
-            },
-            {
-                /*
-                 * Where the records disagree with each other. Beside the
-                 * other cross-module readers, and open to the same roles
-                 * as the directory it reads — a supervisor sees the
-                 * findings on their own reports.
-                 */
-                id: 'analytics-record-checks',
-                label: 'Record Checks',
-                icon: ShieldCheck,
-                href: '/hr/record-checks',
-            },
-            {
-                /*
-                 * How the scanner is performing, measured from what HR did
-                 * with its proposals. Same roles as the audit log it shares a
-                 * gate with — it is a record of what the system and its users
-                 * did, not an operational screen.
-                 */
                 id: 'analytics-scan-accuracy',
                 label: 'Scanner Accuracy',
-                icon: Gauge,
+                icon: Target,
                 href: '/hr/scan-accuracy',
                 roles: ['admin', 'hr_staff'],
+            },
+        ],
+    },
+    /*
+     * Configuring the app, kept apart from doing the company's work.
+     *
+     * Settings has been in three places now, and the group label is what makes
+     * this one different from the second. It was a 224px column beside the
+     * page (deleted — it cost width the forms had none of), then a sidebar
+     * entry with seven `children` (deleted — a dropdown of seven settings
+     * screens sits level with Payroll's seven, which files "change my
+     * password" as a peer of a payroll run), then two gears and no sidebar
+     * entry at all.
+     *
+     * This is one entry under a label that says what it is. The objection to
+     * the second answer was never the sidebar, it was the ranking — and
+     * "ADMINISTRATION" is the thing that ranks it. The seven sections stay
+     * where they already live: `SettingsLayout` renders them as a row on the
+     * page, so the sidebar carries one line rather than seven.
+     *
+     * No `roles`. `/settings` redirects to the first section the person may
+     * open, and Appearance and Security belong to every signed-in user — a
+     * role filter here would hide the door to somebody's own password.
+     *
+     * `activePrefix` is what lights it from `/settings/security` and the rest:
+     * the sub-navigation is not `children`, so there is no child href for
+     * `bestMatch()` to find.
+     */
+    {
+        label: 'Administration',
+        items: [
+            {
+                id: 'system-settings',
+                label: 'System Settings',
+                icon: Settings,
+                href: '/settings',
+                activePrefix: '/settings',
             },
         ],
     },

@@ -193,9 +193,17 @@ return [
     |   has to be tied to a 201 file and given a role. Fortify enables it by
     |   default, which reopened `/register` the moment it was installed and
     |   turned a deliberate 404 into a live signup page.
-    | - **two-factor and passkeys are off.** Neither is in scope, and leaving
-    |   them on registers challenge routes whose views do not exist. Their
-    |   published migrations are removed rather than run.
+    | - **two-factor is on; passkeys are off.** This system holds salary,
+    |   government identifiers and bank details, so an admin password on its
+    |   own was the whole of the front door — and a password is the credential
+    |   most likely to be reused, phished, or read off a chat message. Passkeys
+    |   stay off: they solve the same problem again for a smaller audience, and
+    |   leaving them on registers routes whose views do not exist.
+    |
+    |   `confirmPassword: true` on the feature is the part worth naming. It
+    |   makes enabling *or disabling* 2FA re-ask for the password, so somebody
+    |   who walks up to an unlocked machine cannot quietly turn the second
+    |   factor off — which would otherwise be the easiest way to defeat it.
     | - **emailVerification stays off**, matching the app's own routes: HR
     |   creates verified accounts, so there is nobody to verify.
     | - **updateProfileInformation is off.** Settings > Security owns that,
@@ -205,6 +213,17 @@ return [
     'features' => [
         Features::resetPasswords(),
         Features::updatePasswords(),
+
+        Features::twoFactorAuthentication([
+            /*
+             * The code is asked for once, then trusted for the rest of the
+             * session — not on every request. A second factor is proof of who
+             * signed in, and re-proving it mid-session is what makes people
+             * turn it off.
+             */
+            'confirm' => true,
+            'confirmPassword' => true,
+        ]),
     ],
 
 ];

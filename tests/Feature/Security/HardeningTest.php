@@ -79,6 +79,75 @@ class HardeningTest extends TestCase
         );
     }
 
+    /**
+     * The scheme check is not enough on its own, and finding that out cost an
+     * evening.
+     *
+     * The guard above used to be the whole rule, on the reasoning that
+     * development is served over plain http so the branch could never fire
+     * locally. That was an assumption about the environment rather than a rule,
+     * and it stopped being true the moment somebody pressed "Secure" in Herd:
+     * the site began answering on https with a self-signed certificate, and one
+     * click through the browser's warning would have pinned `core2.test` to TLS
+     * for a year — `includeSubDomains` taking every `*.core2.test` with it.
+     *
+     * **Turning TLS back off does not undo it.** HSTS lives in the browser, so
+     * the host stays unreachable over http until the max-age expires or somebody
+     * digs it out of `chrome://net-internals/#hsts`. It is the only header here
+     * a browser remembers, and the only one that outlives the mistake that sent
+     * it — which is why the environment has to be checked as well as the scheme.
+     */
+    public function test_hsts_is_never_sent_from_a_local_environment(): void
+    {
+        // Exactly the state a secured Herd site is in: local, and over TLS.
+        $this->app['env'] = 'local';
+        Config::set('app.url', 'https://core2.test');
+
+        $this->get('https://core2.test/login')
+            ->assertOk()
+            ->assertHeaderMissing('strict-transport-security');
+    }
+
+    // --- Session cookie ----------------------------------------------------
+
+    /**
+     * `SameSite=None` without `Secure` is a cookie no browser will keep, and
+     * it takes the whole application down with it in a way nothing else here
+     * would notice.
+     *
+     * Since Chrome 80 the pairing is mandatory: a `Set-Cookie` carrying
+     * `SameSite=None` and no `Secure` attribute is **discarded on arrival**.
+     * That drops the session cookie *and* `XSRF-TOKEN`, so every form posts
+     * without a token, Laravel answers 419, and `router.on('invalid')` in
+     * `app.jsx` bounces the browser back to the login screen. Signing in looks
+     * like it silently does nothing.
+     *
+     * **Nothing server-side can see this happen.** The response is correct; the
+     * browser throws it away afterwards. `curl` ignores the rule entirely and
+     * logs in fine, the suite passes, and — because authentication is never
+     * reached — not even a `login_failed` row is written. The audit trail's
+     * silence is what finally pointed at it.
+     *
+     * The combination is deliberate here: `none` is what lets the app run
+     * inside an IDE webview's iframe, which is also why `SecurityHeaders` skips
+     * `X-Frame-Options` in local. Keeping it costs one line of config, and this
+     * is the line that makes forgetting the other half loud instead of silent.
+     */
+    public function test_a_same_site_none_session_cookie_is_also_secure(): void
+    {
+        if (Config::get('session.same_site') !== 'none') {
+            $this->assertTrue(true, 'SameSite is not None, so the pairing rule does not apply.');
+
+            return;
+        }
+
+        $this->assertTrue(
+            (bool) Config::get('session.secure'),
+            'SESSION_SAME_SITE=none requires SESSION_SECURE_COOKIE=true, or the browser '
+            .'discards the session cookie and nobody can sign in.',
+        );
+    }
+
     // --- Password policy ---------------------------------------------------
 
     /**

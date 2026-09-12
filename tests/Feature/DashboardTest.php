@@ -204,6 +204,107 @@ class DashboardTest extends TestCase
             );
     }
 
+    // --- The reader's own record -------------------------------------------
+
+    /**
+     * The one band on this screen that belongs to the person reading it.
+     *
+     * Everything else here is the company looking at itself, and for a
+     * rank-and-file login none of it is theirs to act on — so the card carries
+     * their own record and the four screens that are theirs.
+     */
+    public function test_the_dashboard_carries_the_readers_own_record(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_EMPLOYEE]);
+        $employee = Employee::factory()->create([
+            'user_id' => $user->id,
+            'first_name' => 'Juan',
+            'last_name' => 'Dela Cruz',
+        ]);
+
+        $this->actingAs($user)
+            ->get('/dashboard')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('profile.employee.id', $employee->id)
+                ->where('profile.employee.employee_number', $employee->employee_number)
+                ->where('profile.name', $employee->full_name),
+            );
+    }
+
+    /**
+     * A login with no 201 file is a real case, not a defensive branch.
+     *
+     * An administrator need not be an employee at all — a pure system account
+     * has no record, no attendance and no payslip — and the card's links are
+     * built from `employee.id`. Left un-handled, the first thing that account
+     * sees on landing is four links into a 404.
+     */
+    public function test_an_account_with_no_employee_record_gets_a_null_rather_than_a_broken_card(): void
+    {
+        $admin = User::factory()->create(['role' => User::ROLE_ADMIN, 'name' => 'System Account']);
+
+        $this->actingAs($admin)
+            ->get('/dashboard')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('profile.employee', null)
+                // It still names who is signed in, from the account itself.
+                ->where('profile.name', 'System Account')
+                ->where('profile.email', $admin->email),
+            );
+    }
+
+    /**
+     * Their own rate is theirs, and the card asks the policy rather than
+     * assuming it.
+     *
+     * `EmployeePolicy::viewSensitive` returns true for HR *and* for the person
+     * the record belongs to — an employee has always been able to open their
+     * own 201 file and read their own salary, so withholding it from their own
+     * dashboard would be the screen disagreeing with the gate.
+     */
+    public function test_the_card_carries_the_readers_own_salary(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_EMPLOYEE]);
+        Employee::factory()->create(['user_id' => $user->id, 'basic_salary' => 45000]);
+
+        $this->actingAs($user)
+            ->get('/dashboard')
+            ->assertInertia(fn (Assert $page) => $page
+                // Compared numerically: the cast is a float and the JSON round
+                // trip hands back an int, and `where()` is strict.
+                ->where(
+                    'profile.employee.compensation.basic_salary',
+                    fn ($value) => (float) $value === 45000.0,
+                ),
+            );
+    }
+
+    /**
+     * Government numbers and the bank account stay out whatever the policy
+     * says about salary.
+     *
+     * They are what a stolen dump is worth stealing, and nothing on a landing
+     * page needs them — so this asserts the *rendered payload* rather than the
+     * shape of the array, the way `DirectoryTest` does. A leak elsewhere in the
+     * props would still be a leak.
+     */
+    public function test_the_card_carries_no_government_numbers_or_bank_details(): void
+    {
+        $user = User::factory()->create(['role' => User::ROLE_EMPLOYEE]);
+        Employee::factory()->create([
+            'user_id' => $user->id,
+            'tin' => '123-456-789-000',
+            'bank_account_number' => '0011-2233-4455',
+            'sss_number' => '34-1234567-8',
+        ]);
+
+        $payload = $this->actingAs($user)->get('/dashboard')->getContent();
+
+        foreach (['123-456-789-000', '0011-2233-4455', '34-1234567-8'] as $secret) {
+            $this->assertStringNotContainsString($secret, $payload, "{$secret} reached the dashboard.");
+        }
+    }
+
     private function seedPayrollRun(float $net): void
     {
         $this->payrollRun(PayrollRun::STATUS_PAID, $net);

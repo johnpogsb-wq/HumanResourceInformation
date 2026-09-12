@@ -1,21 +1,24 @@
-import { Link, router, useForm } from '@inertiajs/react';
+import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import axios from 'axios';
 import {
     ArrowLeft,
+    CalendarDays,
     CheckCircle2,
+    ChevronRight,
+    Clock,
     Download,
-    ExternalLink,
     Eye,
     FileText,
+    History,
     Loader2,
     MinusCircle,
     Pencil,
     Plus,
     ScanLine,
-    ShieldCheck,
     Trash2,
     TriangleAlert,
+    Wallet,
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
@@ -38,6 +41,7 @@ import {
     THead,
     TR,
 } from '@/Components/ui';
+import Qualifications from './Partials/Qualifications';
 import { cn, formatCurrency, formatDate, initials } from '@/lib/utils';
 
 const titleCase = (value) =>
@@ -51,8 +55,10 @@ const titleCase = (value) =>
  * licence was on file was a click away from the licence number itself.
  */
 const SECTIONS = [
+    { id: 'records', label: 'My Records' },
     { id: 'overview', label: 'Overview' },
     { id: 'employment', label: 'Employment' },
+    { id: 'qualifications', label: 'Qualifications' },
     { id: 'documents', label: 'Documents' },
 ];
 
@@ -146,26 +152,6 @@ function ScanCheck({ state, children }) {
     );
 }
 
-/**
- * How a recorded LTMS check reads.
- *
- * "Due again" rather than "expired": a verification does not lapse the way a
- * licence does. A licence can be suspended the day after somebody looked at
- * it, so the date says nobody has checked in a year — not that the licence is
- * now invalid.
- */
-const VERIFICATION_LABELS = {
-    verified: 'Checked',
-    stale: 'Due again',
-    unverified: 'Never checked',
-};
-
-const VERIFICATION_TONES = {
-    verified: 'success',
-    stale: 'warning',
-    unverified: 'muted',
-};
-
 function formatBytes(bytes) {
     if (!bytes) return '—';
     if (bytes < 1024) return `${bytes} B`;
@@ -178,23 +164,24 @@ export default function Show({
     subordinates,
     expiringTypes = [],
     documentTypes = [],
-    neverExpires = [],
+    // The ladder and the grades as config states them. Sent rather than
+    // restated here, because the *order* of the levels is what makes "highest
+    // attainment" mean anything and a second copy would drift from it.
+    educationLevels = {},
+    levelsWithCourse = [],
+    proficiencyLevels = {},
     licence,
     can,
+    isMyProfile = false,
 }) {
+    const { auth } = usePage().props;
     const record = employee.data ?? employee;
+    const isSelf = isMyProfile || (Boolean(auth?.user?.id) && record.user_id === auth.user.id);
 
     const [uploadOpen, setUploadOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [pendingDocument, setPendingDocument] = useState(null);
     const [preview, setPreview] = useState(null);
-    const [verifyOpen, setVerifyOpen] = useState(false);
-
-    // What the portal said, in the portal's own words. Free text on purpose:
-    // "active", "suspended until March", and "no record found" are three
-    // different answers, and flattening them to a tick loses the two that
-    // matter.
-    const verifyForm = useForm({ license_verification_note: '' });
 
     const upload = useForm({
         type: 'contract',
@@ -269,6 +256,35 @@ export default function Show({
     const blockedByType = typeConflict && scan?.type_certain === true;
 
     /*
+     * The file is not a recognisable HR document at all.
+     *
+     * A screenshot of a dashboard, a meme, a photo of lunch — the scanner
+     * reads them, finds nothing it recognises, and until now the Upload
+     * button stayed active anyway. The file would be saved under type
+     * "Other" with no name, no number and no dates, cluttering a 201 file
+     * with something that has no business being there.
+     *
+     * Blocked when every signal the scanner has says "this is not a
+     * document": type is 'other' or null, no name was read, no ID number,
+     * no issue or expiry date. Any one of those being present means the
+     * scanner found *something* on the page, and the honest answer is to
+     * let HR decide — the same rule the other blocks follow.
+     *
+     * The escape hatch is the same as everywhere else: upload as a PDF,
+     * which the scanner does not read. That covers the edge case where a
+     * legitimate document happens to look like nothing the scanner knows.
+     */
+    const blockedByNotDocument = Boolean(
+        scan &&
+        !scanning &&
+        (scan.type === 'other' || scan.type === null) &&
+        !scan.name_on_document &&
+        !scan.document_number &&
+        !scan.issued_at &&
+        !scan.expires_at,
+    );
+
+    /*
      * The name verdict has a case the other two do not: a name that does not
      * match while the ID number *does*. That is not a failure — it is the
      * married-name and truncated-card reading the number already settled — so
@@ -327,6 +343,7 @@ export default function Show({
     const nameMustMatch = scan?.name_may_differ !== true;
 
     const blockedByMismatch =
+        blockedByNotDocument ||
         blockedByType ||
         blockedByExpiry ||
         numberMatch === false ||
@@ -429,12 +446,20 @@ export default function Show({
 
     return (
         <AppLayout
-            title={record.full_name}
-            breadcrumbs={[
-                { label: 'Human Resource' },
-                { label: 'Employee Information', href: '/hr/employees' },
-                { label: record.full_name },
-            ]}
+            title={isSelf ? 'My Profile' : record.full_name}
+            breadcrumbs={
+                isSelf
+                    ? [
+                          { label: 'Human Resource' },
+                          { label: 'Employee Information', href: '/hr/employees' },
+                          { label: 'My Profile' },
+                      ]
+                    : [
+                          { label: 'Human Resource' },
+                          { label: 'Employee Information', href: '/hr/employees' },
+                          { label: record.full_name },
+                      ]
+            }
             actions={
                 <div className="flex items-center gap-1.5">
                     {can.update && (
@@ -460,11 +485,20 @@ export default function Show({
                 </div>
             }
         >
-            <div className="mb-4">
-                <Button href="/hr/employees" variant="ghost" size="sm">
+            <div className="mb-4 flex items-center justify-between">
+                <Button
+                    href={isSelf ? '/dashboard' : '/hr/employees'}
+                    variant="ghost"
+                    size="sm"
+                >
                     <ArrowLeft className="h-4 w-4" />
-                    Back to directory
+                    {isSelf ? 'Back to Dashboard' : 'Back to directory'}
                 </Button>
+                {isSelf && (
+                    <span className="text-xs font-medium text-muted-foreground">
+                        Personal 201 File & Records Hub
+                    </span>
+                )}
             </div>
 
             {/* Profile header */}
@@ -492,7 +526,8 @@ export default function Show({
                         </p>
 
                         <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <Badge variant="primary">{record.employee_number}</Badge>
+                            {isSelf && <Badge variant="primary">My Profile</Badge>}
+                            <Badge variant="outline">{record.employee_number}</Badge>
                             <Badge status={record.employment_status} />
                             <Badge status={record.status} />
                             {record.has_account && <Badge variant="muted">Has login</Badge>}
@@ -512,21 +547,119 @@ export default function Show({
                 aria-label="Sections"
                 className="scrollbar-thin mb-5 flex gap-1.5 overflow-x-auto border-b border-border pb-3"
             >
-                {SECTIONS.map((item) => (
-                    <a
-                        key={item.id}
-                        href={`#${item.id}`}
-                        className="whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                    >
-                        {item.label}
-                        {item.id === 'documents' && documents.length > 0 && (
-                            <span className="ml-1.5 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                                {documents.length}
-                            </span>
-                        )}
-                    </a>
-                ))}
+                {SECTIONS.map((item) => {
+                    const label =
+                        item.id === 'records' && !isSelf ? 'Work Records' : item.label;
+
+                    return (
+                        <a
+                            key={item.id}
+                            href={`#${item.id}`}
+                            className="whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                        >
+                            {label}
+                            {item.id === 'documents' && documents.length > 0 && (
+                                <span className="ml-1.5 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                    {documents.length}
+                                </span>
+                            )}
+                        </a>
+                    );
+                })}
             </nav>
+
+            {/* Quick Records & Self-Service Section */}
+            <section id="records" className="mb-8 scroll-mt-6">
+                <SectionHeading
+                    id="records-heading"
+                    title={
+                        isSelf
+                            ? 'My Work Records & Activities'
+                            : 'Employee Records & Activities'
+                    }
+                />
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <Link
+                        href={`/hr/timekeeping/employee/${record.id}`}
+                        className="group flex flex-col justify-between rounded-xl border border-border bg-card p-4 transition-all hover:border-primary/50 hover:shadow-sm"
+                    >
+                        <div className="flex items-start justify-between">
+                            <span className="grid h-10 w-10 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                                <Clock className="h-5 w-5" />
+                            </span>
+                            <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
+                        </div>
+                        <div className="mt-3">
+                            <h3 className="text-sm font-semibold text-foreground group-hover:text-primary">
+                                {isSelf ? 'My Attendance & DTR' : 'Attendance & DTR'}
+                            </h3>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                Daily attendance logs, punch-ins & cutoffs.
+                            </p>
+                        </div>
+                    </Link>
+
+                    <Link
+                        href="/hr/leave"
+                        className="group flex flex-col justify-between rounded-xl border border-border bg-card p-4 transition-all hover:border-info/50 hover:shadow-sm"
+                    >
+                        <div className="flex items-start justify-between">
+                            <span className="group-hover:text-info-foreground grid h-10 w-10 place-items-center rounded-lg bg-info/10 text-info transition-colors group-hover:bg-info">
+                                <CalendarDays className="h-5 w-5" />
+                            </span>
+                            <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
+                        </div>
+                        <div className="mt-3">
+                            <h3 className="text-sm font-semibold text-foreground group-hover:text-info">
+                                {isSelf ? 'My Leave & Absence' : 'Leave Requests'}
+                            </h3>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                Filed leave history, balances & approvals.
+                            </p>
+                        </div>
+                    </Link>
+
+                    <Link
+                        href="/hr/payroll/payslips"
+                        className="group flex flex-col justify-between rounded-xl border border-border bg-card p-4 transition-all hover:border-success/50 hover:shadow-sm"
+                    >
+                        <div className="flex items-start justify-between">
+                            <span className="group-hover:text-success-foreground grid h-10 w-10 place-items-center rounded-lg bg-success/10 text-success transition-colors group-hover:bg-success">
+                                <Wallet className="h-5 w-5" />
+                            </span>
+                            <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
+                        </div>
+                        <div className="mt-3">
+                            <h3 className="text-sm font-semibold text-foreground group-hover:text-success">
+                                {isSelf ? 'My Payslips' : 'Issued Payslips'}
+                            </h3>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                Net pay, allowances & statutory deductions.
+                            </p>
+                        </div>
+                    </Link>
+
+                    <Link
+                        href={`/hr/performance/employees/${record.id}/history`}
+                        className="group flex flex-col justify-between rounded-xl border border-border bg-card p-4 transition-all hover:border-warning/50 hover:shadow-sm"
+                    >
+                        <div className="flex items-start justify-between">
+                            <span className="grid h-10 w-10 place-items-center rounded-lg bg-warning/10 text-warning transition-colors group-hover:bg-warning group-hover:text-warning-foreground">
+                                <History className="h-5 w-5" />
+                            </span>
+                            <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
+                        </div>
+                        <div className="mt-3">
+                            <h3 className="text-sm font-semibold text-foreground group-hover:text-warning">
+                                {isSelf ? 'My Performance' : 'Performance History'}
+                            </h3>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                Past evaluation cycles, scores & ratings.
+                            </p>
+                        </div>
+                    </Link>
+                </div>
+            </section>
 
             <section className="mb-8">
                 <SectionHeading id="overview" title="Overview" />
@@ -784,58 +917,6 @@ export default function Show({
                                     ))}
                                 </ul>
                             )}
-
-                            {/* The half that cannot be automated. LTO
-                                publishes no API an employer can call, so this
-                                records a person's answer with their name and
-                                the date rather than showing a tick nobody can
-                                account for. */}
-                            <div className="border-t border-border pt-3">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <p className="text-xs text-muted-foreground">LTMS check</p>
-                                    <Badge
-                                        variant={VERIFICATION_TONES[licence.verification.state]}
-                                    >
-                                        {VERIFICATION_LABELS[licence.verification.state]}
-                                    </Badge>
-                                </div>
-
-                                {licence.verification.at ? (
-                                    <div className="mt-1.5">
-                                        <p className="text-sm text-foreground">
-                                            {licence.verification.note}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground">
-                                            {licence.verification.by ?? 'Someone'} on{' '}
-                                            {formatDate(licence.verification.at)}
-                                        </p>
-                                    </div>
-                                ) : (
-                                    <p className="mt-1.5 text-xs text-muted-foreground">
-                                        Nobody has confirmed this licence against LTO&apos;s own
-                                        records. The checks above only say the card is
-                                        internally consistent.
-                                    </p>
-                                )}
-
-                                {can.update && record.drivers_license_number && (
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            external
-                                            href={licence.ltms_url}
-                                        >
-                                            <ExternalLink className="h-4 w-4" />
-                                            Open LTMS
-                                        </Button>
-                                        <Button size="sm" onClick={() => setVerifyOpen(true)}>
-                                            <ShieldCheck className="h-4 w-4" />
-                                            Record the check
-                                        </Button>
-                                    </div>
-                                )}
-                            </div>
                         </CardBody>
                     </Card>
 
@@ -871,6 +952,21 @@ export default function Show({
                         </CardBody>
                     </Card>
                 </div>
+            </section>
+
+            {/* Between Employment and Documents on purpose: what somebody is
+                qualified for is read with what they are employed as, and the
+                diplomas and certificates that back it up sit directly below. */}
+            <section id="qualifications" className="mb-8 scroll-mt-6">
+                <SectionHeading id="qualifications-heading" title="Qualifications" />
+
+                <Qualifications
+                    employee={record}
+                    educationLevels={educationLevels}
+                    levelsWithCourse={levelsWithCourse}
+                    proficiencyLevels={proficiencyLevels}
+                    canManage={can.update}
+                />
             </section>
 
             {/* These two carry their own CardHeader, so the card title is the
@@ -1218,11 +1314,20 @@ export default function Show({
                                     value={scan.issued_at ? formatDate(scan.issued_at) : null}
                                     filled={Boolean(scan.issued_at)}
                                 />
-                                {/* A type that cannot expire says so, rather
-                                    than showing "Not found" — which would read
-                                    as the scanner having looked and missed,
-                                    when in fact there is nothing to look for. */}
-                                {neverExpires.includes(scan.type) ? (
+                                {/* A document that cannot expire says so,
+                                    rather than showing "Not found" — which
+                                    would read as the scanner having looked and
+                                    missed, when in fact there is nothing to
+                                    look for, and invites somebody to type a
+                                    date that does not exist.
+
+                                    Read off the scan rather than matched
+                                    against a list of types here: a TIN ID
+                                    carries no expiry and a passport does, and
+                                    both are `government_id`, so the type alone
+                                    cannot answer it. The scanner decides from
+                                    the heading printed on the card. */}
+                                {scan.never_expires ? (
                                     <ScanField label="Expires" value="Does not expire" />
                                 ) : (
                                     <ScanField
@@ -1435,14 +1540,18 @@ export default function Show({
                                             className="mt-0.5 h-3.5 w-3.5 shrink-0"
                                             aria-hidden="true"
                                         />
-                                        This document cannot be filed here.
+                                        {blockedByNotDocument
+                                            ? 'This file is not a valid document.'
+                                            : 'This document cannot be filed here.'}
                                     </p>
                                     <p className="mt-1 pl-5 text-xs text-muted-foreground">
-                                        {blockedByExpiry
-                                            ? 'It expired on the date below. Correct the Expiry Date if it was read wrongly — a date of birth is often picked up by mistake — or file the renewed copy instead.'
-                                            : blockedByType
-                                              ? `Set Document Type to ${titleCase(scan.type)}, or pick a different file.`
-                                              : `Open ${scan.name_on_document ?? 'the right employee'}\u2019s record and upload it there, or pick a different file.`}
+                                        {blockedByNotDocument
+                                            ? 'The scanner could not find any document information — no name, ID number, or date. Pick a file that contains an actual HR document (ID, clearance, certificate, etc.).'
+                                            : blockedByExpiry
+                                              ? 'It expired on the date below. Correct the Expiry Date if it was read wrongly — a date of birth is often picked up by mistake — or file the renewed copy instead.'
+                                              : blockedByType
+                                                ? `Set Document Type to ${titleCase(scan.type)}, or pick a different file.`
+                                                : `Open ${scan.name_on_document ?? 'the right employee'}\u2019s record and upload it there, or pick a different file.`}
                                     </p>
                                 </div>
                             )}
@@ -1456,11 +1565,13 @@ export default function Show({
                             the message rather than fixing the type. */}
                         {blockedByMismatch && (
                             <p className="mr-auto text-xs text-destructive">
-                                {blockedByExpiry
-                                    ? 'This document has expired.'
-                                    : blockedByType
-                                      ? `This is a ${titleCase(scan?.type)}.`
-                                      : 'This file names someone else.'}
+                                {blockedByNotDocument
+                                    ? 'Not a valid document.'
+                                    : blockedByExpiry
+                                      ? 'This document has expired.'
+                                      : blockedByType
+                                        ? `This is a ${titleCase(scan?.type)}.`
+                                        : 'This file names someone else.'}
                             </p>
                         )}
 
@@ -1572,80 +1683,6 @@ export default function Show({
                         className="h-[70vh] w-full rounded-md border border-border bg-background"
                     />
                 )}
-            </Modal>
-
-            {/* Recording an LTMS check.
-                This asks for what the portal *said* rather than offering a
-                yes/no, because the useful answers are not binary — "suspended
-                until March" and "no record found" both mean do not dispatch,
-                and for different reasons somebody will need later. */}
-            <Modal
-                show={verifyOpen}
-                onClose={() => setVerifyOpen(false)}
-                title="Record an LTMS check"
-                description="LTO publishes no API to call, so this records what you saw and when."
-                maxWidth="lg"
-            >
-                <form
-                    onSubmit={(event) => {
-                        event.preventDefault();
-                        verifyForm.post(`/hr/employees/${record.id}/verify-license`, {
-                            preserveScroll: true,
-                            onSuccess: () => {
-                                verifyForm.reset();
-                                setVerifyOpen(false);
-                            },
-                        });
-                    }}
-                    className="space-y-4"
-                >
-                    <div className="rounded-md border border-border bg-secondary/40 px-3 py-2">
-                        <p className="text-xs text-muted-foreground">Licence being checked</p>
-                        <p className="font-mono text-sm text-foreground">
-                            {record.drivers_license_number}
-                        </p>
-                    </div>
-
-                    <Field
-                        label="What the portal showed"
-                        required
-                        error={verifyForm.errors.license_verification_note}
-                    >
-                        {({ id }) => (
-                            <Textarea
-                                id={id}
-                                rows={3}
-                                value={verifyForm.data.license_verification_note}
-                                onChange={(event) =>
-                                    verifyForm.setData(
-                                        'license_verification_note',
-                                        event.target.value,
-                                    )
-                                }
-                                error={verifyForm.errors.license_verification_note}
-                                placeholder="e.g. Active, no apprehensions on record. Matches name and expiry."
-                            />
-                        )}
-                    </Field>
-
-                    <p className="text-xs text-muted-foreground">
-                        This is recorded against your name and today&apos;s date, and it is the
-                        only thing on this screen that speaks to whether the licence is genuine.
-                    </p>
-
-                    <div className="flex justify-end gap-2">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => setVerifyOpen(false)}
-                        >
-                            Cancel
-                        </Button>
-                        <Button type="submit" disabled={verifyForm.processing}>
-                            Record the check
-                        </Button>
-                    </div>
-                </form>
             </Modal>
         </AppLayout>
     );

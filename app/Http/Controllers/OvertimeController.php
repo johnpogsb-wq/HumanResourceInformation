@@ -56,9 +56,12 @@ class OvertimeController extends Controller
                     'id' => $employee->id,
                     'full_name' => $employee->full_name,
                 ]),
+            /*
+             * `employees` feeds the *filter*, not the form. HR and supervisors
+             * read other people's requests here; nobody files one for them.
+             */
             'can' => [
                 'create' => $request->user()->can('create', OvertimeRequest::class),
-                'fileForOthers' => $request->user()->isHrAdmin(),
             ],
             'ownEmployeeId' => $request->user()->employee?->id,
         ]);

@@ -33,6 +33,20 @@ class AttendanceExceptionScanner
 
     public const TYPE_FREQUENT_ABSENCE = 'frequent_absence';
 
+    /** Absent, with no approved leave behind it. */
+    public const TYPE_AWOL = 'awol';
+
+    /** Absent on a day an approved leave covers — the DTR row is stale. */
+    public const TYPE_UNRECORDED_LEAVE = 'unrecorded_leave';
+
+    /**
+     * LeaveService is what turns an absence into either an excused day or an
+     * AWOL. Without it the two modules each hold half the answer: attendance
+     * knows somebody did not come in, leave knows they were allowed not to,
+     * and nobody put the two together.
+     */
+    public function __construct(private readonly LeaveService $leave) {}
+
     /**
      * @return Collection<int, array<string, mixed>> newest first, employee
      *                                               name second — matches how the screen groups them
@@ -48,6 +62,7 @@ class AttendanceExceptionScanner
         $severityWeight = ['critical' => 0, 'warning' => 1];
 
         return $this->recordLevel($logs)
+            ->concat($this->leaveLevel($logs))
             ->concat($this->patternLevel($logs))
             ->sortBy([
                 fn ($entry) => $severityWeight[$entry['severity']] ?? 2,
@@ -88,6 +103,57 @@ class AttendanceExceptionScanner
 
             return $exceptions;
         });
+    }
+
+    /**
+     * The Module 2 → Module 3 cross-check: every absence, asked of leave.
+     *
+     * Two findings come out of it, and they point in opposite directions:
+     *
+     *  - **AWOL** — absent with nothing filed. Critical, because it is a
+     *    disciplinary matter and an unpaid day, and because nobody chasing it
+     *    on the day will remember it at cutoff.
+     *  - **Unrecorded leave** — absent on a day an approved leave *does*
+     *    cover, which means the DTR row is stale (leave approved after the day
+     *    was keyed). A warning rather than an error: payroll already ignores
+     *    it, so the money is right and only the record reads wrong.
+     *
+     * The range is taken from the logs themselves rather than passed in, so
+     * every existing caller keeps working — PayrollReadinessChecker and the
+     * Exceptions screen both hand this a query and nothing else.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function leaveLevel(Collection $logs): Collection
+    {
+        $absences = $logs->where('status', AttendanceLog::STATUS_ABSENT);
+
+        if ($absences->isEmpty()) {
+            return collect();
+        }
+
+        $dates = $absences->pluck('log_date');
+
+        $covered = $this->leave->approvedLeaveDates(
+            $absences->pluck('employee_id')->filter()->unique()->values()->all(),
+            Carbon::parse($dates->min()),
+            Carbon::parse($dates->max()),
+        );
+
+        return $absences->map(function (AttendanceLog $log) use ($covered) {
+            $leave = $covered->get($log->employee_id.'|'.$log->log_date->toDateString());
+            $day = $log->log_date->toFormattedDateString();
+
+            if ($leave === null) {
+                return $this->entry($log, self::TYPE_AWOL, 'critical',
+                    "Absent on {$day} with no approved leave on file.",
+                );
+            }
+
+            return $this->entry($log, self::TYPE_UNRECORDED_LEAVE, 'warning',
+                "Marked absent on {$day}, but {$leave['leave_type']} was approved for it — the record should say on leave.",
+            );
+        })->values();
     }
 
     /** @return Collection<int, array<string, mixed>> */

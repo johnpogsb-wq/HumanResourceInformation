@@ -1,10 +1,12 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\DisciplinaryActionController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\EndorsementController;
 use App\Http\Controllers\Api\IntegrationController;
 use App\Http\Controllers\Api\LoanController;
+use App\Http\Controllers\Api\PayrollAdjustmentController;
 use App\Http\Controllers\Api\TimekeepingController;
 use Illuminate\Support\Facades\Route;
 
@@ -78,6 +80,57 @@ Route::prefix('v1')->group(function () {
         // Financial Management — the disbursement register.
         Route::get('payroll/runs', [IntegrationController::class, 'payrollRuns']);
         Route::get('payroll/runs/{run}/register', [IntegrationController::class, 'payrollRegister']);
+
+        /*
+         * Financial Management (General Ledger, AP, Tax) — payroll as a
+         * journal entry.
+         *
+         * Keyed by **period** and not by run, unlike the two above: a ledger
+         * is posted per accounting period, and there can be more than one run
+         * in one. Asking Finance to add the runs up themselves would be asking
+         * them to re-derive a total this system already holds.
+         */
+        Route::get('payroll/journal-summary/{period}', [IntegrationController::class, 'journalSummary']);
+
+        /*
+         * Financial Management (AP) — the other end of `/register`.
+         *
+         * Closes a loop that was open: the register handed Finance a list and
+         * nothing came back, so a run sat at `approved` until somebody in HR
+         * remembered to tick it — and *approved* and *the money arrived* are
+         * different facts the system was reporting as one. The amount is
+         * checked against the run's own total rather than trusted.
+         */
+        Route::post('payroll/runs/{run}/disbursement', [IntegrationController::class, 'confirmDisbursement']);
+
+        /*
+         * Core 4 (Governance, Safety & Admin) — warnings and suspensions.
+         *
+         * A suspension posted here does **not** mark days absent and does not
+         * dock pay. It is stored, and `PayrollReadinessChecker` raises an
+         * unpaid one as a warning before the money is computed, leaving HR to
+         * key the days or decide not to. A DTR another system can write is not
+         * a record of anything — the same argument that keeps employees out of
+         * `attendance_logs`.
+         */
+        Route::post('disciplinary-actions', [DisciplinaryActionController::class, 'store']);
+        Route::get('disciplinary-actions/{source}/{reference}', [DisciplinaryActionController::class, 'show']);
+        Route::get('employees/{employee}/disciplinary-actions', [DisciplinaryActionController::class, 'index']);
+
+        /*
+         * Fleet (trip allowances, per diems) and Supply Chain (accountability
+         * for a damaged or lost item) — one-off amounts on a payslip.
+         *
+         * **A write door, and only the third in the whole API.** It stores a
+         * row that payroll reads at compute time; it never touches a payslip,
+         * because a draft run can be recomputed and an endpoint that applied
+         * an amount when called would apply it twice. Idempotent on
+         * `(source, reference)`, the same contract `/endorsements` and `/loans`
+         * offer.
+         */
+        Route::post('payroll/adjustments', [PayrollAdjustmentController::class, 'store']);
+        Route::get('payroll/adjustments/{source}/{reference}', [PayrollAdjustmentController::class, 'show']);
+        Route::delete('payroll/adjustments/{source}/{reference}', [PayrollAdjustmentController::class, 'destroy']);
 
         // Core 3 (Government Contribution & Compliance) — what to remit.
         Route::get('payroll/runs/{run}/contributions', [IntegrationController::class, 'contributions']);

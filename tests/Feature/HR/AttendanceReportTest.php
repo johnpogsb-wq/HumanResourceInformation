@@ -7,97 +7,36 @@ use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
-use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class AttendanceReportTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_the_report_aggregates_per_employee(): void
+    public function test_the_old_reports_screen_redirects_to_records(): void
     {
-        $employee = Employee::factory()->create();
-        $date = now()->startOfMonth()->toDateString();
-
-        AttendanceLog::factory()->create([
-            'employee_id' => $employee->id,
-            'log_date' => $date,
-            'hours_worked' => 8,
-            'late_minutes' => 15,
-            'overtime_minutes' => 60,
-        ]);
-        AttendanceLog::factory()->create([
-            'employee_id' => $employee->id,
-            'log_date' => now()->startOfMonth()->addDay()->toDateString(),
-            'hours_worked' => 7,
-            'late_minutes' => 0,
-            'overtime_minutes' => 30,
-        ]);
-        AttendanceLog::factory()->absent()->create([
-            'employee_id' => $employee->id,
-            'log_date' => now()->startOfMonth()->addDays(2)->toDateString(),
-        ]);
-
+        // The per-employee summary is the Records screen itself now. Old links
+        // land somewhere useful rather than on a 404, and carry their range.
         $this->actingAs($this->hr())
-            ->get('/hr/timekeeping/reports')
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('HR/Timekeeping/Reports')
-                ->has('rows', 1)
-                ->where('rows.0.days_present', 2)
-                ->where('rows.0.days_absent', 1)
-                ->where('rows.0.late_count', 1)
-                ->where('rows.0.late_minutes', 15)
-                ->where('rows.0.overtime_hours', 1.5)
-                ->where('rows.0.total_hours', 15),
-            );
+            ->get('/hr/timekeeping/reports?from=2026-03-01&to=2026-03-31')
+            ->assertRedirect('/hr/timekeeping?from=2026-03-01&to=2026-03-31');
     }
 
-    public function test_the_period_resolves_to_a_concrete_range(): void
-    {
-        $this->actingAs($this->hr())
-            ->get('/hr/timekeeping/reports?period=daily&anchor=2026-03-10')
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('filters.from', '2026-03-10')
-                ->where('filters.to', '2026-03-10'),
-            );
-
-        $this->actingAs($this->hr())
-            ->get('/hr/timekeeping/reports?period=monthly&anchor=2026-03-10')
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('filters.from', '2026-03-01')
-                ->where('filters.to', '2026-03-31'),
-            );
-    }
-
-    public function test_records_outside_the_period_are_excluded(): void
-    {
-        $employee = Employee::factory()->create();
-
-        AttendanceLog::factory()->create([
-            'employee_id' => $employee->id,
-            'log_date' => '2026-03-10',
-        ]);
-        AttendanceLog::factory()->create([
-            'employee_id' => $employee->id,
-            'log_date' => '2026-05-10',
-        ]);
-
-        $this->actingAs($this->hr())
-            ->get('/hr/timekeeping/reports?period=monthly&anchor=2026-03-15')
-            ->assertInertia(fn (Assert $page) => $page->where('rows.0.days_present', 1));
-    }
-
-    public function test_the_report_exports_as_csv(): void
+    public function test_the_export_covers_the_range_it_was_given(): void
     {
         $employee = Employee::factory()->create(['first_name' => 'Elena', 'last_name' => 'Marquez']);
         AttendanceLog::factory()->create([
             'employee_id' => $employee->id,
             'log_date' => '2026-03-10',
         ]);
+        // Outside the range, so it must not reach the file.
+        AttendanceLog::factory()->create([
+            'employee_id' => $employee->id,
+            'log_date' => '2026-05-10',
+        ]);
 
         $response = $this->actingAs($this->hr())
-            ->get('/hr/timekeeping/reports/export?period=monthly&anchor=2026-03-10')
+            ->get('/hr/timekeeping/export?from=2026-03-01&to=2026-03-31')
             ->assertOk()
             ->assertHeader('content-type', 'text/csv; charset=UTF-8');
 
@@ -107,20 +46,58 @@ class AttendanceReportTest extends TestCase
         $this->assertStringContainsString('"Employee Number",Employee,Department', $csv);
         $this->assertStringContainsString('Elena', $csv);
         $this->assertStringContainsString($employee->employee_number, $csv);
+
+        /*
+         * One day, not two. The export used to resolve its own range from a
+         * `period` name, which meant the button on a screen showing 1-15 could
+         * hand back the whole month without either saying so.
+         */
+        $line = collect(explode("\n", trim($csv)))->last();
+        $this->assertStringContainsString(',1,', $line);
     }
 
-    public function test_employees_only_see_themselves_in_the_report(): void
+    public function test_the_export_defaults_to_the_current_month(): void
+    {
+        $employee = Employee::factory()->create();
+        AttendanceLog::factory()->create([
+            'employee_id' => $employee->id,
+            'log_date' => now()->startOfMonth()->toDateString(),
+        ]);
+
+        $csv = $this->actingAs($this->hr())
+            ->get('/hr/timekeeping/export')
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringContainsString($employee->employee_number, $csv);
+    }
+
+    public function test_employees_only_see_themselves_in_the_export(): void
     {
         $user = User::factory()->create();
         $own = Employee::factory()->create(['user_id' => $user->id]);
         $date = now()->startOfMonth()->toDateString();
 
         AttendanceLog::factory()->create(['employee_id' => $own->id, 'log_date' => $date]);
-        AttendanceLog::factory()->count(3)->create(['log_date' => $date]);
+        $others = Employee::factory()->count(3)->create();
 
-        $this->actingAs($user)
-            ->get('/hr/timekeeping/reports')
-            ->assertInertia(fn (Assert $page) => $page->has('rows', 1));
+        foreach ($others as $other) {
+            AttendanceLog::factory()->create([
+                'employee_id' => $other->id,
+                'log_date' => $date,
+            ]);
+        }
+
+        $csv = $this->actingAs($user)
+            ->get('/hr/timekeeping/export')
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringContainsString($own->employee_number, $csv);
+
+        foreach ($others as $other) {
+            $this->assertStringNotContainsString($other->employee_number, $csv);
+        }
     }
 
     // --- Bulk import -----------------------------------------------------

@@ -5,17 +5,69 @@ company, covering the full employee lifecycle: **Employee Information,
 Timekeeping & Attendance, Leave & Absence, Payroll & Compensation, and
 Performance Management.**
 
-## Stack
+## Tech Stack
 
-- **Laravel 12** — application framework
-- **Inertia 2 + React 18** — the UI. Inertia renders pages *and* a
+| Category | Technology | Version |
+|---|---|---|
+| **Programming Language** | TypeScript & PHP | TS ^7.0, PHP ^8.2 |
+| **Frontend** | ReactJS with Inertia.js | React ^18.2, Inertia ^2.0 |
+| **Styling** | Tailwind CSS | ^3.2 |
+| **Backend** | Laravel | ^12.0 |
+| **Database** | PostgreSQL | — |
+| **Build Tool** | Vite | ^7.0 |
+| **API** | RESTful (`/api/v1`) | Laravel Sanctum ^4.0 (Token-Based) |
+| **Authentication (Web)** | Laravel Fortify | ^1.39 (Session/Cookie-Based + 2FA) |
+| **Authentication (API)** | Laravel Sanctum | ^4.0 (Token-Based) |
+| **Routing (JS)** | Ziggy | ^2.0 |
+| **Version Control** | Git / GitHub | — |
+| **CI/CD** | GitHub Actions | Tests on push/PR to `main` |
+| **DevOps** | Hostforge | Domain / Hosting |
+| **Local Dev Server** | Laravel Herd | — |
+
+- **Inertia.js** is the bridge between Laravel and React — server-driven
+  routing, no separate SPA API needed. Inertia renders pages *and* a
   token-authenticated REST API lives at `/api/v1`; both call the same Service
   layer so behaviour can't drift between them
-- **Tailwind 3** — every colour is a semantic design token, so light and dark
+- **Tailwind CSS** — every colour is a semantic design token, so light and dark
   mode both work without per-component overrides
-- **PostgreSQL** — the application database
+- **Vite** — asset bundling and HMR for development
+- **Ziggy** — exposes Laravel named routes to the JS frontend via `route()`
 
 ## Architecture
+
+**The backend and frontend already live in separate folders** — nothing to
+split, because Laravel and React were never mixed together in the first
+place:
+
+```
+core2/
+├── app/              ← PHP backend (controllers, models, services, policies)
+├── routes/           ← PHP backend (web.php, api.php)
+├── database/         ← PHP backend (migrations, seeders)
+├── config/           ← PHP backend
+│
+├── resources/js/     ← React frontend (all the .jsx pages and components)
+├── resources/css/    ← Frontend styling
+│
+└── resources/views/app.blade.php   ← the ONE line that ties them together:
+                                        @vite(['resources/js/app.jsx', …])
+```
+
+**What is *not* separated is the deployment** — this ships as one app, not
+two. Inertia.js is why: a Laravel controller calls
+`Inertia::render('HR/Employees/Show', [...])` and Laravel hands the browser
+the matching React page pre-loaded with that data, in one request. There is
+no separate frontend server calling a JSON API to render a screen — the
+`/api/v1` routes above exist for *other systems* integrating with Core 2 (see
+[docs/INTEGRATION.md](docs/INTEGRATION.md)), not for this frontend to call
+itself.
+
+That is also why there is one deploy, not two: `npm run build` compiles
+`resources/js/` into static files under `public/build/`, and from that point
+on Node is not needed on the server at all — Laravel just serves those
+compiled files like any other static asset. One PHP host, one domain.
+
+### Request flow (inside the backend folder)
 
 ```
 Request ─┬─ Http/Controllers/EmployeeController      (Inertia -> Pages/…)
@@ -47,6 +99,11 @@ what a *list* returns, and each model's Policy guards an *individual* record:
 
 Self-registration is disabled by design; HR provisions logins from the
 employee form.
+
+## Documentation
+
+- **[Integration Guide](docs/INTEGRATION.md)** — REST API specification, tokens, and endpoints for external ISMERS modules (Core 1, Core 3, Fleet).
+- **[Security Architecture](docs/SECURITY.md)** — Comprehensive security documentation covering authentication, 2FA, session protection, HTTP headers, RBAC, audit logs, and RA 10173 compliance.
 
 ## Getting started
 

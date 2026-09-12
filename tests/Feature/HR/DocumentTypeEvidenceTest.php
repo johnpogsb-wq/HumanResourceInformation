@@ -65,6 +65,28 @@ class DocumentTypeEvidenceTest extends TestCase
         $this->assertSame(DocumentScanner::TYPE_FROM_STORED_NUMBER, $fields['type_source']);
     }
 
+    /**
+     * The TIN on file matches what is printed on the TIN ID card. The scanner
+     * recognises the card as government_id from the stored number alone —
+     * before needing to read the BIR seal or any heading.
+     */
+    public function test_a_tin_on_file_names_the_type(): void
+    {
+        $employee = Employee::factory()->create(['tin' => '803-549-590']);
+
+        $fields = $this->scannerReturning([
+            'type' => 'other',
+            'title' => 'Republic of the Philippines Department of Finance BUREAU OF INTERNAL REVENUE',
+            'document_number' => '803-549-590',
+            'issued_at' => null,
+            'expires_at' => '2026-05-18',
+        ])->scan(UploadedFile::fake()->image('tin.jpg'), $employee);
+
+        $this->assertSame('government_id', $fields['type']);
+        $this->assertSame(DocumentScanner::TYPE_FROM_STORED_NUMBER, $fields['type_source']);
+        $this->assertTrue($fields['type_certain']);
+    }
+
     /** The heading is still evidence from the paper, and outranks inference. */
     public function test_the_heading_still_beats_the_weaker_signals(): void
     {
@@ -315,6 +337,8 @@ class DocumentTypeEvidenceTest extends TestCase
     {
         return [
             'NBI' => ['Department of Justice National Bureau of Investigation', 'clearance'],
+            'NBI Seal' => ['Republic of the Philippines NBI Seal National Bureau of Investigation', 'clearance'],
+            'dry seal' => ['Official Dry Seal National Bureau of Investigation', 'clearance'],
             'PNP' => ['Philippine National Police Police Clearance', 'clearance'],
             'LTO' => ['Land Transportation Office', 'drivers_license'],
             'PSA' => ['PHILIPPINE STATISTICS AUTHORITY', 'psa'],
@@ -324,6 +348,11 @@ class DocumentTypeEvidenceTest extends TestCase
             'BIR' => ['BUREAU OF INTERNAL REVENUE', 'government_id'],
             'PRC' => ['PROFESSIONAL REGULATION COMMISSION', 'government_id'],
             'DFA passport' => ['DEPARTMENT OF FOREIGN AFFAIRS', 'government_id'],
+            'BIR TIN ID' => ['Republic of the Philippines Department of Finance BUREAU OF INTERNAL REVENUE', 'government_id'],
+            'TIN ID taxpayer label' => ['TAXPAYER IDENTIFICATION NUMBER BUREAU OF INTERNAL REVENUE', 'government_id'],
+            'TIN ID card' => ['TIN ID Bureau of Internal Revenue', 'government_id'],
+            'BIR seal on card' => ['BIR Seal Taxpayer Identification Number', 'government_id'],
+            'Digital TIN ID' => ['Digital TIN ID Control Number Bureau of Internal Revenue', 'government_id'],
 
             // Still has to leave the types that are not agencies alone.
             'TESDA' => ['TESDA Certificate of Competency', 'certificate'],
@@ -520,19 +549,86 @@ class DocumentTypeEvidenceTest extends TestCase
     }
 
     /**
-     * The list the panel reads comes from the same config, so the screen and
-     * the scanner cannot come to different conclusions about which documents
-     * expire.
+     * The screen is no longer handed a list of types to reason from, and that
+     * is the fix rather than a regression.
+     *
+     * It used to receive `neverExpires` — the types from `type_cannot_have`
+     * that carry no expiry — and the component matched `scan.type` against it.
+     * That can only ever be right for a type that never expires **as a
+     * class**, and the case that broke it is a TIN ID: it is a
+     * `government_id`, exactly like a passport, so no list of types can
+     * separate the one that is issued for life from the one whose expiry
+     * matters. A TIN ID therefore showed "Not found" under Expires, which
+     * reads as the scanner having looked and missed and invites HR to type a
+     * date that does not exist.
+     *
+     * So the decision moved to the one place that has the evidence — the
+     * heading printed on the card — and the panel reads a single
+     * `never_expires` flag off the scan. The screen and the scanner cannot
+     * disagree because there is no longer a second copy of the rule to
+     * disagree with.
      */
-    public function test_the_screen_is_told_which_types_never_expire(): void
+    public function test_the_screen_is_not_given_a_list_of_types_to_judge_expiry_by(): void
     {
         $employee = Employee::factory()->create();
 
         $this->actingAs(User::factory()->hrStaff()->create())
             ->get("/hr/employees/{$employee->id}")
-            ->assertInertia(fn ($page) => $page
-                ->where('neverExpires', ['resume', 'psa']),
-            );
+            ->assertInertia(fn ($page) => $page->missing('neverExpires'));
+    }
+
+    /**
+     * Both grains answer through the same field, which is what lets the panel
+     * hold one rule instead of two.
+     *
+     * A TIN ID is decided by the card (`non_expiring_ids`) and a PSA
+     * certificate by its type (`type_cannot_have`); a passport is a
+     * `government_id` that genuinely expires and must come back false, since
+     * an expiry silently dropped is a credential that never reaches a renewal
+     * queue — invisible rather than wrong.
+     *
+     * @dataProvider expiryByDocument
+     */
+    public function test_the_scan_says_whether_there_was_an_expiry_to_find(
+        string $type,
+        string $heading,
+        bool $expected,
+    ): void {
+        $fields = $this->scannerReturning([
+            'type' => $type,
+            'title' => $heading,
+            'expires_at' => '2030-06-30',
+        ])->scan(UploadedFile::fake()->image('doc.jpg'));
+
+        $this->assertSame($expected, $fields['never_expires']);
+
+        // And the date itself follows the flag, in both directions.
+        $this->assertSame($expected ? null : '2030-06-30', $fields['expires_at']);
+    }
+
+    /** @return array<string, array{0: string, 1: string, 2: bool}> */
+    public static function expiryByDocument(): array
+    {
+        return [
+            'TIN ID — a TIN is issued for life' => [
+                'government_id', 'BUREAU OF INTERNAL REVENUE', true,
+            ],
+            'UMID — the SSS common card' => [
+                'government_id', 'Unified Multi-Purpose ID', true,
+            ],
+            'PhilID — no expiry for an adult' => [
+                'government_id', 'Philippine Identification System', true,
+            ],
+            'passport — expires, and it matters' => [
+                'government_id', 'Department of Foreign Affairs PASSPORT', false,
+            ],
+            'PSA — by type, not by card' => [
+                'psa', 'Philippine Statistics Authority', true,
+            ],
+            'NBI clearance — prints a real VALID UNTIL' => [
+                'clearance', 'NATIONAL BUREAU OF INVESTIGATION', false,
+            ],
+        ];
     }
     // --- The order ------------------------------------------------------------
 
@@ -574,7 +670,7 @@ class DocumentTypeEvidenceTest extends TestCase
 
     private function scannerReturning(?array $reading): DocumentScanner
     {
-        config(['scanner.driver' => 'ollama', 'scanner.ollama.host' => 'http://127.0.0.1:11434']);
+        config(['scanner.driver' => 'gemini', 'scanner.gemini.api_key' => 'test-key']);
 
         return new class($reading) extends DocumentScanner
         {

@@ -8,6 +8,7 @@ use App\Models\EmployeeAllowance;
 use App\Models\EmployeeLoan;
 use App\Models\LeaveRequest;
 use App\Models\OvertimeRequest;
+use App\Models\PayrollAdjustment;
 use App\Models\PayrollPeriod;
 use App\Models\PayrollRun;
 use App\Models\Payslip;
@@ -29,6 +30,7 @@ class PayrollService
         private readonly PayrollCalculator $calculator,
         private readonly EmployeeService $employees,
         private readonly SalaryAdjustmentService $salaries,
+        private readonly LeaveService $leave,
     ) {}
 
     /** Payslips the viewer may see — employees see only their own. */
@@ -157,7 +159,6 @@ class PayrollService
             ->selectRaw('coalesce(sum(late_minutes), 0) as late')
             ->selectRaw('coalesce(sum(undertime_minutes), 0) as undertime')
             ->selectRaw('coalesce(sum(night_diff_minutes), 0) as night_diff')
-            ->selectRaw("coalesce(sum(case when status = 'absent' then 1 else 0 end), 0) as absences")
             ->selectRaw("coalesce(sum(case when status in ('present','late','undertime') then 1 else 0 end), 0) as days_worked")
             ->first();
 
@@ -176,12 +177,67 @@ class PayrollService
             'night_diff_hours' => round(((float) $attendance->night_diff) / 60, 2),
             'late_minutes' => (int) $attendance->late,
             'undertime_minutes' => (int) $attendance->undertime,
-            'absent_days' => (float) $attendance->absences,
+            'absent_days' => $this->unexcusedAbsentDays($employee, $from, $to),
             'unpaid_leave_days' => $this->unpaidLeaveDays($employee, $from, $to),
 
             'allowances' => $this->allowances($employee, $period),
             'loans' => $this->loans($employee, $period),
+
+            /*
+             * One-off amounts another system put on this payslip — Fleet's
+             * trip allowances, Supply Chain's damage deductions.
+             *
+             * **Summed here, at compute time, and that is the whole safety
+             * property.** A draft run can be recomputed freely; an endpoint
+             * that added an amount to a payslip when it was *called* would add
+             * it again on the next recompute. Reading stored rows instead means
+             * recomputing reaches the same total — the same reason `loans()`
+             * above is a read rather than a ledger entry.
+             */
+            'other_deductions' => $this->externalDeductions($employee, $period),
         ];
+    }
+
+    /**
+     * Absent days with no approved leave behind them — the days that are
+     * genuinely unpaid because nobody authorised them.
+     *
+     * This used to be a plain count of DTR rows marked `absent`, and it was
+     * wrong in both directions at once:
+     *
+     * - **Approved unpaid leave was deducted twice.** The day counted here as
+     *   an absence *and* again in `unpaid_leave_days`, so a week of authorised
+     *   leave without pay cost the employee two weeks of salary.
+     * - **Approved paid leave was deducted at all.** A VL day is already
+     *   inside the basic salary — that is what "paid leave" means — so taking
+     *   it off again docked somebody for leave they were entitled to.
+     *
+     * Both were invisible from the payslip, which shows "Absences" and
+     * "Unpaid leave" as separate lines that each looked individually correct.
+     *
+     * Whether a day is covered is asked of LeaveService rather than derived
+     * here, so payroll, the exception scanner and the DTR screen cannot come
+     * to different conclusions about the same Tuesday.
+     */
+    public function unexcusedAbsentDays(Employee $employee, Carbon $from, Carbon $to): float
+    {
+        $absentDates = AttendanceLog::query()
+            ->where('employee_id', $employee->id)
+            ->whereBetween('log_date', [$from->toDateString(), $to->toDateString()])
+            ->where('status', AttendanceLog::STATUS_ABSENT)
+            ->pluck('log_date');
+
+        if ($absentDates->isEmpty()) {
+            return 0.0;
+        }
+
+        $covered = $this->leave->approvedLeaveDates([$employee->id], $from, $to);
+
+        return (float) $absentDates
+            ->reject(fn ($date) => $covered->has(
+                $employee->id.'|'.Carbon::parse($date)->toDateString(),
+            ))
+            ->count();
     }
 
     /** Approved overtime hours falling inside the period. */
@@ -238,17 +294,66 @@ class PayrollService
         }
     }
 
-    /** @return array<int, array{label: string, amount: float, taxable: bool}> */
+    /**
+     * Standing allowances, plus the one-off earnings another system posted for
+     * this cutoff.
+     *
+     * The two are different in kind and belong in one list: a rice allowance
+     * recurs and is prorated by frequency, while a trip allowance was earned
+     * once in this fortnight and is paid at face value. `amountForPeriod()`
+     * applies to the first and must not touch the second — halving a ₱500 trip
+     * allowance because the run is semi-monthly would pay ₱250 for a trip that
+     * happened.
+     *
+     * @return array<int, array{label: string, amount: float, taxable: bool}>
+     */
     private function allowances(Employee $employee, PayrollPeriod $period): array
     {
-        return EmployeeAllowance::where('employee_id', $employee->id)
+        $standing = EmployeeAllowance::where('employee_id', $employee->id)
             ->effectiveOn($period->end_date)
             ->get()
             ->map(fn (EmployeeAllowance $allowance) => [
                 'label' => $allowance->name,
                 'amount' => $allowance->amountForPeriod($period->frequency),
                 'taxable' => (bool) $allowance->is_taxable,
+            ]);
+
+        $oneOff = PayrollAdjustment::where('employee_id', $employee->id)
+            ->where('payroll_period_id', $period->id)
+            ->earnings()
+            ->get()
+            ->map(fn (PayrollAdjustment $adjustment) => [
+                // The source is on the line, so a payslip says who decided it
+                // rather than leaving somebody to ask HR.
+                'label' => $adjustment->sourceLabel().' — '.$adjustment->label,
+                'amount' => (float) $adjustment->amount,
+                'taxable' => (bool) $adjustment->is_taxable,
+            ]);
+
+        return $standing->concat($oneOff)->values()->all();
+    }
+
+    /**
+     * One-off deductions another system posted for this cutoff.
+     *
+     * Supply Chain's accountability for a damaged or lost item, and anything
+     * else that is neither a statutory withholding nor a loan. These land in
+     * the calculator's `other_deductions` slot, which had been built and never
+     * fed until an external system needed it.
+     *
+     * @return array<int, array{label: string, amount: float}>
+     */
+    private function externalDeductions(Employee $employee, PayrollPeriod $period): array
+    {
+        return PayrollAdjustment::where('employee_id', $employee->id)
+            ->where('payroll_period_id', $period->id)
+            ->deductions()
+            ->get()
+            ->map(fn (PayrollAdjustment $adjustment) => [
+                'label' => $adjustment->sourceLabel().' — '.$adjustment->label,
+                'amount' => (float) $adjustment->amount,
             ])
+            ->values()
             ->all();
     }
 

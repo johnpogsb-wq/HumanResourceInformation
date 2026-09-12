@@ -126,7 +126,7 @@ class EmployeeFormScanTest extends TestCase
 
     public function test_the_endpoint_404s_when_no_scanner_is_configured(): void
     {
-        config(['scanner.driver' => 'ollama', 'scanner.ollama.host' => null]);
+        config(['scanner.driver' => 'gemini', 'scanner.gemini.api_key' => null]);
 
         $this->actingAs(User::factory()->hrStaff()->create())
             ->post('/hr/employees/scan-form', ['file' => UploadedFile::fake()->image('201.jpg')])
@@ -135,7 +135,7 @@ class EmployeeFormScanTest extends TestCase
 
     public function test_an_employee_cannot_scan_a_form(): void
     {
-        config(['scanner.driver' => 'ollama', 'scanner.ollama.host' => 'http://127.0.0.1:11434']);
+        config(['scanner.driver' => 'gemini', 'scanner.gemini.api_key' => 'test-key']);
 
         $this->actingAs(User::factory()->create(['role' => User::ROLE_EMPLOYEE]))
             ->post('/hr/employees/scan-form', ['file' => UploadedFile::fake()->image('201.jpg')])
@@ -144,7 +144,7 @@ class EmployeeFormScanTest extends TestCase
 
     public function test_the_create_screen_hides_the_button_when_the_scanner_is_off(): void
     {
-        config(['scanner.driver' => 'ollama', 'scanner.ollama.host' => null]);
+        config(['scanner.driver' => 'gemini', 'scanner.gemini.api_key' => null]);
 
         // The form is only reachable by approving an endorsement, so one has
         // to exist for there to be a screen to assert about.
@@ -157,7 +157,7 @@ class EmployeeFormScanTest extends TestCase
 
     public function test_the_create_screen_offers_it_when_the_scanner_is_on(): void
     {
-        config(['scanner.driver' => 'ollama', 'scanner.ollama.host' => 'http://127.0.0.1:11434']);
+        config(['scanner.driver' => 'gemini', 'scanner.gemini.api_key' => 'test-key']);
 
         $endorsement = EmployeeEndorsement::factory()->create();
 
@@ -184,7 +184,7 @@ class EmployeeFormScanTest extends TestCase
 
     private function read(array $raw): array
     {
-        config(['scanner.driver' => 'ollama', 'scanner.ollama.host' => 'http://127.0.0.1:11434']);
+        config(['scanner.driver' => 'gemini', 'scanner.gemini.api_key' => 'test-key']);
 
         return $this->scannerReturning($raw)->scanEmployeeForm(
             UploadedFile::fake()->image('201.jpg'),

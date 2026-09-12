@@ -3,16 +3,15 @@ import { useState } from 'react';
 import {
     CalendarX,
     Clock,
+    Download,
     Plus,
     Timer,
     TriangleAlert,
     Upload,
     UserCheck,
-    X,
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import {
-    Badge,
     Button,
     Card,
     DateInput,
@@ -32,7 +31,7 @@ import {
     THead,
     TR,
 } from '@/Components/ui';
-import { cn, formatDate, initials } from '@/lib/utils';
+import { initials } from '@/lib/utils';
 
 const titleCase = (value) =>
     String(value ?? '')
@@ -66,24 +65,6 @@ const hours = (value) => {
         : number.toFixed(1).replace(/\.0$/, '');
 };
 
-/**
- * Filters the tiles can set that the dropdowns cannot show.
- *
- * Each one counts something no single status names — `attended` is three
- * statuses, `late` is a column rather than a status — which is exactly why
- * each needs a chip: a list narrowed by a filter with no visible control is
- * a list nobody can explain.
- *
- * They narrow the same axis as `status`, so setting any one clears the rest.
- */
-const TILE_FILTERS = [
-    { key: 'attended', label: 'Days present only', tone: 'success' },
-    { key: 'late', label: 'Late days only', tone: 'warning' },
-];
-
-/** The keys that cannot be combined — see TILE_FILTERS. */
-const EXCLUSIVE = ['status', ...TILE_FILTERS.map(({ key }) => key)];
-
 const BLANK_ENTRY = {
     employee_id: '',
     log_date: '',
@@ -96,19 +77,47 @@ const BLANK_ENTRY = {
     remarks: '',
 };
 
-export default function Index({
-    logs,
-    summary,
-    filters,
-    departments,
-    shifts,
-    employees,
-    statuses,
-    can,
-}) {
+const iso = (date) => date.toISOString().slice(0, 10);
+
+/**
+ * The cutoffs the screen is actually read by: a whole month, or either half
+ * of it.
+ *
+ * Presets rather than a period dropdown, because the range is already two
+ * date inputs — a third control naming the same thing would be a second
+ * source of truth for what "this cutoff" means. These only move the two dates
+ * that were already there, off whichever month is on screen.
+ */
+const PRESETS = [
+    {
+        key: 'month',
+        label: 'Whole month',
+        range: (base) => [
+            new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), 1)),
+            new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)),
+        ],
+    },
+    {
+        key: 'first',
+        label: '1–15',
+        range: (base) => [
+            new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), 1)),
+            new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), 15)),
+        ],
+    },
+    {
+        key: 'second',
+        label: '16–end',
+        range: (base) => [
+            new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), 16)),
+            new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)),
+        ],
+    },
+];
+
+export default function Index({ rows, summary, filters, shifts, employees, statuses, can }) {
     const [entryOpen, setEntryOpen] = useState(false);
     const [importOpen, setImportOpen] = useState(false);
-    const [pendingDelete, setPendingDelete] = useState(null);
 
     const entry = useForm(BLANK_ENTRY);
     const upload = useForm({ file: null });
@@ -128,23 +137,6 @@ export default function Index({
         });
     };
 
-    const applyFilter = (key, value) => {
-        router.get(
-            '/hr/timekeeping',
-            {
-                ...filters,
-                // Touching one exclusive control clears the others, for the
-                // same reason drillTo does: they narrow one axis, and leaving
-                // one behind quietly ands them together.
-                ...(EXCLUSIVE.includes(key)
-                    ? Object.fromEntries(EXCLUSIVE.map((k) => [k, undefined]))
-                    : {}),
-                [key]: value || undefined,
-            },
-            { preserveState: true, preserveScroll: true, replace: true },
-        );
-    };
-
     const submitEntry = (event) => {
         event.preventDefault();
 
@@ -157,33 +149,37 @@ export default function Index({
         });
     };
 
-    const rows = logs.data ?? [];
-    const meta = logs.meta ?? {};
-
-    /*
-     * Clicking a figure opens the rows it counted, inside the same date range.
-     *
-     * Carrying the filters through is the whole point: a tile that counted 53
-     * late days in March and then opened an unfiltered list has not answered
-     * the question it raised, it has replaced it.
-     */
-    const drillTo = (extra) => {
-        const params = new URLSearchParams(
-            Object.entries({
-                ...filters,
-                /*
-                 * Every exclusive key is cleared before the tile sets its own.
-                 * Without this, drilling into Late and then into Absences
-                 * would ask for both at once and return the days somebody was
-                 * absent *and* late — which is none of them.
-                 */
-                ...Object.fromEntries(EXCLUSIVE.map((key) => [key, undefined])),
-                ...extra,
-            }).filter(([, value]) => Boolean(value)),
+    const applyFilter = (changes) =>
+        router.get(
+            '/hr/timekeeping',
+            { ...filters, ...changes },
+            { preserveState: true, preserveScroll: true, replace: true },
         );
 
-        return `/hr/timekeeping?${params.toString()}`;
+    const applyPreset = (preset) => {
+        const [start, end] = preset.range(new Date(`${filters.from}T00:00:00Z`));
+
+        applyFilter({ from: iso(start), to: iso(end) });
     };
+
+    /*
+     * A row opens that person's own screen, carrying the range with it.
+     *
+     * It was an accordion first, and the days did not fit: they are a
+     * different unit from the summary line, they want a Monday-to-Sunday grid,
+     * and unfolding one inside a paginated table puts somebody's fortnight in
+     * a strip four columns wide.
+     */
+    const open = (employeeId) =>
+        router.get(`/hr/timekeeping/employee/${employeeId}`, {
+            from: filters.from,
+            to: filters.to,
+        });
+
+    const list = rows.data ?? [];
+    const meta = rows.meta ?? {};
+
+    const exportHref = `/hr/timekeeping/export?from=${filters.from}&to=${filters.to}`;
 
     // 157 of 205 is the reading that means something; 157 on its own is a
     // number whose scale the reader has to go and find.
@@ -191,13 +187,18 @@ export default function Index({
 
     return (
         <AppLayout
-            title="Timekeeping & Attendance"
-            breadcrumbs={[{ label: 'Human Resource' }, { label: 'Timekeeping & Attendance' }]}
+            title="Records"
+            breadcrumbs={[{ label: 'Human Resource' }, { label: 'Records' }]}
         >
+            {/*
+             * The tiles no longer link anywhere, and that is not a regression.
+             * They used to open the rows they counted because those rows were
+             * days buried in a paginated list. Present and Absences are now
+             * the totals of two columns of the table directly beneath them,
+             * and every row opens to the days behind it — the figure can show
+             * its own rows without going anywhere.
+             */}
             <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {/* Attendance as a share, because that is the question — "157
-                    present" says nothing until you know whether the range held
-                    160 records or 400. The bar does the arithmetic. */}
                 <MeterCard
                     label="Days Present"
                     value={summary.present}
@@ -207,7 +208,6 @@ export default function Index({
                     tone={attendanceRate >= 90 ? 'success' : 'warning'}
                     iconTone="success"
                     hint={`of ${summary.records} record(s) in range`}
-                    href={drillTo({ attended: '1' })}
                 />
 
                 {/* Warning, and grey at zero — "0 absent" in amber reads as a
@@ -222,7 +222,6 @@ export default function Index({
                             ? `${((summary.absent / summary.records) * 100).toFixed(1)}% of the range`
                             : undefined
                     }
-                    href={drillTo({ status: 'absent' })}
                 />
 
                 <StatCard
@@ -231,9 +230,6 @@ export default function Index({
                     icon={TriangleAlert}
                     tone={summary.late > 0 ? 'warning' : 'muted'}
                     hint={`${duration(summary.late_minutes)} lost in total`}
-                    /* `late`, not `status=late`: the tile counts late minutes,
-                       and a day marked `undertime` can carry them too. */
-                    href={drillTo({ late: '1' })}
                 />
 
                 {/* Two figures that only mean something beside each other —
@@ -261,7 +257,7 @@ export default function Index({
                             <DateInput
                                 id={id}
                                 value={filters.from ?? ''}
-                                onChange={(event) => applyFilter('from', event.target.value)}
+                                onChange={(event) => applyFilter({ from: event.target.value })}
                             />
                         )}
                     </Field>
@@ -271,219 +267,159 @@ export default function Index({
                             <DateInput
                                 id={id}
                                 value={filters.to ?? ''}
-                                onChange={(event) => applyFilter('to', event.target.value)}
+                                onChange={(event) => applyFilter({ to: event.target.value })}
                             />
                         )}
                     </Field>
 
-                    <Field label="Employee" className="w-full sm:w-56">
-                        {({ id }) => (
-                            <Select
-                                id={id}
-                                value={filters.employee_id ?? ''}
-                                onChange={(event) =>
-                                    applyFilter('employee_id', event.target.value)
-                                }
-                                placeholder="All employees"
-                                options={employees.map((employee) => ({
-                                    value: employee.id,
-                                    label: employee.full_name,
-                                }))}
-                            />
-                        )}
-                    </Field>
-
-                    <Field label="Department" className="w-full sm:w-48">
-                        {({ id }) => (
-                            <Select
-                                id={id}
-                                value={filters.department_id ?? ''}
-                                onChange={(event) =>
-                                    applyFilter('department_id', event.target.value)
-                                }
-                                placeholder="All departments"
-                                options={departments.map((department) => ({
-                                    value: department.id,
-                                    label: department.name,
-                                }))}
-                            />
-                        )}
-                    </Field>
-
-                    <Field label="Status" className="w-full sm:w-44">
-                        {({ id }) => (
-                            <Select
-                                id={id}
-                                value={filters.status ?? ''}
-                                onChange={(event) => applyFilter('status', event.target.value)}
-                                placeholder="All statuses"
-                                options={statuses.map((status) => ({
-                                    value: status,
-                                    label: titleCase(status),
-                                }))}
-                            />
-                        )}
-                    </Field>
-
-                    {/* The filters with no control of their own.
-                        Both are set by the tiles above and match something no
-                        single status names, so no dropdown here can show
-                        them — and a list silently narrowed by something
-                        invisible is the worst of both. These say the filter is
-                        on and give it an off switch. */}
-                    {TILE_FILTERS.filter(({ key }) => filters[key]).map(
-                        ({ key, label, tone }) => (
-                            <button
-                                key={key}
-                                type="button"
-                                onClick={() => applyFilter(key, '')}
-                                className={cn(
-                                    'flex h-9 shrink-0 items-center gap-1.5 self-end rounded-full border px-3 text-xs font-medium transition-colors',
-                                    tone === 'warning'
-                                        ? 'border-warning/30 bg-warning/10 text-warning hover:bg-warning/20'
-                                        : 'border-success/30 bg-success/10 text-success hover:bg-success/20',
-                                )}
+                    <div className="flex flex-wrap gap-2 self-end">
+                        {PRESETS.map((preset) => (
+                            <Button
+                                key={preset.key}
+                                variant="outline"
+                                size="sm"
+                                className="h-9"
+                                onClick={() => applyPreset(preset)}
                             >
-                                {label}
-                                <X className="h-3.5 w-3.5" aria-hidden="true" />
-                            </button>
-                        ),
-                    )}
+                                {preset.label}
+                            </Button>
+                        ))}
+                    </div>
 
                     {/* Actions end the filter row: `lg:ml-auto` pushes them
-                        right of the last filter, and the row's `items-end`
+                        right of the last control, and the row's `items-end`
                         lines them up with the inputs rather than the labels. */}
-                    {can.manage && (
-                        <div className="flex gap-2 lg:ml-auto">
-                            <Button variant="outline" onClick={() => setImportOpen(true)}>
-                                <Upload className="h-4 w-4" />
-                                Import
-                            </Button>
-                            <Button onClick={() => setEntryOpen(true)}>
-                                <Plus className="h-4 w-4" />
-                                Record Time
-                            </Button>
-                        </div>
-                    )}
+                    <div className="flex flex-wrap gap-2 lg:ml-auto">
+                        <Button variant="outline" href={exportHref} external>
+                            <Download className="h-4 w-4" />
+                            <span className="hidden sm:inline">Export</span>
+                        </Button>
+
+                        {can.manage && (
+                            <>
+                                <Button variant="outline" onClick={() => setImportOpen(true)}>
+                                    <Upload className="h-4 w-4" />
+                                    <span className="hidden sm:inline">Import</span>
+                                </Button>
+                                <Button onClick={() => setEntryOpen(true)}>
+                                    <Plus className="h-4 w-4" />
+                                    Record Time
+                                </Button>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 <Table>
                     <THead>
                         <TR>
                             <TH>Employee</TH>
-                            <TH>Date</TH>
-                            <TH>Shift</TH>
-                            <TH>In</TH>
-                            <TH>Out</TH>
-                            <TH className="text-right">Hours</TH>
+                            <TH>Assignment</TH>
+                            <TH className="text-right">Days In</TH>
+                            <TH className="text-right">Absent</TH>
                             <TH className="text-right">Late</TH>
                             <TH className="text-right">UT</TH>
                             <TH className="text-right">OT</TH>
-                            <TH>Status</TH>
-                            {can.manage && <TH className="text-right">Actions</TH>}
+                            <TH className="text-right">Hours</TH>
                         </TR>
                     </THead>
 
                     <TBody>
-                        {rows.length === 0 ? (
+                        {list.length === 0 ? (
                             <TableEmpty
-                                colSpan={can.manage ? 11 : 10}
+                                colSpan={8}
                                 icon={Clock}
-                                title="No time records found"
-                                description="Adjust the date range or filters, or record a time entry."
+                                title="Nobody to show"
+                                description="Widen the date range, or record a time entry."
                             />
                         ) : (
-                            rows.map((log) => (
-                                <TR key={log.id}>
+                            list.map((row) => (
+                                <TR
+                                    key={row.employee_id}
+                                    clickable
+                                    onClick={() => open(row.employee_id)}
+                                >
                                     <TD>
                                         <div className="flex items-center gap-2.5">
                                             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
-                                                {initials(log.employee?.full_name)}
+                                                {initials(row.full_name)}
                                             </span>
                                             <div className="min-w-0">
                                                 <p className="truncate text-sm font-medium text-foreground">
-                                                    {log.employee?.full_name ?? '—'}
+                                                    {row.full_name}
                                                 </p>
                                                 <p className="truncate text-xs text-muted-foreground">
-                                                    {log.employee?.employee_number}
+                                                    {row.employee_number}
                                                 </p>
                                             </div>
                                         </div>
                                     </TD>
 
                                     <TD className="whitespace-nowrap text-sm text-muted-foreground">
-                                        {formatDate(log.log_date)}
+                                        {row.client ?? row.department ?? '—'}
                                     </TD>
 
-                                    <TD className="whitespace-nowrap text-sm text-muted-foreground">
-                                        {log.shift?.name ?? '—'}
-                                    </TD>
-
-                                    <TD className="whitespace-nowrap text-sm tabular-nums text-foreground">
-                                        {log.time_in ?? '—'}
-                                    </TD>
-
-                                    <TD className="whitespace-nowrap text-sm tabular-nums text-foreground">
-                                        {log.time_out ?? '—'}
-                                    </TD>
-
-                                    <TD className="text-right text-sm tabular-nums text-foreground">
-                                        {log.hours_worked ? log.hours_worked.toFixed(2) : '—'}
-                                    </TD>
-
-                                    <TD className="text-right text-sm tabular-nums">
+                                    {/* The figure the screen exists for, so it
+                                        carries the weight the others do not.
+                                        Zero is muted rather than red: somebody
+                                        may simply not have been scheduled. */}
+                                    <TD className="text-right text-sm font-semibold tabular-nums">
                                         <span
                                             className={
-                                                log.late_minutes
-                                                    ? 'text-destructive'
+                                                row.days_present
+                                                    ? 'text-foreground'
                                                     : 'text-muted-foreground'
                                             }
                                         >
-                                            {duration(log.late_minutes)}
+                                            {row.days_present}
                                         </span>
                                     </TD>
 
                                     <TD className="text-right text-sm tabular-nums">
                                         <span
                                             className={
-                                                log.undertime_minutes
+                                                row.days_absent
                                                     ? 'text-warning'
                                                     : 'text-muted-foreground'
                                             }
                                         >
-                                            {duration(log.undertime_minutes)}
+                                            {row.days_absent || '—'}
                                         </span>
                                     </TD>
 
                                     <TD className="text-right text-sm tabular-nums">
                                         <span
                                             className={
-                                                log.overtime_minutes
+                                                row.late_count
+                                                    ? 'text-destructive'
+                                                    : 'text-muted-foreground'
+                                            }
+                                        >
+                                            {row.late_count || '—'}
+                                        </span>
+                                    </TD>
+
+                                    <TD className="text-right text-sm tabular-nums text-muted-foreground">
+                                        {duration(row.undertime_minutes)}
+                                    </TD>
+
+                                    <TD className="text-right text-sm tabular-nums">
+                                        <span
+                                            className={
+                                                row.overtime_hours
                                                     ? 'text-success'
                                                     : 'text-muted-foreground'
                                             }
                                         >
-                                            {duration(log.overtime_minutes)}
+                                            {row.overtime_hours
+                                                ? hours(row.overtime_hours)
+                                                : '—'}
                                         </span>
                                     </TD>
 
-                                    <TD>
-                                        <Badge status={log.status} />
+                                    <TD className="text-right text-sm tabular-nums text-foreground">
+                                        {row.total_hours ? hours(row.total_hours) : '—'}
                                     </TD>
-
-                                    {can.manage && (
-                                        <TD>
-                                            <div className="flex justify-end">
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    onClick={() => setPendingDelete(log)}
-                                                >
-                                                    Delete
-                                                </Button>
-                                            </div>
-                                        </TD>
-                                    )}
                                 </TR>
                             ))
                         )}
@@ -693,41 +629,6 @@ export default function Index({
                     </div>
                 </Card>
             )}
-
-            {/* Delete confirmation */}
-            <Modal
-                show={Boolean(pendingDelete)}
-                onClose={() => setPendingDelete(null)}
-                title="Delete this time record?"
-                maxWidth="md"
-                footer={
-                    <>
-                        <Button variant="outline" onClick={() => setPendingDelete(null)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            variant="destructive"
-                            onClick={() =>
-                                router.delete(`/hr/timekeeping/${pendingDelete.id}`, {
-                                    preserveScroll: true,
-                                    onFinish: () => setPendingDelete(null),
-                                })
-                            }
-                        >
-                            Delete
-                        </Button>
-                    </>
-                }
-            >
-                <p className="text-sm text-muted-foreground">
-                    The record for{' '}
-                    <span className="font-medium text-foreground">
-                        {pendingDelete?.employee?.full_name}
-                    </span>{' '}
-                    on {formatDate(pendingDelete?.log_date)} will be removed. Payroll figures
-                    computed from it will change.
-                </p>
-            </Modal>
         </AppLayout>
     );
 }

@@ -15,7 +15,7 @@ class OvertimeTest extends TestCase
 
     public function test_the_overtime_screen_lists_requests(): void
     {
-        $this->file(Employee::factory()->create(), $this->hr());
+        $this->file(Employee::factory()->create());
 
         $this->actingAs($this->hr())
             ->get('/hr/timekeeping/overtime')
@@ -31,7 +31,7 @@ class OvertimeTest extends TestCase
     {
         $employee = Employee::factory()->create();
 
-        $this->actingAs($this->hr())->post('/hr/timekeeping/overtime', [
+        $this->actingAs($this->loginFor($employee))->post('/hr/timekeeping/overtime', [
             'employee_id' => $employee->id,
             'date' => '2026-03-10',
             'start_time' => '17:00',
@@ -46,7 +46,7 @@ class OvertimeTest extends TestCase
     {
         $employee = Employee::factory()->create();
 
-        $this->actingAs($this->hr())->post('/hr/timekeeping/overtime', [
+        $this->actingAs($this->loginFor($employee))->post('/hr/timekeeping/overtime', [
             'employee_id' => $employee->id,
             'date' => '2026-03-10',
             'start_time' => '22:00',
@@ -80,7 +80,7 @@ class OvertimeTest extends TestCase
     public function test_a_duplicate_open_request_for_the_same_day_is_rejected(): void
     {
         $employee = Employee::factory()->create();
-        $hr = $this->hr();
+        $filer = $this->loginFor($employee);
 
         $payload = [
             'employee_id' => $employee->id,
@@ -90,8 +90,8 @@ class OvertimeTest extends TestCase
             'reason' => 'Backlog clearing work.',
         ];
 
-        $this->actingAs($hr)->post('/hr/timekeeping/overtime', $payload)->assertRedirect();
-        $this->actingAs($hr)->post('/hr/timekeeping/overtime', $payload)
+        $this->actingAs($filer)->post('/hr/timekeeping/overtime', $payload)->assertRedirect();
+        $this->actingAs($filer)->post('/hr/timekeeping/overtime', $payload)
             ->assertSessionHasErrors('date');
 
         $this->assertDatabaseCount('overtime_requests', 1);
@@ -103,7 +103,7 @@ class OvertimeTest extends TestCase
         $supervisor = Employee::factory()->create(['user_id' => $supervisorUser->id]);
         $report = Employee::factory()->create(['supervisor_id' => $supervisor->id]);
 
-        $request = $this->file($report, $this->hr());
+        $request = $this->file($report);
 
         $this->actingAs($supervisorUser)
             ->post("/hr/timekeeping/overtime/{$request->id}/decide", [
@@ -124,7 +124,7 @@ class OvertimeTest extends TestCase
         $user = User::factory()->supervisor()->create();
         $employee = Employee::factory()->create(['user_id' => $user->id]);
 
-        $request = $this->file($employee, $this->hr());
+        $request = $this->file($employee);
 
         $this->actingAs($user)
             ->post("/hr/timekeeping/overtime/{$request->id}/decide", ['status' => 'approved'])
@@ -138,7 +138,7 @@ class OvertimeTest extends TestCase
         $user = User::factory()->supervisor()->create();
         Employee::factory()->create(['user_id' => $user->id]);
 
-        $request = $this->file(Employee::factory()->create(), $this->hr());
+        $request = $this->file(Employee::factory()->create());
 
         $this->actingAs($user)
             ->post("/hr/timekeeping/overtime/{$request->id}/decide", ['status' => 'approved'])
@@ -147,7 +147,7 @@ class OvertimeTest extends TestCase
 
     public function test_a_decided_request_cannot_be_decided_again(): void
     {
-        $request = $this->file(Employee::factory()->create(), $this->hr());
+        $request = $this->file(Employee::factory()->create());
         $hr = $this->hr();
 
         $this->actingAs($hr)->post("/hr/timekeeping/overtime/{$request->id}/decide", [
@@ -165,7 +165,7 @@ class OvertimeTest extends TestCase
     {
         $user = User::factory()->create();
         $employee = Employee::factory()->create(['user_id' => $user->id]);
-        $request = $this->file($employee, $this->hr());
+        $request = $this->file($employee);
 
         $this->actingAs($user)
             ->post("/hr/timekeeping/overtime/{$request->id}/cancel")
@@ -177,8 +177,8 @@ class OvertimeTest extends TestCase
     public function test_only_approved_hours_are_summarised(): void
     {
         $hr = $this->hr();
-        $approved = $this->file(Employee::factory()->create(), $hr);
-        $this->file(Employee::factory()->create(), $hr);
+        $approved = $this->file(Employee::factory()->create());
+        $this->file(Employee::factory()->create());
 
         $this->actingAs($hr)->post("/hr/timekeeping/overtime/{$approved->id}/decide", [
             'status' => 'approved',
@@ -196,8 +196,10 @@ class OvertimeTest extends TestCase
 
     public function test_a_reason_is_required(): void
     {
-        $this->actingAs($this->hr())->post('/hr/timekeeping/overtime', [
-            'employee_id' => Employee::factory()->create()->id,
+        $employee = Employee::factory()->create();
+
+        $this->actingAs($this->loginFor($employee))->post('/hr/timekeeping/overtime', [
+            'employee_id' => $employee->id,
             'date' => '2026-03-10',
             'start_time' => '17:00',
             'end_time' => '19:00',
@@ -205,14 +207,99 @@ class OvertimeTest extends TestCase
         ])->assertSessionHasErrors('reason');
     }
 
+    public function test_hr_cannot_file_overtime_for_somebody_else(): void
+    {
+        $employee = Employee::factory()->create();
+        $hr = $this->hr();
+        Employee::factory()->create(['user_id' => $hr->id]);
+
+        // HR decides on these, so HR filing one would make the same person
+        // the claimant and an approver of the claim.
+        $this->actingAs($hr)->post('/hr/timekeeping/overtime', [
+            'employee_id' => $employee->id,
+            'date' => '2026-03-10',
+            'start_time' => '17:00',
+            'end_time' => '19:00',
+            'reason' => 'Filing on behalf of a driver.',
+        ])->assertSessionHasErrors('employee_id');
+
+        $this->assertDatabaseCount('overtime_requests', 0);
+    }
+
+    public function test_an_account_with_no_employee_record_cannot_file_at_all(): void
+    {
+        // A pure system account has no 201 file, so it has no overtime to
+        // claim — the form is not offered and the endpoint refuses it.
+        $this->actingAs($this->hr())
+            ->post('/hr/timekeeping/overtime', [
+                'employee_id' => Employee::factory()->create()->id,
+                'date' => '2026-03-10',
+                'start_time' => '17:00',
+                'end_time' => '19:00',
+                'reason' => 'Extra dispatch coverage required.',
+            ])
+            ->assertForbidden();
+    }
+
+    public function test_hr_cannot_edit_somebody_elses_request(): void
+    {
+        $request = $this->file(Employee::factory()->create());
+
+        $this->actingAs($this->hr())
+            ->put("/hr/timekeeping/overtime/{$request->id}", [
+                'employee_id' => $request->employee_id,
+                'date' => '2026-03-11',
+                'start_time' => '17:00',
+                'end_time' => '18:00',
+                'reason' => 'Trimmed by HR without asking.',
+            ])
+            ->assertForbidden();
+    }
+
+    public function test_hr_still_sees_and_decides_on_everybody_s_requests(): void
+    {
+        $this->file(Employee::factory()->create());
+        $request = $this->file(Employee::factory()->create());
+
+        $hr = $this->hr();
+
+        $this->actingAs($hr)
+            ->get('/hr/timekeeping/overtime')
+            ->assertInertia(fn (Assert $page) => $page->has('requests.data', 2));
+
+        $this->actingAs($hr)
+            ->post("/hr/timekeeping/overtime/{$request->id}/decide", ['status' => 'approved'])
+            ->assertRedirect();
+
+        $this->assertSame(OvertimeRequest::STATUS_APPROVED, $request->fresh()->status);
+    }
+
     private function hr(): User
     {
         return User::factory()->hrStaff()->create();
     }
 
-    private function file(Employee $employee, User $actor): OvertimeRequest
+    /**
+     * The login an employee files with, provisioned if the record has none —
+     * which is what HR does from the employee form. Overtime is now filed by
+     * the person claiming it and by nobody else, so every test that needs a
+     * request on the table needs one of these.
+     */
+    private function loginFor(Employee $employee): User
     {
-        $this->actingAs($actor)->post('/hr/timekeeping/overtime', [
+        if ($employee->user_id !== null) {
+            return $employee->user;
+        }
+
+        $user = User::factory()->create();
+        $employee->update(['user_id' => $user->id]);
+
+        return $user;
+    }
+
+    private function file(Employee $employee): OvertimeRequest
+    {
+        $this->actingAs($this->loginFor($employee))->post('/hr/timekeeping/overtime', [
             'employee_id' => $employee->id,
             'date' => now()->subDay()->toDateString(),
             'start_time' => '17:00',

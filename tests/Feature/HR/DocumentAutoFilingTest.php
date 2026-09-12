@@ -326,7 +326,7 @@ class DocumentAutoFilingTest extends TestCase
     {
         Storage::fake('local');
 
-        config(['scanner.driver' => 'ollama', 'scanner.ollama.host' => 'http://127.0.0.1:11434']);
+        config(['scanner.driver' => 'gemini', 'scanner.gemini.api_key' => 'test-key']);
 
         // Somebody has to be signed in: storeDocument() stamps uploaded_by,
         // which stays the person who fed the batch through even when the

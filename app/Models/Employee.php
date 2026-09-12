@@ -98,6 +98,62 @@ class Employee extends Model
         return $this->hasMany(EmployeeDocument::class);
     }
 
+    public function attendanceLogs(): HasMany
+    {
+        return $this->hasMany(AttendanceLog::class);
+    }
+
+    public function leaveRequests(): HasMany
+    {
+        return $this->hasMany(LeaveRequest::class);
+    }
+
+    // --- Educational & qualification records -----------------------------
+
+    public function educations(): HasMany
+    {
+        return $this->hasMany(EmployeeEducation::class);
+    }
+
+    public function trainings(): HasMany
+    {
+        return $this->hasMany(EmployeeTraining::class);
+    }
+
+    public function skills(): HasMany
+    {
+        return $this->hasMany(EmployeeSkill::class);
+    }
+
+    /**
+     * Warnings and suspensions on record, from Core 4 or from HR directly.
+     *
+     * Nothing here changes a payslip or a time record on its own —
+     * `PayrollReadinessChecker` raises an unpaid suspension as a warning and
+     * HR decides. See `DisciplinaryAction` for why.
+     */
+    public function disciplinaryActions(): HasMany
+    {
+        return $this->hasMany(DisciplinaryAction::class);
+    }
+
+    /**
+     * The furthest this employee got, derived rather than stored.
+     *
+     * A stored "highest attainment" is a second answer to a question the rows
+     * already answer, and it goes stale the first time somebody adds a degree
+     * and forgets to move the flag. The ladder's order lives in
+     * `config/qualifications.php`, so this reads it rather than hard-coding
+     * one — and an unknown level ranks last, so a level dropped from config
+     * cannot outrank a real one.
+     */
+    public function highestEducation(): ?EmployeeEducation
+    {
+        return $this->educations
+            ->sortByDesc(fn (EmployeeEducation $education) => $education->rank())
+            ->first();
+    }
+
     public function separations(): HasMany
     {
         return $this->hasMany(Separation::class);
@@ -243,6 +299,30 @@ class Employee extends Model
             // somebody acted, and the staleness window is counted from it.
             'license_verified_at' => 'datetime',
             'basic_salary' => 'decimal:2',
+
+            /*
+             * Encrypted at rest — the fields that make a stolen database dump
+             * worth stealing. A name and a department are what a colleague
+             * already knows; an SSS number, a TIN and a bank account are what
+             * somebody opens a loan with, and under RA 10173 they are
+             * sensitive personal information.
+             *
+             * `viewSensitive` already decides who may *see* them; this decides
+             * what is readable in the file the database sits in, which is a
+             * different question and the one an application gate cannot answer.
+             *
+             * The cost: an encrypted column cannot be searched or indexed.
+             * Nothing here needs that — duplicate detection loads the rows and
+             * compares in PHP (`RecordIntegrityChecker::sharedNumbers()`), and
+             * `scopeSearch` never covered these. "Find the employee with this
+             * TIN" would want a blind index rather than plaintext.
+             */
+            'sss_number' => 'encrypted',
+            'philhealth_number' => 'encrypted',
+            'pagibig_number' => 'encrypted',
+            'tin' => 'encrypted',
+            'bank_account_number' => 'encrypted',
+            'drivers_license_number' => 'encrypted',
         ];
     }
 }

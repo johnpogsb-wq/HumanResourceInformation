@@ -102,6 +102,47 @@ class ClientController extends Controller
                         : null,
                 ]),
             ]),
+            /*
+             * Who can be sent somewhere, for the deploy picker.
+             *
+             * The whole active roster rather than only internal staff: moving
+             * somebody between clients is the commoner act, and a list that
+             * offered only the undeployed would answer the rarer half of the
+             * question. Their current posting rides along so the picker can
+             * say what the move is *from* — sending a driver who is already on
+             * another client's site is a decision, not a fill-in.
+             *
+             * The same four fields the cards carry, and for the same reason:
+             * this is master data, so it holds no salary and no 201 file.
+             */
+            'deployable' => Employee::query()
+                ->where('status', 'active')
+                // Eager-loaded rather than read per row: the picker holds the
+                // whole roster, so a lazy relation here is forty queries to
+                // draw one list.
+                ->with(['client:id,name', 'position:id,title', 'department:id,name'])
+                ->orderBy('last_name')
+                ->orderBy('first_name')
+                ->get([
+                    'id', 'employee_number', 'first_name', 'middle_name', 'last_name',
+                    'suffix', 'client_id', 'position_id', 'department_id',
+                ])
+                ->map(fn (Employee $employee) => [
+                    'id' => $employee->id,
+                    'employee_number' => $employee->employee_number,
+                    'full_name' => $employee->full_name,
+                    /*
+                     * The job is the whole basis of the decision — a client
+                     * asking for drivers is not asking for whoever is free,
+                     * and a picker that showed only names made "can this
+                     * person do it" a question you had to leave the screen to
+                     * answer.
+                     */
+                    'position' => $employee->position?->title,
+                    'department' => $employee->department?->name,
+                    'client_id' => $employee->client_id,
+                    'client_name' => $employee->client?->name,
+                ]),
             'filters' => ['search' => $search],
             'wageRegions' => $regions
                 ->map(fn (array $region, string $key) => [

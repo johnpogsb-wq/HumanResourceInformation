@@ -34,11 +34,20 @@ class StoreOvertimeRequestRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
-            // Employees may only file for themselves; HR may file for anyone.
+            /*
+             * Everybody files their own, HR included.
+             *
+             * Enforced here rather than only hidden on the form, because the
+             * form was never the rule — the picker is gone, and a posted
+             * employee_id that is not the filer's is still refused. See
+             * OvertimeRequestPolicy::create for why HR lost the exemption.
+             */
             $user = $this->user();
 
-            if (! $user->isHrAdmin() && (int) $this->input('employee_id') !== $user->employee?->id) {
+            if ((int) $this->input('employee_id') !== $user->employee?->id) {
                 $validator->errors()->add('employee_id', 'You can only file overtime for yourself.');
+
+                return;
             }
 
             if (! Employee::whereKey($this->input('employee_id'))->exists()) {

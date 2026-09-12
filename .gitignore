@@ -20,7 +20,6 @@
 /auth.json
 /database/database.sqlite
 /node_modules
-/public/build
 /public/hot
 /public/storage
 /storage/*.key
@@ -29,3 +28,11 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Debris from `curl` testing against the local site. Both hold real
+# credentials — a `primepower-session` cookie and an `XSRF-TOKEN` — and three
+# of these were sitting untracked in the working tree waiting to be committed
+# to a public repository. Ignored by name rather than trusted to be cleaned up.
+cookies.txt
+/storage/cookies.txt
+/storage/*response*.html

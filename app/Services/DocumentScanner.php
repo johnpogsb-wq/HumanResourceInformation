@@ -55,9 +55,23 @@ class DocumentScanner
     public const TYPE_FROM_MODEL = 'model';
 
     /**
-     * Kept low deliberately. The answer is a handful of short fields, and a
-     * cap this size cannot truncate one — but it does stop a runaway
-     * response from costing real money on a blurry photo.
+     * Kept low deliberately, to stop a runaway response costing real money on
+     * a blurry photo.
+     *
+     * **It said here that a cap this size "cannot truncate" the answer, and
+     * that was the bug.** On a thinking model the budget is not spent on the
+     * answer alone: Gemini's `thoughtsTokenCount` is charged against
+     * `maxOutputTokens` too, and a real 201-file photograph is exactly the
+     * input it thinks hardest about. Measured on one synthetic card, thinking
+     * took 458–574 tokens of the 1024 — and the failure it produces is the
+     * worst-shaped one available, because the JSON is cut mid-string:
+     *
+     *     {"document_type": "DIGITAL TIN ID",
+     *
+     * which `json_decode` refuses, so a document the model read *correctly*
+     * reaches the form as "nothing found". That is why `thinkingConfig` is
+     * sent below, and why a truncation is now logged rather than counted as
+     * an empty answer.
      */
     private const MAX_TOKENS = 1024;
 
@@ -69,18 +83,21 @@ class DocumentScanner
      * False when the configured driver has nothing to call — the feature
      * stays dark rather than offering a button that cannot work.
      *
-     * Deliberately a config question, not a live one. Pinging Ollama here
-     * would answer "is it running *right now*", which is a better button but
-     * puts an HTTP call in every page render and makes the test suite depend
-     * on what happens to be running on the machine. A server that is down is
-     * handled where every other failure is: read() logs it and returns null,
-     * the form stays empty, and HR types the fields.
+     * Deliberately a config question, not a live one. Calling the provider
+     * here would answer "does this key work *right now*", which is a better
+     * button but puts an HTTP request in every page render and makes the test
+     * suite depend on a third party being up. A revoked key or an exhausted
+     * quota is handled where every other failure is: read() logs it and
+     * returns null, the form stays empty, and HR types the fields.
+     *
+     * `php artisan scanner:check` is the other half of that bargain — one
+     * real image through the real driver, run deliberately.
      */
     public function isEnabled(): bool
     {
         return match (config('scanner.driver')) {
-            'ollama' => filled(config('scanner.ollama.host')),
             'gemini' => filled(config('scanner.gemini.api_key')),
+            'openrouter' => filled(config('scanner.openrouter.api_key')),
             'anthropic' => filled(config('scanner.api_key')),
             default => false,
         };
@@ -398,71 +415,29 @@ class DocumentScanner
     private function ask(UploadedFile $file, string $prompt, array $schema): ?array
     {
         return match (config('scanner.driver')) {
-            'ollama' => $this->readWithOllama($file, $prompt, $schema),
             'gemini' => $this->readWithGemini($file, $prompt, $schema),
+            'openrouter' => $this->readWithOpenRouter($file, $prompt, $schema),
             default => $this->readWithAnthropic($file, $prompt, $schema),
         };
     }
 
     /**
-     * Reads the document on this machine.
+     * Reads the document through Google's hosted model — the default.
      *
-     * Ollama takes the JSON schema directly as `format`, which is the same
-     * schema the Anthropic path sends — so both drivers are constrained to
-     * the same shape, and normalise() does not care which one answered.
+     * Free at the tier this project runs on, and reachable from anywhere,
+     * which is what a deployed instance needs. There was a local driver once
+     * and it was the default; it went because it could not run on the server,
+     * which made it a privacy control that was switched off in the only place
+     * it would have mattered.
      *
-     * @return array<string, mixed>|null null when the call failed
-     */
-    private function readWithOllama(UploadedFile $file, string $prompt, array $schema): ?array
-    {
-        try {
-            $response = Http::timeout((int) config('scanner.ollama.timeout'))
-                ->post(config('scanner.ollama.host').'/api/generate', [
-                    'model' => config('scanner.ollama.model'),
-                    'system' => $prompt,
-                    'prompt' => 'Read this document.',
-                    'images' => [base64_encode(file_get_contents($file->getRealPath()))],
-                    'format' => $schema['schema'],
-                    'stream' => false,
-                    'options' => ['num_predict' => self::MAX_TOKENS],
-                ]);
-        } catch (ConnectionException $exception) {
-            // Ollama not running, or the model still loading past the timeout.
-            // Same outcome as any other failed scan: the form stays empty and
-            // HR types the fields, exactly as before the feature existed.
-            Log::warning('Document scan failed to reach Ollama', [
-                'message' => $exception->getMessage(),
-            ]);
-
-            return null;
-        }
-
-        if ($response->failed()) {
-            Log::warning('Document scan rejected by Ollama', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
-            return null;
-        }
-
-        // Always json_decode — never string-match a model's output.
-        return json_decode((string) $response->json('response'), true) ?? [];
-    }
-
-    /**
-     * Reads the document through Google's hosted model.
+     * So the trade-off it used to avoid is now simply the situation: a
+     * 201-file scan is a photograph of somebody's PhilSys ID, and sending it
+     * here is a cross-border transfer of personal data under RA 10173. That
+     * obligation is met with disclosure and consent on the employee's side,
+     * not with a config value — there is no driver left that sidesteps it.
      *
-     * The driver that exists for *deployment*. Ollama is the better answer on
-     * a machine that can run it — the image never leaves the host — but it has
-     * to be installed and running on whatever serves the app, and a small VPS
-     * cannot hold even a 2.2 GB vision model. This one runs from anywhere.
-     *
-     * The trade-off is the one Ollama was chosen to avoid: a 201-file scan is
-     * a photograph of somebody's PhilSys ID, and sending it here is a
-     * cross-border transfer of personal data under RA 10173. A deployment
-     * using this driver needs the consent and disclosure that goes with that;
-     * it is not a decision to make silently by editing an env file.
+     * Of the three, this is the one to prefer: a single named processor.
+     * OpenRouter is a broker, so the same image reaches two.
      *
      * @return array<string, mixed>|null null when the call failed
      */
@@ -560,6 +535,33 @@ class DocumentScanner
                         'responseMimeType' => 'application/json',
                         'responseJsonSchema' => $schema['schema'],
                         'maxOutputTokens' => self::MAX_TOKENS,
+
+                        /*
+                         * Thinking off, and this is a design statement rather
+                         * than a tuning knob.
+                         *
+                         * This call is **transcription**: read what is printed
+                         * and hand back the fields. Every judgement the system
+                         * makes about a document is made afterwards, in PHP —
+                         * `resolveType()` ranks five sources of evidence,
+                         * `nameMatches()` compares the name, Carbon re-parses
+                         * the dates — precisely because the small model is
+                         * good at reading and poor at judging. So the thinking
+                         * it does here is spent on a decision this code does
+                         * not use, and it is charged against the same budget
+                         * the answer has to fit in.
+                         *
+                         * Measured: 458–574 thinking tokens against a 1024
+                         * budget on a synthetic card, and a real photograph is
+                         * harder. With it off, the whole answer came back in
+                         * 99 tokens and still fit inside 600.
+                         *
+                         * Gemini-only. `maxOutputTokens` is shared with the
+                         * other two drivers; this field is not, and neither is
+                         * the failure — OpenRouter and Anthropic are not
+                         * spending this budget on thought.
+                         */
+                        'thinkingConfig' => ['thinkingBudget' => 0],
                     ],
                 ]);
         } catch (ConnectionException $exception) {
@@ -634,8 +636,212 @@ class DocumentScanner
             }
         }
 
+        /*
+         * `finish_reason` is the field that names the cause, and logging only
+         * the top-level keys is what made this undiagnosable for two days.
+         *
+         * The envelope looks perfectly healthy when the answer is truncated —
+         * `candidates`, `usageMetadata`, `modelVersion` all present — so the
+         * old line reported the one thing that is identical in the working and
+         * the broken case. `MAX_TOKENS` here means the reply was cut off
+         * mid-JSON and the reading is *recoverable* by widening the budget or
+         * taking thought out of it; `SAFETY` or `RECITATION` mean the model
+         * declined, which is a different problem with a different fix. The
+         * same mistake as replacing the scanned `heading` with a derived
+         * label: the evidence that says what to fix must survive the failure.
+         *
+         * The text is logged by *length and head* rather than in full — it is
+         * a transcription of somebody's government ID, and the log is not
+         * where that belongs. Thirty characters is enough to see that JSON
+         * started and stopped.
+         */
+        $raw = data_get($body, 'candidates.0.content.parts.0.text');
+
         Log::warning('Gemini returned no parseable JSON', [
             'keys' => array_keys($body),
+            'finish_reason' => data_get($body, 'candidates.0.finishReason'),
+            'thoughts_tokens' => data_get($body, 'usageMetadata.thoughtsTokenCount'),
+            'output_tokens' => data_get($body, 'usageMetadata.candidatesTokenCount'),
+            'text_length' => is_string($raw) ? strlen($raw) : null,
+            'text_head' => is_string($raw) ? substr($raw, 0, 30) : null,
+        ]);
+
+        return [];
+    }
+
+    /**
+     * Reads the document through OpenRouter.
+     *
+     * OpenAI-shaped, which makes this the least inventive of the three
+     * envelopes: one `messages` array, the image as an `image_url` part
+     * carrying a data URI, and the schema in `response_format`. The only real
+     * translation is the wrapper — `schema()` returns
+     * `['type' => 'json_schema', 'schema' => …]` and this endpoint wants the
+     * schema one level deeper, under a *named* `json_schema` object. Gemini
+     * takes the same inner schema as `responseJsonSchema` and Anthropic as
+     * `outputConfig.format`; all three are handed the identical constraint,
+     * which is the only reason everything downstream of read() can stay
+     * driver-agnostic.
+     *
+     * `strict` is what makes the schema binding rather than advisory. Without
+     * it a model may answer prose that merely resembles the shape, and the
+     * failure is silent: normalise() finds nothing and the form is blank.
+     *
+     * **This driver reaches a broker, not a provider.** See
+     * config/scanner.php for what that means for RA 10173 — the short of it
+     * is two processors rather than one, so `data_collection: deny` is sent
+     * on every request rather than left to a dashboard setting somebody has
+     * to remember.
+     *
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>|null null when the call failed
+     */
+    private function readWithOpenRouter(UploadedFile $file, string $prompt, array $schema): ?array
+    {
+        $image = 'data:'.$file->getMimeType().';base64,'
+            .base64_encode(file_get_contents($file->getRealPath()));
+
+        try {
+            /*
+             * Retried like the Gemini driver and for the same reason: a broker
+             * in front of a shared pool answers 429 under load, and a driver
+             * that gave up on the first one would look broken while being
+             * perfectly configured. Only 429 and 5xx are waited out — a 401 is
+             * an answer, not a queue.
+             *
+             * `$throw` stays at its default because Laravel's retry only fires
+             * on a thrown exception; the throw is caught below and logged with
+             * the same fields a plain failure carries.
+             */
+            $response = Http::timeout((int) config('scanner.openrouter.timeout'))
+                ->retry(
+                    (int) config('scanner.openrouter.retries'),
+                    (int) config('scanner.openrouter.retry_delay_ms'),
+                    fn ($exception) => $exception instanceof ConnectionException
+                        || ($exception->response?->status() ?? 0) === 429
+                        || ($exception->response?->status() ?? 0) >= 500,
+                )
+                ->withToken((string) config('scanner.openrouter.api_key'))
+                ->withHeaders([
+                    // OpenRouter's own attribution headers. Not required, and
+                    // a wrong value is not an error — but a key nobody can
+                    // trace back to this system is a key nobody can turn off.
+                    'HTTP-Referer' => (string) config('scanner.openrouter.referer'),
+                    'X-Title' => (string) config('scanner.openrouter.title'),
+                ])
+                ->post((string) config('scanner.openrouter.endpoint'), [
+                    'model' => config('scanner.openrouter.model'),
+
+                    /*
+                     * The prompt is a `system` message here rather than a
+                     * first-class field — the one structural difference from
+                     * Gemini, which carries it in `systemInstruction`.
+                     */
+                    'messages' => [
+                        ['role' => 'system', 'content' => $prompt],
+                        [
+                            'role' => 'user',
+                            'content' => [
+                                ['type' => 'text', 'text' => 'Read this document.'],
+                                ['type' => 'image_url', 'image_url' => ['url' => $image]],
+                            ],
+                        ],
+                    ],
+
+                    'response_format' => [
+                        'type' => 'json_schema',
+                        'json_schema' => [
+                            'name' => 'document',
+                            // Binding rather than advisory — see above.
+                            'strict' => true,
+                            'schema' => $schema['schema'],
+                        ],
+                    ],
+
+                    'max_tokens' => self::MAX_TOKENS,
+
+                    /*
+                     * Routing preferences, sent per request so the guarantee
+                     * travels with the code that depends on it rather than
+                     * living in a dashboard nobody reads back.
+                     *
+                     * `data_collection: deny` keeps the scan away from
+                     * upstreams that retain or train on it. A 201-file
+                     * photograph is the wrong thing to leave in somebody's
+                     * training set, and it is the difference between one
+                     * cross-border transfer and an indefinite one.
+                     */
+                    'provider' => ['data_collection' => 'deny'],
+                ]);
+        } catch (ConnectionException $exception) {
+            Log::warning('Document scan failed to reach OpenRouter', [
+                'message' => $exception->getMessage(),
+            ]);
+
+            return null;
+        } catch (RequestException $exception) {
+            Log::warning('Document scan rejected by OpenRouter', [
+                'status' => $exception->response?->status(),
+                'body' => $exception->response?->body(),
+                'attempts_exhausted' => true,
+            ]);
+
+            return null;
+        }
+
+        if ($response->failed()) {
+            /*
+             * The body carries OpenRouter's reason, and the three that matter
+             * look identical from the form: a bad key, a model that does not
+             * exist, and a model that exists but cannot take an image or
+             * honour a schema. Only the log tells them apart, which is why the
+             * whole body goes in.
+             */
+            Log::warning('Document scan rejected by OpenRouter', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            return null;
+        }
+
+        return $this->firstOpenRouterJson($response->json() ?? []);
+    }
+
+    /**
+     * Digs the model's answer out of OpenRouter's envelope.
+     *
+     * Defensive for the same reason firstGeminiJson() is: the response shape
+     * is the part of a third-party API most likely to move, and a missing key
+     * must degrade to "the scan found nothing" rather than throw on an
+     * employee's upload form.
+     *
+     * An upstream that ignored `response_format` answers prose here. That is
+     * not an exception — it is a model that cannot do the job — so it is
+     * logged as such and the form stays empty.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>
+     */
+    private function firstOpenRouterJson(array $body): array
+    {
+        $content = data_get($body, 'choices.0.message.content');
+
+        if (is_string($content) && trim($content) !== '') {
+            // Always json_decode — never string-match a model's output.
+            $decoded = json_decode($content, true);
+
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        Log::warning('OpenRouter returned no parseable JSON', [
+            'model' => config('scanner.openrouter.model'),
+            'keys' => array_keys($body),
+            // OpenRouter reports a refusal separately from the content, and it
+            // is the one field that says *why* nothing came back.
+            'refusal' => data_get($body, 'choices.0.message.refusal'),
         ]);
 
         return [];
@@ -922,6 +1128,29 @@ class DocumentScanner
         - **A value is what is printed beside a label, not the label itself.**
           "NBI ID NO. / N-A1234567890" means the number is N-A1234567890 —
           never fold the caption into the value you report.
+        - **NBI Clearance / Official Seal Recognition:** An authentic NBI
+          clearance features an official circular NBI dry seal / security watermark
+          (displaying the Philippine sun with rays, scales of justice, and
+          National Bureau of Investigation / Department of Justice seal stamped
+          partially over the applicant's photograph and onto the patterned security
+          paper). When this official seal or watermark is visible, classify the
+          document as `clearance` and set title to "NBI Clearance".
+        - **TIN ID / BIR Seal & Authenticity Check:** An authentic BIR TIN ID
+          card has these security features: (1) the official circular BIR seal
+          at the upper-right corner, bearing the Bureau of Internal Revenue /
+          Department of Finance emblem; (2) the heading "Republic of the
+          Philippines / Department of Finance / BUREAU OF INTERNAL REVENUE"
+          printed vertically along the right side; (3) a large 9-digit
+          TAXPAYER IDENTIFICATION NUMBER (format: XXX-XXX-XXX); (4) a "TIN ID
+          ISSUE / EXPIRY DATE" field — check that the expiry date has not
+          passed; (5) a green-patterned security paper background; (6) a QR
+          code at the bottom with a DIGITAL TIN ID CONTROL NUMBER. When the
+          BIR seal is visible and the card layout matches, classify as
+          `government_id` and set title to "TIN ID". If the BIR seal is
+          missing, the QR code is absent, the security paper pattern is wrong,
+          text appears misaligned or digitally altered, or the expiry date
+          has passed, note these findings in the `note` field and lower
+          confidence accordingly.
         - Report only what is legible on the document. Never infer, complete, or
           invent a number or a date that is not printed there.
         - If a field is unreadable or absent, return null for it. A null is
@@ -1087,6 +1316,29 @@ class DocumentScanner
         }
 
         /*
+         * The same clearing, for the cards `type_cannot_have` cannot reach.
+         *
+         * A TIN ID is a `government_id` and so is a passport, so the fact
+         * cannot be stated per type — see `neverExpires()`. The date is
+         * dropped for the same reason a PSA's is: a TIN is issued for life,
+         * so an expiry on one is the model answering a question the card does
+         * not have, and keeping it would put a permanent number into
+         * `CredentialExpiryScanner`'s renewal queue for good.
+         *
+         * The prompt now says a TIN ID carries no expiry — it used to assert
+         * the opposite, in as many words, which was the system *instructing*
+         * the hallucination. This is the guard behind that fix rather than a
+         * substitute for it: a model told the right thing can still read a
+         * control number or an issue date as an expiry.
+         */
+        $neverExpires = $this->neverExpires($type, $raw);
+
+        if ($neverExpires) {
+            $dates['expires_at'] = null;
+            $raw['expires_at'] = null;
+        }
+
+        /*
          * A civil registry document is read again, in its own terms.
          *
          * The general prompt asks for an ID card's fields — a number, an issue
@@ -1174,6 +1426,20 @@ class DocumentScanner
             'heading' => $this->text($raw['title'] ?? null, 200),
             'document_number' => $this->documentNumber($raw['document_number'] ?? null),
             ...$dates,
+
+            /*
+             * Whether there was an expiry to find at all, answered here so the
+             * panel has one thing to read.
+             *
+             * It used to be derived in the *component*, from a list of types
+             * the controller shipped down — which could only ever be right for
+             * types that never expire as a class, and a TIN ID is not one of
+             * those: it is a `government_id`, same as a passport. So a TIN ID
+             * showed "Not found" under Expires, which reads as the scanner
+             * having looked and missed rather than as a fact about the card,
+             * and invites HR to type a date that does not exist.
+             */
+            'never_expires' => $neverExpires,
             'name_on_document' => $this->text($raw['name_on_document'] ?? null),
             // Compared in PHP, not by the model: filing a document under the
             // wrong employee is a real mistake, and the check for it should
@@ -1675,6 +1941,69 @@ class DocumentScanner
         }
 
         return null;
+    }
+
+    /**
+     * Whether this document carries no expiry date at all.
+     *
+     * Two sources, because the fact lives at two different grains and both are
+     * real:
+     *
+     * - **By type**, from `type_cannot_have` — a résumé, a PSA certificate, a
+     *   diploma, a transcript. Absolute for every document of that type.
+     * - **By which card it is**, from `non_expiring_ids` — and this is the one
+     *   the type list cannot express. `government_id` covers a TIN ID and a
+     *   passport at once: the first is issued for life, the second expires and
+     *   its expiry matters. So the card is identified from the heading printed
+     *   on it, which is evidence from the paper rather than the model's guess.
+     *
+     * Answering this in one place is what lets the upload panel say **"Does
+     * not expire"** rather than "Not found". The difference is not cosmetic:
+     * "Not found" reads as the scanner having looked and missed, which invites
+     * somebody to type a date that does not exist — and a date typed onto a
+     * TIN ID puts it in `CredentialExpiryScanner`'s renewal queue to be chased
+     * forever for a renewal that will never come.
+     *
+     * @param  array<string, mixed>  $raw
+     */
+    private function neverExpires(?string $type, array $raw): bool
+    {
+        if (in_array('expires_at', config("scanner.type_cannot_have.{$type}", []), true)) {
+            return true;
+        }
+
+        /*
+         * Scoped by the config's own key rather than by naming a type here,
+         * and the scoping is load-bearing: an NBI clearance prints a "VALID
+         * UNTIL" date and its letterhead names an agency, so a list read
+         * against every type would eventually clear a real expiry off a real
+         * credential. Only the type whose members disagree with each other is
+         * asked the question.
+         */
+        $cards = config("scanner.non_expiring_ids.{$type}", []);
+
+        if ($cards === []) {
+            return false;
+        }
+
+        // The same 200-character read of the heading `typeFromHeading()` uses:
+        // a letterhead runs longer than the other fields are capped at, and
+        // the words that name the issuer are often on its second line.
+        $heading = mb_strtolower((string) $this->text($raw['title'] ?? null, 200));
+
+        if ($heading === '') {
+            return false;
+        }
+
+        foreach ($cards as $keywords) {
+            foreach ($keywords as $keyword) {
+                if (str_contains($heading, $keyword)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

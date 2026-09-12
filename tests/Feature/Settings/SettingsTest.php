@@ -16,30 +16,38 @@ class SettingsTest extends TestCase
 
     // --- Access -----------------------------------------------------------
 
-    public function test_the_settings_root_lands_on_general(): void
+    public function test_the_settings_root_lands_on_the_section_menu(): void
     {
-        $this->actingAs($this->admin())->get('/settings')->assertRedirect('/settings/general');
+        $this->actingAs($this->admin())
+            ->get('/settings')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('Settings/Index'));
     }
 
     /**
-     * `/settings` always sent everybody to General, which is admin-only.
+     * `/settings` is a menu now, and the reason is worth keeping written down.
      *
-     * That was harmless while the only way in was a sidebar entry whose
-     * children were already filtered by role — nobody without the right could
-     * reach the root. Settings is now one door in the topbar and one in the
-     * user card, shown to everybody, so the door has to open onto a room they
-     * are allowed in.
+     * It used to redirect: first always to General, which is admin-only, so
+     * every other role was sent into a 403 by a door shown to everybody; then
+     * to General for an admin and Appearance for everybody else, which fixed
+     * the 403 and left the root with no page of its own. Neither answered the
+     * question a nav entry raises — a sidebar link that silently lands you on
+     * the company's regional formats has chosen a section on your behalf.
+     *
+     * So the assertion that matters is that every role reaches the same menu,
+     * rather than that each role reaches a different room.
      */
-    public function test_the_settings_root_lands_somewhere_every_role_may_open(): void
+    public function test_every_role_reaches_the_settings_menu(): void
     {
         foreach ([User::ROLE_HR_STAFF, User::ROLE_SUPERVISOR, User::ROLE_EMPLOYEE] as $role) {
             $this->actingAs(User::factory()->create(['role' => $role]))
                 ->get('/settings')
-                ->assertRedirect('/settings/appearance');
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page->component('Settings/Index'));
         }
 
-        // And the destination really is open to them — a redirect into a 403
-        // would be the same bug one hop further along.
+        // And a section the menu offers them really is open — a menu row into
+        // a 403 would be the same bug one hop further along.
         $this->actingAs(User::factory()->create(['role' => User::ROLE_EMPLOYEE]))
             ->get('/settings/appearance')
             ->assertOk();

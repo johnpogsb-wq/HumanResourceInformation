@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AttendanceLog;
+use App\Models\DisciplinaryAction;
 use App\Models\Employee;
 use App\Models\OvertimeRequest;
 use App\Models\PayrollPeriod;
@@ -53,6 +54,7 @@ class PayrollReadinessChecker
             $this->pendingOvertime($period),
             $this->employeesWithoutAttendance($period),
             $this->ratesBelowRegionalMinimum(),
+            $this->unservedSuspensions($period),
         ])->filter()->values();
 
         $blockers = $checks->where('severity', self::SEVERITY_BLOCKER)->count();
@@ -234,6 +236,101 @@ class PayrollReadinessChecker
             actionLabel: 'Review salaries',
             actionHref: '/hr/payroll/salaries',
             employees: $this->names($underpaid->map(fn (Employee $employee) => $employee->full_name)),
+        );
+    }
+
+    /**
+     * Unpaid suspensions covering days of this cutoff that the DTR does not
+     * account for.
+     *
+     * **This check is the whole of how a Core 4 suspension reaches pay, and the
+     * design decision it rests on is worth stating.** The shorter build was to
+     * let Core 4 post a suspension and have this system mark those days absent.
+     * That was rejected: a DTR another system can write is not a record of
+     * anything — the same argument that keeps employees out of
+     * `attendance_logs`, where they file a correction and somebody decides.
+     * Core 4 is another system and is no more entitled to it than an employee.
+     *
+     * So the suspension is a stated fact and this is the report. HR keys the
+     * days or decides not to, and either way a person decided.
+     *
+     * **A warning, never a blocker**, for the same reason the wage-floor check
+     * is one: the discrepancy is often legitimate. A suspension served over a
+     * rest day costs nothing; one that was lifted on appeal costs nothing; one
+     * HR has already keyed as absent is *already handled*, and this check
+     * would still see the suspension. Refusing to run payroll over any of
+     * those would strand everybody else unpaid over a difference of opinion
+     * about one person's Tuesday.
+     *
+     * The gap it leaves, stated: **an unpaid suspension nobody acts on is
+     * paid.** That is the deliberate cost of not letting another system move
+     * money in this one.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function unservedSuspensions(PayrollPeriod $period): ?array
+    {
+        $from = $period->start_date;
+        $to = $period->end_date;
+
+        $actions = DisciplinaryAction::query()
+            ->unpaidSuspensions()
+            ->overlapping($from, $to)
+            ->with('employee:id,first_name,middle_name,last_name,suffix')
+            ->get();
+
+        if ($actions->isEmpty()) {
+            return null;
+        }
+
+        /*
+         * What the DTR already accounts for, per employee: days marked absent
+         * or on leave inside the cutoff.
+         *
+         * Counted once for everybody rather than per action — a per-employee
+         * query here would be one round trip per suspension on a screen that
+         * loads before every payroll run.
+         */
+        $accountedFor = AttendanceLog::query()
+            ->whereIn('employee_id', $actions->pluck('employee_id')->unique())
+            ->whereBetween('log_date', [$from->toDateString(), $to->toDateString()])
+            ->whereIn('status', [
+                AttendanceLog::STATUS_ABSENT,
+                AttendanceLog::STATUS_ON_LEAVE,
+            ])
+            ->selectRaw('employee_id, count(*) as days')
+            ->groupBy('employee_id')
+            ->pluck('days', 'employee_id');
+
+        /*
+         * Only the ones where the suspension is longer than what the DTR
+         * explains. An employee whose four suspended days are already four
+         * absences needs no attention, and listing them would put a line on
+         * this panel that is already done — which is how a panel stops being
+         * read.
+         */
+        $unaccounted = $actions->filter(function (DisciplinaryAction $action) use ($from, $to, $accountedFor) {
+            return $action->daysWithin($from, $to)
+                > (int) ($accountedFor[$action->employee_id] ?? 0);
+        });
+
+        if ($unaccounted->isEmpty()) {
+            return null;
+        }
+
+        $days = $unaccounted->sum(fn (DisciplinaryAction $action) => $action->daysWithin($from, $to));
+
+        return $this->entry(
+            'unserved_suspensions',
+            self::SEVERITY_WARNING,
+            'Unpaid suspensions not reflected in the DTR',
+            $unaccounted->count().' employee(s) are on unpaid suspension covering '.$days
+                .' day(s) of this cutoff, and their attendance does not account for it. '
+                .'This system does not dock pay on another system\'s say-so — key the days on '
+                .'the DTR if the suspension was served, or leave it if it was lifted.',
+            'Open Period DTR',
+            '/hr/timekeeping/period',
+            $this->names($unaccounted->map(fn (DisciplinaryAction $a) => $a->employee?->full_name)),
         );
     }
 

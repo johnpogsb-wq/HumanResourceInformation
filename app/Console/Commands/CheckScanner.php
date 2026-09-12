@@ -13,10 +13,10 @@ use Illuminate\Support\Facades\File;
  * `DocumentScanner::isEnabled()` deliberately asks config rather than the
  * network — pinging on every page render would put an HTTP call in front of
  * every screen and tie the test suite to whatever happens to be running. The
- * cost of that choice is a real failure mode: a deployment with `OLLAMA_HOST`
- * still set but no Ollama behind it draws the Scan button and then fails
- * silently on every upload, and a Gemini key that has been revoked looks
- * exactly the same.
+ * cost of that choice is a real failure mode: a key that is present but wrong,
+ * revoked, or out of quota draws the Scan button and then fails silently on
+ * every upload. From the form, a bad key, an exhausted free tier, and a model
+ * that cannot read an image all look identical.
  *
  * This is the other half of that bargain. It is not run automatically and it
  * does not gate anything; it exists so somebody can *ask*, once, after a
@@ -142,8 +142,8 @@ class CheckScanner extends Command
     private function modelFor(string $driver): string
     {
         return match ($driver) {
-            'ollama' => (string) config('scanner.ollama.model'),
             'gemini' => (string) config('scanner.gemini.model'),
+            'openrouter' => (string) config('scanner.openrouter.model'),
             'anthropic' => (string) config('scanner.model'),
             default => '—',
         };
@@ -152,8 +152,8 @@ class CheckScanner extends Command
     private function endpointFor(string $driver): string
     {
         return match ($driver) {
-            'ollama' => (string) (config('scanner.ollama.host') ?: 'not set'),
             'gemini' => (string) config('scanner.gemini.endpoint'),
+            'openrouter' => (string) config('scanner.openrouter.endpoint'),
             'anthropic' => 'api.anthropic.com',
             default => '—',
         };
@@ -162,10 +162,10 @@ class CheckScanner extends Command
     private function whyDisabled(string $driver): string
     {
         return match ($driver) {
-            'ollama' => 'OLLAMA_HOST is empty.',
             'gemini' => 'GEMINI_API_KEY is empty.',
+            'openrouter' => 'OPENROUTER_API_KEY is empty.',
             'anthropic' => 'ANTHROPIC_API_KEY is empty.',
-            default => "SCANNER_DRIVER is \"{$driver}\", which is not one of ollama, gemini, or anthropic.",
+            default => "SCANNER_DRIVER is \"{$driver}\", which is not one of gemini, openrouter, or anthropic.",
         };
     }
 
@@ -173,15 +173,24 @@ class CheckScanner extends Command
     private function likelyCauses(string $driver): array
     {
         return match ($driver) {
-            'ollama' => [
-                'Ollama is not running on this machine — start it, or `ollama serve`.',
-                'The model was never pulled here: `ollama pull '.config('scanner.ollama.model').'`.',
-                'The first scan after a reboot loads the model into VRAM and can take ~40s.',
-            ],
             'gemini' => [
                 'The API key is wrong, revoked, or has no quota left.',
                 'The model name is not one this key can reach: '.config('scanner.gemini.model').'.',
                 'The server cannot reach generativelanguage.googleapis.com.',
+            ],
+            /*
+             * The model is the likely culprit here, not the key — which is
+             * the opposite of every other driver, and is why it is listed
+             * first. OpenRouter's catalogue is large and only some of it can
+             * take an image or honour a JSON schema; a model that can do
+             * neither answers prose, and prose reaches the form as a scan
+             * that simply found nothing.
+             */
+            'openrouter' => [
+                'The model cannot read images: '.config('scanner.openrouter.model').'.',
+                'The model ignores response_format, so it answered prose rather than JSON.',
+                'The API key is wrong, or the account has no credit.',
+                '`provider.data_collection: deny` may leave no upstream able to serve this model.',
             ],
             'anthropic' => [
                 'The API key is wrong or has no credit.',

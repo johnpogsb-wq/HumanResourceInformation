@@ -199,6 +199,136 @@ class ClientDeploymentTest extends TestCase
         $this->actingAs($user)->get('/hr/clients')->assertForbidden();
     }
 
+    // --- Deploying from the Clients screen ----------------------------------
+
+    public function test_deploying_moves_the_employee_and_the_category_together(): void
+    {
+        $client = $this->client();
+        $employee = Employee::factory()->create([
+            'employment_category' => Employee::CATEGORY_INTERNAL,
+            'client_id' => null,
+        ]);
+
+        $this->actingAs($this->hr())
+            ->patch("/hr/employees/{$employee->id}/deployment", ['client_id' => $client->id])
+            ->assertRedirect();
+
+        $employee->refresh();
+
+        $this->assertSame($client->id, $employee->client_id);
+        /*
+         * The pair is the point. `client_id` is prohibited on internal staff
+         * rather than ignored, so setting one without the category writes a
+         * record the employee form would refuse to save.
+         */
+        $this->assertSame(Employee::CATEGORY_EXTERNAL, $employee->employment_category);
+    }
+
+    public function test_recalling_clears_the_client_and_returns_them_to_internal(): void
+    {
+        $client = $this->client();
+        $employee = Employee::factory()->create([
+            'employment_category' => Employee::CATEGORY_EXTERNAL,
+            'client_id' => $client->id,
+        ]);
+
+        $this->actingAs($this->hr())
+            ->patch("/hr/employees/{$employee->id}/deployment", ['client_id' => null])
+            ->assertRedirect();
+
+        $employee->refresh();
+
+        $this->assertNull($employee->client_id);
+        // A stale client on somebody brought in-house keeps them in that
+        // client's billing and headcount — an error nobody goes looking for.
+        $this->assertSame(Employee::CATEGORY_INTERNAL, $employee->employment_category);
+    }
+
+    public function test_a_deactivated_client_cannot_be_deployed_to(): void
+    {
+        $client = $this->client(['is_active' => false]);
+        $employee = Employee::factory()->create();
+
+        // Kept so payroll and attendance keep what they were filed under, not
+        // so somebody new can be sent there.
+        $this->actingAs($this->hr())
+            ->patch("/hr/employees/{$employee->id}/deployment", ['client_id' => $client->id])
+            ->assertSessionHasErrors('client_id');
+
+        $this->assertNull($employee->fresh()->client_id);
+    }
+
+    public function test_deploying_leaves_the_position_and_department_alone(): void
+    {
+        $client = $this->client();
+        $employee = Employee::factory()->create();
+
+        $position = $employee->position_id;
+        $department = $employee->department_id;
+
+        $this->actingAs($this->hr())
+            ->patch("/hr/employees/{$employee->id}/deployment", ['client_id' => $client->id]);
+
+        $employee->refresh();
+
+        // A driver deployed to a client is still a driver; where they are sent
+        // is not what they do.
+        $this->assertSame($position, $employee->position_id);
+        $this->assertSame($department, $employee->department_id);
+    }
+
+    public function test_deploying_is_gated_on_updating_that_employee(): void
+    {
+        $client = $this->client();
+        $employee = Employee::factory()->create();
+
+        $user = User::factory()->create();
+        Employee::factory()->create(['user_id' => $user->id]);
+
+        /*
+         * Gated on EmployeePolicy::update for the *employee*, not on
+         * manageOrganization: that gate is for shaping the client list, and
+         * filing a person against one is a different act.
+         */
+        $this->actingAs($user)
+            ->patch("/hr/employees/{$employee->id}/deployment", ['client_id' => $client->id])
+            ->assertForbidden();
+    }
+
+    public function test_the_clients_screen_carries_who_can_be_deployed(): void
+    {
+        $this->client();
+        Employee::factory()->count(2)->create();
+        Employee::factory()->create(['status' => 'inactive']);
+
+        $this->actingAs($this->hr())
+            ->get('/hr/clients')
+            ->assertOk()
+            // Active roster only — somebody who has left is a record, not
+            // somebody who can be sent anywhere.
+            ->assertInertia(fn (Assert $page) => $page->has('deployable', 2));
+    }
+
+    public function test_the_picker_carries_the_job_being_deployed(): void
+    {
+        $this->client();
+
+        $employee = Employee::factory()->create();
+
+        /*
+         * The position is the basis of the decision — a client asking for
+         * drivers is not asking for whoever is free. Without it the picker
+         * showed names and numbers, and "can this person do the job" was a
+         * question you had to leave the screen to answer.
+         */
+        $this->actingAs($this->hr())
+            ->get('/hr/clients')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('deployable.0.position', $employee->position?->title)
+                ->where('deployable.0.department', $employee->department?->name),
+            );
+    }
+
     // --- Payroll grouping --------------------------------------------------
 
     /** @return array<string, mixed> */

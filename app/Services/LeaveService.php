@@ -65,6 +65,58 @@ class LeaveService
         return $days;
     }
 
+    /**
+     * Which days inside the range an approved leave covers, keyed
+     * `employeeId|Y-m-d`.
+     *
+     * This is the join between Modules 2 and 3, and it is what tells an
+     * absence from an AWOL. Without it the two modules each hold half the
+     * answer: attendance knows somebody did not come in, leave knows they
+     * were allowed not to, and nothing put the two together — so payroll
+     * deducted the absence *and* the unpaid leave for the same day, and a
+     * paid VL was docked as though it were unexcused.
+     *
+     * One query for however many employees. Expanded in PHP rather than by a
+     * date-generating join, because the expansion is a calendar walk and SQL
+     * dialects disagree about how to do one.
+     *
+     * A half day still counts as covered: the person was accounted for, which
+     * is the question this answers. How much of the day was worked is
+     * AttendanceCalculator's, off the punches.
+     *
+     * @param  array<int, int>  $employeeIds
+     * @return Collection<string, array{leave_type: string, is_paid: bool, request_id: int, is_half_day: bool}>
+     */
+    public function approvedLeaveDates(array $employeeIds, Carbon $from, Carbon $to): Collection
+    {
+        $covered = collect();
+
+        LeaveRequest::query()
+            ->with('leaveType:id,code,name,is_paid')
+            ->whereIn('employee_id', $employeeIds)
+            ->where('status', LeaveRequest::STATUS_APPROVED)
+            ->overlapping($from->toDateString(), $to->toDateString())
+            ->get()
+            ->each(function (LeaveRequest $request) use ($covered, $from, $to) {
+                // Only the part of the request that falls inside the range —
+                // a leave straddling the cutoff belongs to both periods, and
+                // each may only claim its own days.
+                $start = $request->start_date->copy()->max($from);
+                $end = $request->end_date->copy()->min($to);
+
+                for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+                    $covered->put("{$request->employee_id}|{$date->toDateString()}", [
+                        'leave_type' => $request->leaveType?->name ?? 'Leave',
+                        'is_paid' => (bool) $request->leaveType?->is_paid,
+                        'request_id' => $request->id,
+                        'is_half_day' => (bool) $request->is_half_day,
+                    ]);
+                }
+            });
+
+        return $covered;
+    }
+
     public function balanceFor(Employee $employee, LeaveType $type, ?int $year = null): LeaveBalance
     {
         $year ??= now()->year;

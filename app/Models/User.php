@@ -7,12 +7,19 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    /*
+     * TwoFactorAuthenticatable brings the secret, the recovery codes, and the
+     * `hasEnabledTwoFactorAuthentication()` the login flow checks. It does
+     * *not* hide either column — see `$hidden` below, which is where that has
+     * to be said, and which a test rather than a reading is what established.
+     */
+    use HasApiTokens, HasFactory, Notifiable, TwoFactorAuthenticatable;
 
     public const ROLE_ADMIN = 'admin';
 
@@ -51,6 +58,34 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+
+        /*
+         * The second factor itself.
+         *
+         * Listed here rather than assumed: `TwoFactorAuthenticatable` brings
+         * the behaviour but not the hiding — the starter kits add these two,
+         * and this project has no starter kit. Without them the secret and the
+         * recovery codes serialise like any other column, and the Settings
+         * screen puts the signed-in user's account into an Inertia payload —
+         * so they would have travelled to the browser, into the page cache,
+         * and into browser history, on every visit.
+         *
+         * Caught by a test rather than by review, which is the only reason it
+         * is not still true.
+         */
+        'two_factor_secret',
+        'two_factor_recovery_codes',
+
+        /*
+         * The emailed factor's outstanding code.
+         *
+         * A hash rather than the code itself, so this is the same class of
+         * thing as `password` two lines up and belongs in the same list for
+         * the same reason: the Settings screen serialises the signed-in user's
+         * own account, and nothing about a live sign-in code needs to reach
+         * the browser, the page cache, or browser history.
+         */
+        'otp_code_hash',
     ];
 
     /**
@@ -134,6 +169,9 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_active' => 'boolean',
             'must_change_password' => 'boolean',
+            'otp_enabled' => 'boolean',
+            'otp_expires_at' => 'datetime',
+            'otp_sent_at' => 'datetime',
         ];
     }
 }

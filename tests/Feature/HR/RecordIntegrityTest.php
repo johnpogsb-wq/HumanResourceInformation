@@ -190,7 +190,7 @@ class RecordIntegrityTest extends TestCase
 
         DocumentScan::create([
             'employee_id' => $employee->id,
-            'driver' => 'ollama',
+            'driver' => 'gemini',
             'proposed' => ['type' => 'clearance', 'name_on_document' => 'RIZAL, JOSE PROTACIO'],
         ]);
 
@@ -208,7 +208,7 @@ class RecordIntegrityTest extends TestCase
 
         DocumentScan::create([
             'employee_id' => $employee->id,
-            'driver' => 'ollama',
+            'driver' => 'gemini',
             'proposed' => ['type' => 'psa', 'name_on_document' => 'LORENZO BONTIGAO PIKIT PIKIT'],
         ]);
 
@@ -223,7 +223,7 @@ class RecordIntegrityTest extends TestCase
         foreach ([1, 2] as $i) {
             DocumentScan::create([
                 'employee_id' => $employee->id,
-                'driver' => 'ollama',
+                'driver' => 'gemini',
                 'proposed' => ['type' => 'clearance', 'name_on_document' => 'RIZAL, JOSE PROTACIO'],
             ]);
         }

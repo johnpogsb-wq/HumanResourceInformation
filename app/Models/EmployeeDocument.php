@@ -21,6 +21,15 @@ class EmployeeDocument extends Model
         // window and read as a qualification.
         'psa',
         'certificate',
+        /*
+         * Schooling, kept apart from `certificate` for the same reason `psa`
+         * is: a diploma is not a training card. It never expires, so filing
+         * one under a type the renewal window watches would put a degree in a
+         * queue to be chased forever — and the qualification records on the
+         * 201 file point at these two for the paper behind an attainment.
+         */
+        'diploma',
+        'transcript',
         'medical',
         'drivers_license',
         'other',

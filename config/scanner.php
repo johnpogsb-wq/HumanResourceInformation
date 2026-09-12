@@ -17,52 +17,41 @@ return [
     /*
     | Which model reads the document.
     |
-    | `ollama` runs it on this machine and is the default, for two reasons.
-    | The obvious one is cost — there is no bill. The one that actually
-    | decides it: a 201-file scan is a photograph of somebody's PhilSys ID,
-    | NBI clearance, or licence. Sending that to a third-party API is a
-    | cross-border transfer of personal data under RA 10173 (the Data Privacy
-    | Act), which needs consent and a processing agreement the school project
-    | has neither of. Locally, the image never leaves the host.
+    | `gemini` is the default, and every driver here is hosted. There used to
+    | be a local one — Ollama, running glm-ocr on the machine — and it was the
+    | default precisely because the image never left the host: a 201-file scan
+    | is a photograph of somebody's PhilSys ID, NBI clearance, or licence, and
+    | sending that to a third-party API is a cross-border transfer of personal
+    | data under RA 10173.
     |
-    | `anthropic` remains supported for a deployment that has cleared that
-    | and wants the accuracy — the two drivers return the same shape, and
-    | everything downstream of read() is driver-agnostic.
+    | It was removed because it could not run where the system runs. Ollama has
+    | to be installed on whatever serves the app and a small VPS cannot hold
+    | even a 2.2 GB vision model, so the *default* driver was one that goes
+    | dark on every deployment — a fresh clone shipped pointing at a feature
+    | that could not work. A local option nobody can deploy is not a privacy
+    | control; it is a privacy control that is switched off in production,
+    | which is the only place it would have mattered.
+    |
+    | **So the RA 10173 obligation is now unavoidable rather than avoided, and
+    | it has to be met rather than designed around.** Every scan leaves the
+    | country. That needs disclosure to the employee and consent on file
+    | before a real deployment reads a real 201 file — it is not something a
+    | config value can satisfy.
     */
-    'driver' => env('SCANNER_DRIVER', 'ollama'),
-
-    'ollama' => [
-        'host' => env('OLLAMA_HOST', 'http://127.0.0.1:11434'),
-
-        /*
-        | glm-ocr is 0.9B parameters and about 2.2 GB — small enough to sit in
-        | a 4 GB card's VRAM, and built for documents rather than for chat.
-        | A general vision model of this size reads a licence noticeably worse.
-        */
-        'model' => env('OLLAMA_SCANNER_MODEL', 'glm-ocr'),
-
-        /*
-        | A cold model has to be loaded into VRAM before it can answer, which
-        | is most of the first request. Later scans are far quicker; the
-        | timeout has to cover the first one or the feature looks broken
-        | exactly once per reboot.
-        */
-        'timeout' => (int) env('OLLAMA_TIMEOUT', 180),
-    ],
+    'driver' => env('SCANNER_DRIVER', 'gemini'),
 
     /*
-    | The deployment driver.
+    | The default, and the one to prefer.
     |
-    | Ollama is the better answer wherever it can run — the image never leaves
-    | the host — but it has to be installed on whatever serves the app, and a
-    | small VPS cannot hold even a 2.2 GB vision model. Gemini runs from
-    | anywhere and has a free tier, which is what makes a deployed demo
-    | possible at all.
+    | Free at the tier this project runs on, reachable from anywhere, and — the
+    | part that matters once every driver is hosted — a **single named
+    | processor**. OpenRouter is a broker, so the same image reaches two.
     |
-    | The cost is the one Ollama avoids: the scan leaves the country. A
-    | deployment on this driver is processing PhilSys IDs and NBI clearances
-    | through a third party, which under RA 10173 needs consent and
-    | disclosure — a decision to make deliberately, not by editing an env file.
+    | The free tier is about 20 scans a day per model, measured from Google's
+    | own 429 body rather than read off a page. Enough to demonstrate the
+    | feature; not enough to run an HR department on. Past it a scan returns
+    | nothing and HR types the fields, which is what every other failure here
+    | collapses to as well.
     */
     'gemini' => [
         'api_key' => env('GEMINI_API_KEY'),
@@ -77,7 +66,7 @@ return [
             'https://generativelanguage.googleapis.com/v1beta',
         ),
 
-        'model' => env('GEMINI_MODEL', 'gemini-3.7-flash'),
+        'model' => env('GEMINI_MODEL', 'gemini-3.5-flash'),
 
         // Nothing to load into VRAM here, so the long cold-start allowance
         // Ollama needs does not apply — but a large scan still has to upload.
@@ -93,6 +82,68 @@ return [
         'retry_delay_ms' => (int) env('GEMINI_RETRY_DELAY_MS', 1500),
 
         'timeout' => (int) env('GEMINI_TIMEOUT', 60),
+    ],
+
+    /*
+    | The broker driver.
+    |
+    | OpenRouter is OpenAI-shaped, which makes it the cheapest of the four to
+    | speak to — and it is the only one where a single key reaches many
+    | models, so switching model is an env edit rather than a new driver.
+    |
+    | **It is a broker, not a provider, and that is the thing to understand
+    | before choosing it.** OpenRouter does not run the model. The image goes
+    | to OpenRouter, and OpenRouter forwards it to whichever upstream is
+    | serving that model at that moment. A 201-file scan is a photograph of
+    | somebody's PhilSys ID or NBI clearance, so under RA 10173 this is a
+    | cross-border transfer to **two** processors rather than one — and which
+    | the second is can change without anything here changing. Gemini is a
+    | single named processor; Ollama is none at all. That is the axis this
+    | driver is worst on, and it is not the axis it is chosen for.
+    |
+    | `data_collection: deny` asks OpenRouter to route only to upstreams that
+    | do not train on or retain the prompt. It is sent on every request rather
+    | than left to the dashboard, so the guarantee travels with the code that
+    | relies on it.
+    */
+    'openrouter' => [
+        'api_key' => env('OPENROUTER_API_KEY'),
+
+        'endpoint' => env(
+            'OPENROUTER_ENDPOINT',
+            'https://openrouter.ai/api/v1/chat/completions',
+        ),
+
+        /*
+        | The model has to do two things, and a model that does neither fails
+        | *quietly*: it answers prose, normalise() finds nothing, and the form
+        | is simply blank.
+        |
+        |   1. read an image — this driver sends one
+        |   2. honour `response_format: json_schema`
+        |
+        | Not every model on OpenRouter does both, and the catalogue moves. Run
+        | `php artisan scanner:check` after changing this: one real image
+        | through the real driver is the only thing that answers the question.
+        */
+        'model' => env('OPENROUTER_MODEL', 'google/gemini-2.5-flash'),
+
+        /*
+        | OpenRouter's own conventions. They identify the calling app on the
+        | dashboard and in rankings; neither is required, and a wrong value is
+        | not an error — but a key with no attribution is a key nobody can
+        | trace back to this system when it starts costing money.
+        */
+        'referer' => env('OPENROUTER_REFERER', env('APP_URL')),
+        'title' => env('OPENROUTER_TITLE', 'PrimePower HRIS'),
+
+        // Same shape as the Gemini driver: a broker sitting in front of a
+        // shared pool answers 429 for the same reason, so it is waited out
+        // rather than given up on.
+        'retries' => (int) env('OPENROUTER_RETRIES', 3),
+        'retry_delay_ms' => (int) env('OPENROUTER_RETRY_DELAY_MS', 1500),
+
+        'timeout' => (int) env('OPENROUTER_TIMEOUT', 60),
     ],
 
     /*
@@ -169,6 +220,7 @@ return [
             // long line often enough to matter.
             'bureau of investigation', 'department of justice',
             'philippine national police', 'punong barangay',
+            'nbi seal', 'dry seal', 'official seal', 'security seal', 'national bureau of investigation seal',
         ],
         'drivers_license' => [
             'driver', 'licence', 'license', 'lto',
@@ -194,7 +246,16 @@ return [
             'philippine statistics authority', 'national statistics office',
             'civil registrar', 'office of the civil registrar',
         ],
-        'certificate' => ['certificate', 'tesda', 'diploma', 'training'],
+        /*
+         * Ahead of `certificate`, which used to swallow both — a diploma
+         * headed "Diploma" was filed as a training card and put into a
+         * renewal queue for a qualification that does not lapse.
+         */
+        'diploma' => ['diploma', 'katibayan', 'has satisfactorily completed the requirements'],
+        'transcript' => [
+            'transcript of records', 'transcript', 'official transcript', 'scholastic record',
+        ],
+        'certificate' => ['certificate', 'tesda', 'training'],
         'resume' => ['resume', 'résumé', 'curriculum vitae', 'biodata'],
         // Filipino field labels are the tell: PhilID and the passport caption
         // their fields in Filipino, and no other 201-file document does.
@@ -214,6 +275,14 @@ return [
             'home development mutual fund', 'pag-ibig',
             'bureau of internal revenue', 'department of foreign affairs',
             'commission on elections', 'philippine postal',
+            // TIN ID — the card carries the BIR seal prominently at the upper
+            // right, and the heading reads "BUREAU OF INTERNAL REVENUE" in full.
+            // "taxpayer identification" appears as a label beside the number;
+            // "tin id" is what people call it, though the card itself says
+            // "TAXPAYER IDENTIFICATION NUMBER".
+            'taxpayer identification', 'tin id', 'tin card',
+            'bir seal', 'bir official seal', 'department of finance',
+            'digital tin id', 'tin id control number',
         ],
     ],
 
@@ -315,9 +384,84 @@ return [
     | rule that is right most of the time is not usable here: it would discard
     | correct readings to catch incorrect ones.
     */
+    /*
+    | Government IDs that carry no expiry date, named one by one.
+    |
+    | `type_cannot_have` below states the fact per *type*, and that is the one
+    | place it cannot reach: `government_id` is a mixed bag. A TIN ID, a UMID,
+    | an adult PhilID and a voter ID are issued for life and print no expiry
+    | anywhere on the card; a **passport and a postal ID do expire**, and a
+    | passport's expiry is the kind of thing somebody is turned back at an
+    | airport over. So `'government_id' => ['expires_at']` would be wrong in
+    | the expensive direction — it would silently throw away a correctly read
+    | passport expiry — and leaving it out is what let a TIN ID be given one.
+    |
+    | Matched against the **heading the model transcribed**, which is evidence
+    | printed on the paper rather than the model's own judgement. That is the
+    | same source `title_keywords` ranks second of five, and the reason this
+    | list can be trusted to clear a field: a card that says BUREAU OF INTERNAL
+    | REVENUE across the top is a TIN ID, and a TIN is permanent.
+    |
+    | This **clears the date; it never rejects the type.** A hallucinated
+    | expiry on a TIN ID is the model answering a question the card does not
+    | have — exactly the PSA failure — and it is not a reason to doubt that the
+    | paper is a government ID. Evidence from the document is not second-
+    | guessed by the model having added something to it.
+    |
+    | The cost of a wrong entry here is an expiry quietly dropped, so a card is
+    | listed only where the "no expiry" claim is absolute. Anything that
+    | renews — passport, postal ID, PRC licence, driver's licence — stays off
+    | it deliberately.
+    */
+    'non_expiring_ids' => [
+        /*
+         * Keyed by the type the rule applies to, so the config says where it
+         * is allowed to act rather than the code naming one type inline. Only
+         * `government_id` is here, because it is the only type whose members
+         * disagree with each other about expiring.
+         */
+        'government_id' => [
+            // The card itself says TAXPAYER IDENTIFICATION NUMBER; the heading
+            // reads BUREAU OF INTERNAL REVENUE in full.
+            'tin' => [
+                'bureau of internal revenue', 'taxpayer identification',
+                'tin id', 'tin card', 'digital tin id',
+            ],
+            // UMID — the SSS/GSIS/PhilHealth/Pag-IBIG common card.
+            'umid' => ['unified multi-purpose', 'umid', 'social security system'],
+            /*
+             * The adult PhilID prints no expiry. The child versions do — under
+             * 5 is valid a year, 5–14 until the holder turns 15 — and the card
+             * says so when it applies, which is the one case this list would
+             * wrongly swallow. Kept anyway: a 201 file holds the employee's
+             * own ID, and an employee is an adult.
+             */
+            /*
+             * "national id" is here because the model **condenses the
+             * heading** rather than transcribing the letterhead: a real scan
+             * came back with `heading` of just "TIN ID" where the card prints
+             * three lines of agency name. So the short name people actually
+             * use has to be on the list beside the formal one, or the rule
+             * misses the card it was written for. Safe to include — nothing
+             * that expires is called a national ID.
+             */
+            'philsys' => [
+                'philippine identification', 'philsys', 'national id',
+                'pambansang pagkakakilanlan',
+            ],
+            'voter' => ['commission on elections', 'comelec', 'voter'],
+        ],
+    ],
+
     'type_cannot_have' => [
         'resume' => ['document_number', 'expires_at'],
         'psa' => ['expires_at'],
+        // A degree is not withdrawn after five years, and neither is a
+        // transcript. Kept here so a misread date is cleared rather than
+        // filed, which is what would otherwise put a diploma into
+        // CredentialExpiryScanner's renewal queue for good.
+        'diploma' => ['expires_at'],
+        'transcript' => ['expires_at'],
     ],
 
     /*
@@ -412,18 +556,22 @@ return [
         'contract' => 'Employment Contract',
         'psa' => 'PSA Certificate',
         'certificate' => 'Certificate',
+        'diploma' => 'Diploma',
+        'transcript' => 'Transcript of Records',
         'resume' => 'Résumé',
         'other' => 'Document',
     ],
 
     'document_types' => [
         'drivers_license' => "LTO driver's licence (professional or non-professional). Has an Expiration Date and a License No.",
-        'government_id' => 'A government-issued ID: PhilSys National ID (PhilID), UMID, passport, postal ID, voter ID.',
-        'clearance' => 'NBI clearance, police clearance, or barangay clearance. NBI clearances carry a "VALID UNTIL" date.',
+        'government_id' => 'A government-issued ID: PhilSys National ID (PhilID), UMID, passport, postal ID, voter ID, or TIN ID. An authentic BIR TIN ID card carries: (1) the official circular BIR seal at the upper-right corner showing the Bureau of Internal Revenue / Department of Finance emblem, (2) the heading "Republic of the Philippines / Department of Finance / BUREAU OF INTERNAL REVENUE" printed vertically, (3) a 9-digit TAXPAYER IDENTIFICATION NUMBER in large text (format XXX-XXX-XXX), (4) green-patterned security paper background, and (5) a QR code with a DIGITAL TIN ID CONTROL NUMBER at the bottom. When the BIR seal is visible, classify as government_id. A TIN ID, UMID, PhilID and voter ID carry NO expiry date at all — the number is issued for life — so return null for expires_at on those, and never copy an issue date, a control number, or a date printed elsewhere on the card into it. A passport and a postal ID DO expire and their expiry should be read.',
+        'clearance' => 'NBI clearance, police clearance, or barangay clearance. An authentic NBI clearance carries an official circular NBI dry seal / security seal / watermark stamped over the photo and security paper (featuring the Philippine sun rays and scales of justice), an "NBI ID NO.", and a "VALID UNTIL" date.',
         'medical' => 'Medical certificate, fit-to-work certificate, or pre-employment medical result.',
         'contract' => 'Employment contract, job offer, or appointment letter.',
         'psa' => 'A PSA (formerly NSO) civil registry document: birth certificate, marriage certificate, or CENOMAR. Printed on security paper and headed "Philippine Statistics Authority".',
-        'certificate' => 'Training certificate, TESDA certificate, diploma, or seminar certificate.',
+        'certificate' => 'Training certificate, TESDA certificate, or seminar certificate.',
+        'diploma' => 'A school diploma awarding a degree or a level completed. Names a school and a course; carries no expiry.',
+        'transcript' => 'A Transcript of Records (TOR) or scholastic record listing subjects and grades. Carries no expiry.',
         'resume' => 'Résumé, CV, or biodata.',
         'other' => 'A document that does not clearly fit any category above.',
     ],

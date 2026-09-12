@@ -25,6 +25,8 @@ class EmployeeService
     /** Temp password handed to HR when a self-service login is provisioned. */
     public ?string $generatedPassword = null;
 
+    public function __construct(private readonly PhotoStore $photos) {}
+
     /**
      * Restrict the directory to what the viewer is allowed to see.
      */
@@ -63,8 +65,11 @@ class EmployeeService
 
             $data['employee_number'] = Employee::nextEmployeeNumber();
 
-            if ($photo) {
-                $data['photo_path'] = $photo->store('employee-photos', self::PHOTO_DISK);
+            // Re-encoded rather than stored — see PhotoStore for why. A file
+            // that cannot be decoded leaves the record with no photo rather
+            // than with an unprocessed one on a public URL.
+            if ($photo && $stored = $this->photos->store($photo)) {
+                $data['photo_path'] = $stored;
             }
 
             if ($createAccount) {
@@ -80,9 +85,15 @@ class EmployeeService
         return DB::transaction(function () use ($employee, $data, $photo) {
             unset($data['create_user_account'], $data['user_role'], $data['photo'], $data['employee_number']);
 
-            if ($photo) {
+            /*
+             * The old photo goes only once the new one is written. Deleting
+             * first and then failing to decode would leave the record with no
+             * avatar and nothing to put back — a failed upload must not cost
+             * the picture that was already there.
+             */
+            if ($photo && $stored = $this->photos->store($photo)) {
                 $this->deletePhoto($employee);
-                $data['photo_path'] = $photo->store('employee-photos', self::PHOTO_DISK);
+                $data['photo_path'] = $stored;
             }
 
             $employee->update($data);

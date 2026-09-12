@@ -201,7 +201,23 @@ class EmployeeController extends Controller
             ->with('success', $message);
     }
 
-    public function show(Request $request, Employee $employee): Response
+    /**
+     * The signed-in user's own employee 201 profile and records.
+     */
+    public function myProfile(Request $request): Response|RedirectResponse
+    {
+        $employee = $request->user()?->employee;
+
+        if (! $employee) {
+            return redirect()
+                ->route('dashboard')
+                ->with('info', 'No employee 201 record is linked to this account. Contact HR to link your record.');
+        }
+
+        return $this->show($request, $employee, isMyProfile: true);
+    }
+
+    public function show(Request $request, Employee $employee, bool $isMyProfile = false): Response
     {
         Gate::authorize('view', $employee);
 
@@ -211,10 +227,25 @@ class EmployeeController extends Controller
             'position:id,title,department_id',
             'supervisor:id,first_name,middle_name,last_name,suffix',
             'documents.uploader:id,name',
+            'educations',
+            'trainings',
+            'skills',
         ]);
 
         return Inertia::render('HR/Employees/Show', [
             'employee' => new EmployeeResource($employee),
+            'isMyProfile' => $isMyProfile || $employee->user_id === $request->user()?->id,
+
+            /*
+             * The education ladder and the proficiency grades, sent as the
+             * config states them rather than restated in the component. The
+             * order of the levels is what makes "highest attainment" mean
+             * anything, and a second copy in JavaScript would eventually
+             * disagree with the one the server ranks by.
+             */
+            'educationLevels' => config('qualifications.education_levels'),
+            'levelsWithCourse' => array_values(config('qualifications.levels_with_course')),
+            'proficiencyLevels' => config('qualifications.proficiency_levels'),
             // Which document types the upload form should offer an expiry date
             // for. Read from config rather than hard-coded in the component so
             // the form and CredentialExpiryScanner cannot disagree about which
@@ -224,17 +255,6 @@ class EmployeeController extends Controller
             // own copy, which is a second place for `psa` to be forgotten.
             'documentTypes' => EmployeeDocument::TYPES,
 
-            /*
-             * The types that carry no expiry at all, derived from the one
-             * place that states it rather than restated in the component. The
-             * scanner clears the field for these; this is what lets the panel
-             * say "Does not expire" instead of "Not found", which would read
-             * as a failed reading rather than as a fact about the document.
-             */
-            'neverExpires' => array_keys(array_filter(
-                config('scanner.type_cannot_have', []),
-                fn (array $fields) => in_array('expires_at', $fields, true),
-            )),
             /*
              * What can honestly be said about the licence.
              *
@@ -390,9 +410,18 @@ class EmployeeController extends Controller
             'employee_id' => $employee->id,
             'scanned_by' => $request->user()->id,
             'driver' => (string) config('scanner.driver'),
-            'model' => (string) config('scanner.driver') === 'ollama'
-                ? config('scanner.ollama.model')
-                : config('scanner.'.config('scanner.driver').'.model', config('scanner.model')),
+            /*
+             * Every driver keeps its model under `scanner.{driver}.model`
+             * except `anthropic`, which predates that shape and keeps it at
+             * `scanner.model` — so that is the fallback rather than a special
+             * case. Recorded per scan because Scanner Accuracy compares
+             * readings across drivers, and a row with no model on it cannot
+             * say which one produced the number.
+             */
+            'model' => (string) config(
+                'scanner.'.config('scanner.driver').'.model',
+                config('scanner.model'),
+            ),
             'duration_ms' => $elapsed,
             'proposed' => $result,
         ]);
@@ -609,6 +638,74 @@ class EmployeeController extends Controller
         );
     }
 
+    /**
+     * Deploying somebody to a client, or bringing them back in-house.
+     *
+     * Reached from the Clients screen, and gated the same way the position
+     * move is: on `update` for the *employee*, not on `manageOrganization`.
+     * That gate is for shaping the client list — deciding a client exists.
+     * Filing a person against one is a different act, and the two abilities
+     * are held by the same roles today only because nobody has needed them
+     * apart.
+     *
+     * **The category moves with the client, and that is not tidiness.**
+     * `client_id` is prohibited on internal staff rather than ignored, so
+     * setting one without setting the category writes a record the employee
+     * form would refuse to save — and clearing a client while leaving the
+     * category external leaves somebody deployed to nobody. A stale client on
+     * a person brought in-house keeps them in that client's billing and
+     * headcount, which is an error nobody would think to go looking for.
+     *
+     * Department and position are deliberately untouched. A driver deployed to
+     * a client is still a driver; where they are sent is not what they do.
+     */
+    public function updateDeployment(Request $request, Employee $employee): RedirectResponse
+    {
+        Gate::authorize('update', $employee);
+
+        $validated = $request->validate([
+            /*
+             * Nullable is a real choice here — it is how somebody is brought
+             * back in-house — but `exists` alone would not do: a deactivated
+             * client is kept so payroll and attendance keep what they were
+             * filed under, not so somebody new can be sent there. The same
+             * rule the position move applies.
+             */
+            'client_id' => [
+                'nullable',
+                Rule::exists('clients', 'id')->where('is_active', true),
+            ],
+        ], [
+            'client_id.exists' => 'That client is not one somebody can be deployed to.',
+        ]);
+
+        $client = $validated['client_id'] ? Client::findOrFail($validated['client_id']) : null;
+        $from = $employee->client?->name ?? 'internal staff';
+
+        $employee->update([
+            'client_id' => $client?->id,
+            'employment_category' => $client
+                ? Employee::CATEGORY_EXTERNAL
+                : Employee::CATEGORY_INTERNAL,
+        ]);
+
+        /*
+         * The consequence is stated rather than left to be discovered.
+         * Deployment is a single `client_id` with no history, so a move
+         * rewrites which client *past* payslips are grouped under — a
+         * deliberate limit for a workforce that does not move often, and one
+         * the person clicking is entitled to know about before the next
+         * billing run disagrees with the last one.
+         */
+        return back()->with(
+            'success',
+            $client
+                ? "{$employee->full_name} moved from {$from} to {$client->name}. "
+                    .'Past payslips regroup under the new client — deployment is not dated.'
+                : "{$employee->full_name} brought in-house from {$from}, and is now internal staff.",
+        );
+    }
+
     /** Dropdown data shared by the create and edit forms. */
     private function formOptions(?int $excludeEmployeeId = null): array
     {
@@ -629,17 +726,6 @@ class EmployeeController extends Controller
             'statuses' => Employee::STATUSES,
             'documentTypes' => EmployeeDocument::TYPES,
 
-            /*
-             * The types that carry no expiry at all, derived from the one
-             * place that states it rather than restated in the component. The
-             * scanner clears the field for these; this is what lets the panel
-             * say "Does not expire" instead of "Not found", which would read
-             * as a failed reading rather than as a fact about the document.
-             */
-            'neverExpires' => array_keys(array_filter(
-                config('scanner.type_cannot_have', []),
-                fn (array $fields) => in_array('expires_at', $fields, true),
-            )),
             'categories' => Employee::CATEGORIES,
             'clients' => Client::where('is_active', true)
                 ->orderBy('name')

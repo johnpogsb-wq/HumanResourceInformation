@@ -16,30 +16,145 @@ class TimekeepingTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_hr_can_view_the_dtr_screen(): void
+    public function test_records_lists_one_row_per_employee(): void
     {
-        AttendanceLog::factory()->count(3)->on(now()->startOfMonth()->toDateString())->create();
+        // Three days for one person is one row carrying three, not three rows.
+        $employee = Employee::factory()->create();
+
+        foreach ([0, 1, 2] as $offset) {
+            AttendanceLog::factory()->create([
+                'employee_id' => $employee->id,
+                'log_date' => now()->startOfMonth()->addDays($offset)->toDateString(),
+            ]);
+        }
 
         $this->actingAs($this->hr())
             ->get('/hr/timekeeping')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('HR/Timekeeping/Index')
-                ->has('logs.data', 3)
-                ->has('logs.meta.links')
+                ->has('rows.data', 1)
+                // Pagination reads meta.links; rows.links is the
+                // {first,last,prev,next} object and crashes <Pagination>.
+                ->has('rows.meta.links')
+                ->where('rows.data.0.days_present', 3)
                 ->where('summary.records', 3)
                 ->where('can.manage', true),
             );
     }
 
-    public function test_the_range_defaults_to_the_current_month(): void
+    public function test_somebody_with_no_attendance_is_still_listed_at_zero(): void
     {
-        AttendanceLog::factory()->on(now()->startOfMonth()->toDateString())->create();
-        AttendanceLog::factory()->on(now()->subMonths(2)->toDateString())->create();
+        /*
+         * The point of the screen. A person with nothing recorded for the
+         * cutoff is the answer to "who came in", not a row to leave out —
+         * which is what grouping the logs themselves would have done.
+         */
+        Employee::factory()->create();
 
         $this->actingAs($this->hr())
             ->get('/hr/timekeeping')
-            ->assertInertia(fn (Assert $page) => $page->has('logs.data', 1));
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('rows.data', 1)
+                ->where('rows.data.0.days_present', 0),
+            );
+    }
+
+    public function test_the_range_defaults_to_the_current_month(): void
+    {
+        $employee = Employee::factory()->create();
+
+        AttendanceLog::factory()->create([
+            'employee_id' => $employee->id,
+            'log_date' => now()->startOfMonth()->toDateString(),
+        ]);
+        AttendanceLog::factory()->create([
+            'employee_id' => $employee->id,
+            'log_date' => now()->subMonths(2)->toDateString(),
+        ]);
+
+        $this->actingAs($this->hr())
+            ->get('/hr/timekeeping')
+            ->assertInertia(fn (Assert $page) => $page->where('rows.data.0.days_present', 1));
+    }
+
+    public function test_an_employee_screen_shows_their_days_and_a_calendar(): void
+    {
+        $employee = Employee::factory()->create();
+
+        AttendanceLog::factory()->create([
+            'employee_id' => $employee->id,
+            'log_date' => '2026-09-01',
+        ]);
+
+        $this->actingAs($this->hr())
+            ->get("/hr/timekeeping/employee/{$employee->id}?from=2026-09-01&to=2026-09-15")
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('HR/Timekeeping/Employee')
+                ->where('employee.id', $employee->id)
+                ->has('days.data', 1)
+                ->where('summary.present', 1)
+                // 1–15 September 2026 spans three Monday-to-Sunday weeks.
+                ->has('weeks', 3)
+                ->has('weeks.0.days', 7),
+            );
+    }
+
+    public function test_the_calendar_totals_each_week(): void
+    {
+        $employee = Employee::factory()->create();
+
+        // Two days in the first calendar week (Aug 31 – Sep 6), one in the
+        // second. The 31st is outside the cutoff and must not be counted.
+        foreach ([['2026-08-31', 8], ['2026-09-01', 8], ['2026-09-02', 7], ['2026-09-08', 6]] as [$date, $worked]) {
+            AttendanceLog::factory()->create([
+                'employee_id' => $employee->id,
+                'log_date' => $date,
+                'hours_worked' => $worked,
+                'status' => AttendanceLog::STATUS_PRESENT,
+            ]);
+        }
+
+        $this->actingAs($this->hr())
+            ->get("/hr/timekeeping/employee/{$employee->id}?from=2026-09-01&to=2026-09-15")
+            ->assertInertia(fn (Assert $page) => $page
+                // 8 + 7 — the 31st is in the row but outside the cutoff, and a
+                // week total the payslip will not match is worse than none.
+                ->where('weeks.0.hours_worked', 15)
+                ->where('weeks.0.days_present', 2)
+                ->where('weeks.1.hours_worked', 6),
+            );
+    }
+
+    public function test_the_calendar_marks_days_outside_the_cutoff_rather_than_dropping_them(): void
+    {
+        $employee = Employee::factory()->create();
+
+        // 1 September 2026 is a Tuesday, so the first row starts on Monday
+        // the 31st of August — outside the cutoff, and still a cell.
+        $this->actingAs($this->hr())
+            ->get("/hr/timekeeping/employee/{$employee->id}?from=2026-09-01&to=2026-09-15")
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('weeks.0.starts_on', '2026-08-31')
+                ->where('weeks.0.days.0.date', '2026-08-31')
+                ->where('weeks.0.days.0.in_range', false)
+                ->where('weeks.0.days.1.date', '2026-09-01')
+                ->where('weeks.0.days.1.in_range', true),
+            );
+    }
+
+    public function test_the_employee_screen_is_gated_on_seeing_that_employee(): void
+    {
+        $user = User::factory()->create();
+        Employee::factory()->create(['user_id' => $user->id]);
+
+        $stranger = Employee::factory()->create();
+
+        // The id is in the URL; whose DTR may be read is not the URL's answer.
+        $this->actingAs($user)
+            ->get("/hr/timekeeping/employee/{$stranger->id}")
+            ->assertForbidden();
     }
 
     public function test_hr_can_record_a_time_entry_and_figures_are_derived(): void
@@ -189,7 +304,8 @@ class TimekeepingTest extends TestCase
             ->get('/hr/timekeeping')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('logs.data', 1)
+                ->has('rows.data', 1)
+                ->where('rows.data.0.employee_id', $own->id)
                 ->where('can.manage', false),
             );
     }
@@ -205,9 +321,11 @@ class TimekeepingTest extends TestCase
         AttendanceLog::factory()->on($date)->create(['employee_id' => $supervisor->id]);
         AttendanceLog::factory()->count(3)->on($date)->create();
 
+        // The supervisor and their one report — the three strangers are not
+        // rows here even though they have attendance in the same range.
         $this->actingAs($user)
             ->get('/hr/timekeeping')
-            ->assertInertia(fn (Assert $page) => $page->has('logs.data', 2));
+            ->assertInertia(fn (Assert $page) => $page->has('rows.data', 2));
     }
 
     public function test_non_hr_roles_cannot_record_time(): void

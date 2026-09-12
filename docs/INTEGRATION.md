@@ -1,7 +1,7 @@
 # Core Transaction 2 — Integration Guide
 
 **PrimePower Manpower HRIS.** This is what Core 2 publishes to the rest of
-ISMERS, and the two doors it accepts writes through.
+ISMERS, and the five doors it accepts writes through.
 
 Base URL: `https://<host>/api/v1`
 Auth: `Authorization: Bearer <token>` (Laravel Sanctum)
@@ -380,7 +380,399 @@ that may not see them. Returns **`409`** on a draft run.
 
 ---
 
-## Core 4 (Reports & Dashboards) and Business Intelligence
+### Payroll as a journal entry (General Ledger, AP, Tax)
+
+The register above answers *who gets paid what*. This answers *what to post*.
+
+```http
+GET /api/v1/payroll/journal-summary/{payroll_period_id}
+```
+
+```json
+{
+  "data": {
+    "debits": [
+      { "account": "Basic Pay Expense", "amount": 412000.00 },
+      { "account": "Overtime Expense", "amount": 18350.00 },
+      { "account": "Night Differential Expense", "amount": 4120.00 },
+      { "account": "Holiday Premium Expense", "amount": 9800.00 },
+      { "account": "Allowances Expense", "amount": 36000.00 },
+      { "account": "SSS Contributions Expense (Employer)", "amount": 34200.00 },
+      { "account": "PhilHealth Contributions Expense (Employer)", "amount": 9500.00 },
+      { "account": "Pag-IBIG Contributions Expense (Employer)", "amount": 3800.00 }
+    ],
+    "credits": [
+      { "account": "Salaries Expense — Time Not Worked (contra)", "amount": 7420.00 },
+      { "account": "SSS Payable", "amount": 51300.00 },
+      { "account": "PhilHealth Payable", "amount": 19000.00 },
+      { "account": "Pag-IBIG Payable", "amount": 7600.00 },
+      { "account": "Withholding Tax Payable (BIR)", "amount": 22840.00 },
+      { "account": "Employee Loans Receivable", "amount": 12000.00 },
+      { "account": "Net Pay Payable", "amount": 407610.00 }
+    ]
+  },
+  "meta": {
+    "period": "Sep 1 – 15",
+    "start_date": "2026-09-01",
+    "end_date": "2026-09-15",
+    "pay_date": "2026-09-20",
+    "runs": [
+      { "run_number": "PR-2026-0017", "status": "paid", "employee_count": 41 }
+    ],
+    "employee_count": 41,
+    "total_debits": 527770.00,
+    "total_credits": 527770.00,
+    "balanced": true,
+    "out_of_balance_by": 0.00,
+    "generated_at": "2026-09-12T10:04:00+08:00"
+  }
+}
+```
+
+**Keyed by period, not by run** — unlike the two endpoints above. A ledger is
+posted per accounting period and there can be more than one run in one, so
+every reportable run in the period is summed and named in `meta.runs`. Adding
+runs up yourself would mean re-deriving a total we already hold, and the day
+your sum disagrees with ours the disagreement shows in a trial balance rather
+than on a screen.
+
+**Check `balanced` before you post.** Every figure here is read back from
+stored payslips rather than recomputed, so this flag is a real check and not a
+formality: if a payslip were ever written with a `net_pay` that did not equal
+`gross_pay - deductions_total`, `balanced` goes false and
+`out_of_balance_by` says by how much. Refuse the entry and tell us — do not
+post a journal you cannot reconcile.
+
+Two conventions worth knowing before you map the accounts:
+
+- **Time not worked is a contra to salary expense, not a payable.** Lateness,
+  undertime, absence and unpaid leave are one credit line. Nobody is owed that
+  money — the company simply spent less — so filing it as a liability would put
+  a balance on your books that will never be paid to anyone.
+- **The employer's share appears twice**, as an expense (debit) and inside the
+  agency payable (credit), and nets out. The payable for each agency carries
+  **both** the employee's withholding and the employer's share, because one
+  cheque goes to each.
+
+A zero line is **omitted rather than sent as `0.00`**, so a period with no
+overtime has no overtime row.
+
+Returns **`409`** when the period's runs are all still drafts — the period
+exists and is not finalised yet, which is *retry later* rather than *wrong id*.
+An empty journal is never returned: a period posted as zero reads as a month
+nobody was paid.
+
+---
+
+### Telling us the money left the bank
+
+The three endpoints above are all reads. This is the one write, and it closes a
+loop that was open: the register handed you a list and nothing came back, so a
+run sat at `approved` until somebody in HR remembered to tick it — which made
+*approved* and *the money arrived* two different facts that this system
+reported as one.
+
+```http
+POST /api/v1/payroll/runs/{run_id}/disbursement
+```
+
+```json
+{
+  "bank_reference": "BPI-TRF-99120044",
+  "amount": 407610.55,
+  "disbursed_at": "2026-09-20T09:15:00+08:00",
+  "notes": "Batch file 3 of 3, BPI ExpressLink"
+}
+```
+
+```json
+{
+  "data": {
+    "run_number": "PR-2026-0017",
+    "status": "paid",
+    "already_confirmed": false,
+    "bank_reference": "BPI-TRF-99120044",
+    "disbursed_at": "2026-09-20T09:15:00+08:00",
+    "amount": 407610.55
+  }
+}
+```
+
+**`amount` is checked against the run's own `total_net`, not trusted.** This is
+the assertion the endpoint exists for: a file that disbursed less than the
+register said is somebody unpaid, and marking the run `paid` over it would bury
+that. A mismatch is **`409`** with the difference stated, and **nothing is
+marked paid** — not the status, not the reference. A centavo of tolerance is
+allowed, because the two figures are sums of rounded currency reached by two
+systems rather than one number twice.
+
+**`bank_reference` is required**, and it is the whole audit trail for *which
+transfer paid this run*. Without it the only record that money moved is a
+status column.
+
+**`disbursed_at` is a third date**, and deliberately yours to state rather than
+ours to assume. A transfer sent Friday and confirmed Monday is one event with
+two dates; `approved_at` is when HR released it and `updated_at` would only ever
+hold whichever we heard about last.
+
+**Resending is safe.** A run already `paid` comes back **`200`** with
+`already_confirmed: true` and the reference we are holding — so a timeout on
+your side, which is indistinguishable from a failure, costs you nothing. The
+run is never marked paid twice and a second reference never overwrites the
+first.
+
+Returns **`409`** for a run that is not `approved`, naming the status it is in.
+A draft is still being corrected and a cancelled one was withdrawn; a bank
+transfer against either is a fact somebody needs to look at rather than a state
+this system should quietly accept. **The status is checked before the
+permission**, so a caller who *is* allowed gets "retry later" rather than a
+`403` that reads as "you may not do this at all".
+
+Gated on the same ability that **approves** a run. Confirming money left the
+bank is the other half of releasing it, and splitting the two would let
+somebody mark a run paid who was never trusted to approve one.
+
+---
+
+## One-off amounts on a payslip — Fleet and Supply Chain
+
+**Fleet** posts trip allowances and per diems. **Supply Chain** posts a
+deduction when an employee is accountable for a damaged or lost item. Both are
+the same act, so they share one endpoint.
+
+```http
+POST /api/v1/payroll/adjustments
+```
+
+```json
+{
+  "reference": "TRIP-4471",
+  "source": "fleet",
+  "employee_id": 42,
+  "payroll_period_id": 17,
+  "kind": "earning",
+  "label": "Trip allowance — Manila to Batangas",
+  "amount": 500.00,
+  "is_taxable": false,
+  "notes": "Two-day run, 11–12 Sep"
+}
+```
+
+`201` on the first call, `200` with the stored row on a resend:
+
+```json
+{
+  "data": {
+    "source": "fleet",
+    "reference": "TRIP-4471",
+    "employee_id": 42,
+    "payroll_period_id": 17,
+    "kind": "earning",
+    "payslip_label": "Fleet — Trip allowance — Manila to Batangas",
+    "amount": 500.00,
+    "is_taxable": false,
+    "created_at": "2026-09-12T10:20:00+08:00"
+  }
+}
+```
+
+### What this endpoint does not do, and why it matters to you
+
+**It does not touch a payslip.** It stores a row, and payroll sums those rows
+when the run is computed.
+
+That is not a detail of our implementation — it is the reason you can retry
+safely. A draft run can be recomputed any number of times before it is
+approved. An endpoint that *applied* your ₱500 when you called it would apply
+it again on every recompute, and our total and yours would part company with
+nobody watching. Reading stored rows means a recompute reaches the same figure.
+
+### `reference` is required, and it is what makes a retry safe
+
+A timeout on your side is indistinguishable from a failure, so you resend — and
+two rows for one trip allowance is money. Send your own identifier and we key
+on `(source, reference)`.
+
+- **A resend returns `200`** with the row we hold. Not an error: that is how you
+  tell a duplicate from a fresh submission.
+- **A resend carrying a different `amount` does not change ours.** The
+  reference names a fact we may already have paid, so rewriting the amount
+  behind it would move money nobody asked to move. To correct one, use a new
+  reference — or `DELETE` it while the period is still open.
+- Your `TRIP-001` and Supply Chain's `TRIP-001` are different facts. The key is
+  scoped to `source`.
+
+### `payroll_period_id` is required
+
+A trip allowance is earned in a fortnight and paid in that fortnight. Left to
+"the next run that happens", a row missed by one run pays out in the following
+one, and a row never consumed pays out forever. Ask us for the open period, or
+read it from `GET /api/v1/payroll/runs`.
+
+### `kind`
+
+| Value | Where it lands |
+| :--- | :--- |
+| `earning` | Added to allowances. Paid at face value — **never prorated by pay frequency**, unlike a standing monthly allowance. |
+| `deduction` | Withheld under "other deductions". |
+
+### `is_taxable` is yours to state, not ours to assume
+
+Only meaningful on an `earning`, and it reaches the withholding tax. A trip
+allowance may be taxable or a de minimis benefit that is not — that is a
+judgement about your own scheme, so we do not guess it. Defaults to `true`.
+
+### Taking one back
+
+```http
+DELETE /api/v1/payroll/adjustments/fleet/TRIP-4471
+GET    /api/v1/payroll/adjustments/fleet/TRIP-4471
+```
+
+Use `GET` when you lost our response and want to know what we hold rather than
+resending and reading the status code.
+
+### `409` — the period is closed
+
+Both `POST` and `DELETE` return `409` once the period has an approved or paid
+run. The period exists; it is simply past the point where an amount can still
+reach a payslip.
+
+Accepting a late one would be worse than refusing it: the row would sit there
+and nothing would ever read it — an allowance somebody was promised and never
+paid, with no error anywhere to say so. **Money already paid is not withdrawn
+by deleting the row that explained it** either; post an opposite `kind` on the
+next period.
+
+### `source` is a fixed list
+
+`fleet`, `supply_chain`, `core3`, `core4`, `hr`. An open field would let a
+typo create a row nothing reads and nobody notices — and on this endpoint that
+is somebody's allowance.
+
+### Who may call it
+
+The same token permission as `/loans`: "may this caller put money on a payslip"
+has one answer in this system. A rank-and-file token gets `403`.
+
+---
+
+## Core 4 — Governance, Safety & Admin
+
+Core 4 has two halves that talk to this system, and they are in two places
+here: the governance half writes a disciplinary action, below, and the
+reporting half reads `/analytics/workforce` further down.
+
+### Posting a disciplinary action
+
+Core 4 runs the investigation and signs the outcome off. This system holds the
+employment record that outcome attaches to.
+
+```http
+POST /api/v1/disciplinary-actions
+```
+
+```json
+{
+  "reference": "CASE-2026-0188",
+  "employee_id": 17,
+  "type": "suspension",
+  "reason": "Failed pre-trip inspection twice in one week; unit dispatched regardless.",
+  "effective_from": "2026-09-08",
+  "effective_to": "2026-09-11",
+  "is_unpaid": true,
+  "issued_by": "Safety Committee",
+  "notes": "Findings attached to case file in Core 4."
+}
+```
+
+```json
+{
+  "data": {
+    "source": "core4",
+    "reference": "CASE-2026-0188",
+    "employee_id": 17,
+    "type": "suspension",
+    "reason": "Failed pre-trip inspection twice in one week; unit dispatched regardless.",
+    "effective_from": "2026-09-08",
+    "effective_to": "2026-09-11",
+    "is_unpaid": true,
+    "issued_by": "Safety Committee",
+    "payroll_effect": "flagged_for_hr",
+    "created_at": "2026-09-12T10:04:00+08:00"
+  }
+}
+```
+
+`type` is one of `verbal_warning`, `written_warning`, `final_warning`,
+`suspension`. **Dismissal is deliberately not one of them** — a separation is
+a different act with a statutory final pay behind it, and it goes through
+Separation & Final Pay where a person releases it, not through an API.
+
+#### A suspension posted here does not dock anybody's pay
+
+**This is the design, not a gap, and it is the thing most likely to be assumed
+wrong.** A suspension is *stored*, and `PayrollReadinessChecker` raises an
+unpaid one as a **warning** on the payroll run screen before the money is
+computed — "3 employees are on unpaid suspension covering 7 days of this
+cutoff, and their attendance does not account for it" — leaving HR to key the
+days on the DTR or to decide the suspension was lifted. The warning goes silent
+once the DTR already explains those days, so it is never a line that is already
+done.
+
+`payroll_effect` says which of the two you got, in the response, rather than
+leaving you to infer it:
+
+| Value | Meaning |
+|---|---|
+| `flagged_for_hr` | an unpaid suspension; it will be raised on the next run for this period |
+| `none` | a warning, or a suspension *with* pay — nothing about a payslip changes |
+
+Why it works this way: **a DTR another system can write is not a record of
+anything.** The same argument keeps our own employees out of `attendance_logs`
+— they file a correction and somebody decides — and Core 4 is another system
+and no more entitled to it. The gap that leaves is real and stated: an unpaid
+suspension nobody acts on is paid. That is the accepted price of not letting
+one system move money inside another.
+
+If the days *were* served and should be unpaid, the answer is the DTR, which HR
+keys. Do not post a payroll adjustment to simulate it — a negative earning
+against a suspension is money taken off with no attendance record behind it,
+and the payslip then disagrees with the DTR it is supposed to have come from.
+
+#### Reading it back
+
+```http
+GET /api/v1/disciplinary-actions/{source}/{reference}
+GET /api/v1/employees/{employee_id}/disciplinary-actions
+```
+
+The second is what stops a second first-warning being issued, and what
+Performance Management reads to put a rating in context. Both are scoped by the
+token's role, like every other employee read here.
+
+**Idempotent on `(source, reference)`**, the same contract `/endorsements`,
+`/loans` and `/payroll/adjustments` offer: a resend returns the stored row with
+**`200`** rather than `201`, and **returns it unchanged**. The reference names
+an action HR may already have acted on, so rewriting the dates behind it would
+silently move which days are unpaid. A correction is a new action with a new
+reference; if one was issued in error, tell us — reversal is HR's, not an API
+call.
+
+`reason` is required. Core 4 reads the outcome back, and an action nobody can
+answer for later is the same failure an unexplained rejection is on
+`/endorsements`.
+
+`effective_to` is nullable, because a suspension of unknown length — pending
+investigation — is a real state, and defaulting it to the start date would be
+inventing the outcome.
+
+---
+
+## Business Intelligence, and Core 4's reporting half
+
+One endpoint serves both, because both are asking the same thing of this
+system — the shape of the workforce over a range, not the workforce itself.
 
 ```http
 GET /api/v1/analytics/workforce?from=2026-09-01&to=2026-09-30
@@ -442,8 +834,27 @@ field · `429` rate limited.
 
 **Every list response carries `data`.** Aggregates and totals ride in `meta`.
 
-**Retries.** The two write endpoints are idempotent on a reference you supply.
-Everything else is a `GET` and safe to repeat.
+**Retries.** Every write door is safe to repeat. Four are idempotent on a
+`reference` you supply — `/endorsements`, `/loans`, `/payroll/adjustments`,
+`/disciplinary-actions` — and a resend returns the stored row with **`200`**
+rather than `201`, unchanged. The fifth, `/payroll/runs/{run}/disbursement`, is
+idempotent on the run itself and answers `already_confirmed: true`. Everything
+else is a `GET`.
+
+**The five write doors**, so you can see at a glance which are yours:
+
+| Endpoint | Who calls it | What it does here |
+|---|---|---|
+| `POST /endorsements` | Core 1 | proposes a hire; HR approves it into an employee |
+| `POST /loans` | Core 3 | a loan for payroll to amortise |
+| `POST /payroll/adjustments` | Fleet, Supply Chain | a one-off amount on a payslip |
+| `POST /disciplinary-actions` | Core 4 | an action on the employment record |
+| `POST /payroll/runs/{run}/disbursement` | Financial Management | confirms the money left the bank |
+
+Everything else this system publishes is read-only. **None of the five writes
+to attendance or to a payslip directly** — each stores a row that our own
+services read at compute time, so a recompute reaches the same figures and no
+external call can move money on its own.
 
 ---
 

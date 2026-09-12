@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\EmailVerificationPromptController;
+use App\Http\Controllers\Auth\OtpController;
 use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Http\Request;
@@ -60,6 +61,26 @@ Route::middleware('auth')->group(function () {
      * URL, which is unchanged.
      */
     Route::put('password', [PasswordController::class, 'update'])->name('password.change');
+});
+
+/*
+|--------------------------------------------------------------------------
+| The emailed second factor
+|--------------------------------------------------------------------------
+| Behind `auth` because the code is the *second* step: the password has
+| already been accepted and a session exists, it is simply being held by
+| `RequireOtp` until the code is answered. Nothing here is reachable by a
+| guest, so nothing here can be used to ask whether an address exists.
+|
+| Deliberately outside the `verified` middleware every HR screen carries. A
+| login held on this screen has not finished authenticating, and sending it
+| to the email-verification prompt first would be two gates arguing over
+| which comes before the other.
+*/
+Route::middleware('auth')->group(function () {
+    Route::get('otp', [OtpController::class, 'show'])->name('otp.challenge');
+    Route::post('otp', [OtpController::class, 'verify'])->name('otp.verify');
+    Route::post('otp/resend', [OtpController::class, 'resend'])->name('otp.resend');
 });
 
 /*

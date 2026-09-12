@@ -15,11 +15,24 @@ workforce splits two ways, on `employees.employment_category`:
   Still PrimePower's employees, on PrimePower's payroll and contributions, but
   the client is who they report to and who is billed for them.
 
-- **A client is master data, beside Departments** (`/hr/clients`), reusing the
+- **A client is master data** (`/hr/clients`), reusing the
   `manageOrganization` gate — in an agency a client *is* org structure, and the
   people allowed to shape one are the people allowed to shape the other.
   Anything with staff filed against it is deactivated, never deleted, so
   payroll and attendance keep the client they were filed under.
+  - **It has sat in a sidebar group of its own, and now sits inside Employee
+    Information beside Positions instead — the second answer, tried and
+    reverted.** The argument for a separate `Client Management` group was
+    real: sharing `manageOrganization` with the org screens is a fact about
+    the *table*, while the dropdown Clients sat in is about a **person** — who
+    was hired, who works here, what job they hold — and a client is not a
+    person, it is who the person is sent to and who is billed for them.
+    Nothing in that reasoning was wrong. It moved back anyway, because a
+    heading of its own is a cost every visitor pays — one more row in the
+    sidebar's rhythm — for a benefit that only the two roles who open Clients
+    at all ever collect. Filed at the end of Employee Information's children,
+    after Positions, so it reads as the last of the org-structure screens
+    rather than folded into the middle of them.
 - **`client_id` is prohibited on internal staff**, not merely ignored. A stale
   client left on someone brought in-house keeps them in that client's billing
   and headcount — an error nobody would think to go looking for.
@@ -27,7 +40,30 @@ workforce splits two ways, on `employees.employment_category`:
   clients therefore rewrites which client a *past* payslip is grouped under.
   Taken deliberately for a workforce that does not move often; the upgrade is a
   `deployments` table with start/end dates and a `clientAsOf()` read, the same
-  shape as `SalaryAdjustmentService::rateAsOf()`.
+  shape as `SalaryAdjustmentService::rateAsOf()`. **The Clients screen says so
+  on the deploy panel** rather than leaving it to be discovered when the next
+  billing run disagrees with the last one.
+- **Deploying is done from the Clients screen, and it is the employee's record
+  that changes.** `PATCH /hr/employees/{employee}/deployment` — addressed as
+  the employee and gated on `EmployeePolicy::update`, not on
+  `manageOrganization`. That gate is for *shaping* the client list; filing a
+  person against one is a different act, and the two abilities are held by the
+  same roles today only because nobody has needed them apart. Exactly the
+  reasoning `updatePosition()` follows, and the same endpoint shape.
+  - **The category moves with the client, in one write.** `client_id` is
+    prohibited on internal staff rather than ignored, so setting one without
+    setting `employment_category` writes a record the employee form would
+    refuse to save — and clearing a client while leaving the category external
+    leaves somebody deployed to nobody. Guarded by a test in both directions.
+  - **Recall is the same endpoint with a null client**, which is what makes
+    somebody internal again. It sits on the person's row rather than behind an
+    edit screen: it is the reverse of the button directly above it.
+  - **A deactivated client is not offered**, and `exists` alone would not have
+    caught it — the row is kept so payroll and attendance keep what they were
+    filed under, not so somebody new can be sent there. The same rule the
+    position move and the endorsement matcher both apply.
+  - Department and position are untouched. A driver deployed to a client is
+    still a driver; where they are sent is not what they do.
 - **There is no national minimum wage in the Philippines.** Each region's
   RTWPB issues its own wage order, which is what clients mean by a "provincial
   rate". `config('payroll.wage_regions')` holds the floors;
@@ -73,16 +109,36 @@ workforce splits two ways, on `employees.employment_category`:
 ## Stack
 
 Laravel 12 + Inertia 2 + React 18 + Tailwind 3, served by Herd at
-`http://core2.test` (use `http://` — the site is not secured for TLS).
+`https://core2.test`. **Secured, and not optionally** — `herd secure core2`
+issued a local certificate (trusted in the Windows store; see "HSTS" under
+Security below for how that trust was set up), and the session cookie now
+requires it: `SESSION_SAME_SITE=none` only works paired with
+`SESSION_SECURE_COOKIE=true`, which Chrome enforces by discarding the cookie
+otherwise. `none` is what lets the app run inside an IDE webview's iframe.
+`http://core2.test` is no longer reachable — a browser that has ever loaded
+the secured site remembers to upgrade it, and nothing here depends on the
+plain-http path working.
 
 **Architecture:** Inertia renders the UI *and* a token-authenticated REST API
 lives at `/api/v1`. Both entry points call the same Service class, so behaviour
 can't drift between them. Controllers stay thin: authorize, delegate, respond.
 
 **The API is where Core 2 meets the rest of ISMERS**, and it is documented for
-the other teams in `docs/INTEGRATION.md`. Two doors accept writes — Core 1
+the other teams in `docs/INTEGRATION.md`. **Five doors accept writes** — Core 1
 proposes a hire (`POST /endorsements`), Core 3 posts a loan for payroll to
-deduct (`POST /loans`) — and everything else is read-only.
+deduct (`POST /loans`), Fleet and Supply Chain post a one-off amount
+(`POST /payroll/adjustments`), Core 4 posts a disciplinary action
+(`POST /disciplinary-actions`), and Financial Management confirms a transfer
+(`POST /payroll/runs/{run}/disbursement`) — and everything else is read-only.
+
+- **Not one of the five writes to attendance or to a payslip.** Each stores a
+  row, and the services that already compute our own screens read those rows at
+  compute time. That is one rule reached four separate times — the loans
+  argument below, the adjustments one, the disciplinary one, and the
+  disbursement's amount check — and it is what makes a recompute safe: an
+  endpoint that *applied* its amount when called would apply it again on the
+  next recompute, with the two systems' balances parting company and nobody
+  watching. **No external call moves money in this system on its own.**
 
 - **Every published figure comes from the service that already computes it for
   our own screens.** `/drivers` reads `LicenseVerifier`, `/deployment-readiness`
@@ -100,11 +156,131 @@ deduct (`POST /loans`) — and everything else is read-only.
 - **A draft payroll run answers `409`, not `404`.** The run exists; it is not
   disbursable yet. That is the difference between "retry later" and "wrong id",
   and Finance needs to be able to tell them apart.
+- **`/payroll/journal-summary/{period}` is keyed by period, not by run**, and
+  it is the one payroll endpoint that is not a list of people. `/runs` answers
+  which runs exist, `/register` answers who gets paid what, `/contributions`
+  answers what the agencies are owed — none of them is a journal, and Finance
+  cannot post a period to the ledger without one. A ledger is posted per
+  accounting period and there can be more than one run in it, so every
+  reportable run is summed and named in `meta.runs`: asking Finance to add them
+  up would be asking them to re-derive a total this system holds, and the day
+  their sum disagrees with ours it surfaces in a trial balance rather than on a
+  screen.
+  - **`meta.balanced` is a real check, not a formality.** Every figure is read
+    back from stored payslips rather than recomputed, so a payslip ever written
+    with a `net_pay` that did not equal `gross_pay - deductions_total` turns
+    this false and `out_of_balance_by` says by how much. Compared with a
+    centavo of tolerance, because these are two sums of rounded currency rather
+    than one number twice.
+  - **Time not worked is a contra to salary expense, not a payable.** Lateness,
+    undertime, absence and unpaid leave are one credit line. Nobody is owed
+    that money — the company simply spent less — and filing it as a liability
+    would put figures on the balance sheet that will never be paid to anyone,
+    which is found in an audit rather than in a reconciliation.
+  - The employer's share appears on **both** sides and nets out, and each
+    agency payable carries the employee withholding *and* the employer share,
+    because one cheque goes to each agency. A zero line is omitted rather than
+    sent as `0.00`.
 - **Loans are amortised here and nowhere else.** Core 3 approves the loan and
   answers to the employee for it; only this system can take money off a
   payslip. A design where Core 3 kept its own balance and told us what to
   deduct each period fails the first time a run is recomputed — the deduction
   applies twice and the two balances part company with nobody watching.
+- **`POST /payroll/adjustments` is the third write door, and it stores a row
+  rather than touching a payslip — which is the same lesson as the loans one
+  above, applied to one-off amounts.** Fleet posts trip allowances and per
+  diems, Supply Chain posts accountability for a damaged item; both are an
+  amount, a label, a cutoff and a decider, so they share one endpoint rather
+  than two that would drift. `PayrollService::gatherInputs()` sums
+  `payroll_adjustments` at compute time, so a recompute re-reads the same rows
+  and reaches the same total. An endpoint that *applied* ₱500 when it was
+  called would apply it again on the next recompute, and `PayrollAdjustmentApiTest`
+  asserts exactly that it does not.
+  - **`other_deductions` had been built into `PayrollCalculator` and never
+    fed** until an external system needed it — deduction adjustments land
+    there, earnings join `allowances`.
+  - **A one-off earning is never prorated by frequency.** `amountForPeriod()`
+    halves a monthly standing allowance on a semi-monthly run, which is right
+    for a rice allowance and wrong for a trip that happened once: halving it
+    would pay ₱250 for a ₱500 trip.
+  - **The period is required, not inferred.** Left to "the next run that
+    happens", a row missed by one run pays out in the following one and a row
+    never consumed pays out forever.
+  - **Idempotent on `(source, reference)`, and a resend never rewrites the
+    amount.** The reference names a fact this system may already have paid, so
+    changing the figure behind it would move money nobody asked to move —
+    correcting one is a new reference, or a `DELETE` while the period is open.
+  - **`409` once the period has a reportable run**, on both the post and the
+    delete. Accepting a late amount would write a row nothing ever reads — an
+    allowance somebody was promised and never paid, with no error to say so;
+    and money already paid is not withdrawn by deleting the row that explained
+    it. `source` is a fixed list for the same class of reason: a typo would
+    create a row nothing reads and nobody notices.
+- **`POST /disciplinary-actions` stores a suspension and refuses to serve it,
+  and *that refusal is the design*.** Core 4 runs the investigation; this
+  system holds the employment record the outcome attaches to. A suspension
+  arriving here does **not** mark days absent and does **not** dock pay —
+  `PayrollReadinessChecker::unservedSuspensions()` raises an unpaid one as a
+  **warning** before the money is computed, and HR keys the days or decides the
+  suspension was lifted.
+  - The argument is the one that keeps *our own employees* out of
+    `attendance_logs`: **a DTR somebody can rewrite is not a record of
+    anything**, which is why an employee files a correction and a person
+    decides. Core 4 is another system and is no more entitled to that than an
+    employee is. Two alternatives were considered and both fail on it — writing
+    absent rows makes another system the author of a time record, and applying
+    a deduction moves money with no attendance behind it, so the payslip would
+    disagree with the DTR it is supposed to have come from.
+  - **The cost is stated rather than designed away: an unpaid suspension
+    nobody acts on is paid.** That is the accepted price of not letting one
+    system move money inside another, and
+    `test_a_suspension_does_not_write_attendance_records` is what stops
+    somebody "fixing" it later without reading this.
+  - The warning **goes silent once the DTR already explains those days** —
+    counted once for everybody rather than per action, since this panel loads
+    before every payroll run. A line that is already done is how a panel stops
+    being read, which is the same reasoning `OnboardingChecker` uses in not
+    listing a complete file.
+  - `payroll_effect` is returned on every response (`flagged_for_hr` or
+    `none`), because "we stored this and it changed no pay" is the thing an
+    integrator is most likely to assume wrongly, and an assumption is cheaper
+    to prevent in the payload than to correct in a meeting.
+  - **Dismissal is deliberately not one of the `TYPES`.** A separation carries
+    a statutory final pay and a DOLE deadline behind it, and it goes through
+    Separation & Final Pay where a person releases it — the same reason
+    separation pay is left to HR rather than computed.
+  - `DisciplinaryActionPolicy::create` is `isHrAdmin()` with **no supervisor
+    exemption**, unlike `EmployeePolicy::view`. Recording a warning against
+    somebody's employment is not the same act as reading their record.
+- **`POST /payroll/runs/{run}/disbursement` closes a loop `/register` left
+  open.** The register handed Finance a list and nothing came back, so *approved*
+  and *the money arrived* were two facts this system reported as one — a run sat
+  at `approved` until somebody in HR remembered to tick it.
+  - **The credited `amount` is checked against the run's own `total_net`, not
+    trusted.** A file that disbursed less than the register said is somebody
+    unpaid, and marking the run `paid` over it would bury exactly that. A
+    mismatch is `409` with the difference stated and **nothing is written** —
+    not the status, not the reference. A centavo of tolerance, because these
+    are two sums of rounded currency reached by two systems rather than one
+    number twice, the same comparison `meta.balanced` makes.
+  - **The status check runs *before* `Gate::authorize`**, which is the reverse
+    of every other controller here and is deliberate: `markPaid` couples the
+    ability to the run being approved, so authorising first answers **403** for
+    a draft — and for Finance that is the wrong answer, since they *are*
+    allowed and the run is simply not ready. The cost is that an
+    under-privileged token learns a run's stage from this endpoint, which is a
+    payroll run's status rather than anybody's personal data.
+  - **`markPaid` was the ability, and `approve` was the first wrong guess.**
+    Reaching for `approve` refused every caller, because it requires
+    `for_approval` — which is how the existing and correct ability was found.
+    Confirming money left the bank is the other half of releasing it, so
+    splitting the two would let somebody mark a run paid who was never trusted
+    to approve one.
+  - `disbursed_at` is **a third date with its own column**, not `updated_at`: a
+    transfer sent Friday and confirmed Monday is one event with two dates, and
+    `updated_at` would only ever hold whichever we heard about last. It needed a
+    `datetime` cast — without one `toIso8601String()` is called on a string and
+    the endpoint 500s, which is how it was found.
 - **`/analytics/workforce` returns shapes, never people.** A dashboard needs
   counts, and an endpoint that hands over the directory to draw a bar chart is
   the endpoint that will one day be the way the directory left.
@@ -207,40 +383,100 @@ Light and dark both work because components reference tokens, not values.
   `ALL_HREFS` in `navigation.js` automatically, which is what lets `bestMatch()`
   highlight the right entry when its screen is open. Children filter by role
   like every other nav entry.
-- **Those entries sit in four labelled groups** — Employee Management, Time &
-  Attendance, Payroll & Performance, System — above an unlabelled Dashboard.
-  The grouping is presentational: it is what gives the sidebar its rhythm, and
-  it moves no module, route, or permission. Five modules under one heading read
-  as a flat list of five things rather than as a system with parts.
-- **A fifth group, AI & Analytics, holds the screens that read across modules
-  rather than maintaining one.** Credentials, 201 File Status, Attendance
-  Exceptions, and Deployment Readiness each run a config-driven rule engine
-  over data another module owns, and none of them owns a table. They used to
-  sit under whichever module they happened to read from — Credentials under
-  Employee Information, Exceptions under Timekeeping — which filed them by
-  their input rather than by what they are. Moving them changed no route,
-  controller, or permission: `ALL_HREFS` is derived from every group, so
-  `bestMatch()` still lights the right entry.
-- **Settings is not in the sidebar at all, and that is the third answer.**
-  It began as a 224px section column beside the page, which at 1024px left the
-  forms about 468px — squeezed at exactly the width where a two-column layout
-  was meant to start helping. So it became a sidebar entry with seven
-  `children` like every module, and the column was deleted. That was still
-  wrong in a different way: it filed "change my password" and "back up the
-  database" level with Payroll. Settings is not a sixth module — it configures
-  the app and the account rather than doing the company's work — so it now
-  hangs off the two places an account is reached, the **user card at the foot
-  of the sidebar** and the **top right of the topbar**. Nothing about the
-  routes or the permissions moved with it.
-  - The seven sections are back on the page as a **row**, not the column that
-    was deleted. That distinction is the whole point: a column costs width,
-    which these forms have none of; a tab row costs height, which they have.
-    It scrolls sideways rather than wrapping on a phone.
-  - `bestMatch()` correctly finds nothing on a settings page, because
-    `ALL_HREFS` is derived from the nav groups and Settings has left them. The
-    two gears say for themselves when they are current — a control that never
-    shows it is current is one people click twice.
-  - **`/settings` lands on the first section the person may open.** It always
+- **Those entries sit in labelled groups** — Employee Management, Time &
+  Attendance, Payroll & Performance, AI & Analytics, and Administration —
+  above an unlabelled Dashboard. The grouping is
+  presentational: it is what gives the sidebar its rhythm, and it moves no
+  module, route, or permission. Five modules under one heading read as a flat
+  list of five things rather than as a system with parts.
+  - **The order is business first, system last.** The four groups that are
+    about the company's work come before the two that are about the app
+    itself. `visibleGroups()` drops any group whose items all filter out by
+    role, so `roles` belongs on the item and never on the group — a heading
+    with nothing under it is worse than no heading.
+- **A fifth group, AI & Analytics, holds only Scanner Accuracy — and the
+  reason it holds nothing else is the point.** It briefly held six screens,
+  grouped on a criterion that was actually sound: Credentials, 201 File
+  Status, Attendance Exceptions, Deployment Readiness, and Record Checks each
+  read *across* modules rather than maintaining one, and none of them owns a
+  table. The criterion was fine and **the label was a claim none of them could
+  meet**: every one of those five is a config-driven rule engine — dates,
+  regexes, string comparisons — and `RecordIntegrityChecker` says in its own
+  docblock that there is deliberately no model behind it. A group named after
+  a technology none of its members use is disproved by the first person who
+  clicks into it, and the one feature here that *is* AI — `DocumentScanner` —
+  was never in the group at all. So the five went back beside the module whose
+  records each one reads: Exceptions to Timekeeping, and the other four into
+  **Checks & Readiness**, a sibling entry to Employee Information rather than
+  four more of its children — loose in that list they read as four more record
+  screens, which is the wrong claim about all four, since none of them stores
+  anything. Named for what they do rather than how: "Compliance" was the
+  obvious alternative and is taken, meaning SSS, BIR and PhilHealth remittance
+  under Payroll. It is a sibling and not a nesting because the sidebar renders
+  exactly two levels, which is the same shape Timekeeping and Leave take
+  inside Time & Attendance. What
+  stays is the screen that *measures* the scanner, which is the only way a
+  screen belongs to this feature — the scanner itself fills a form and runs
+  the batch filer, and neither is a destination. Filing by input was the
+  earlier mistake and it is worth not overcorrecting into the opposite one:
+  the fix for a wrong label is a right label, not a wrong group.
+  - **"Attendance Exceptions" is "Exceptions" again.** The longer name was
+    earned by sitting in a group that mixed modules, where the bare word said
+    nothing about which records. Its siblings are Records, Overtime and
+    Holidays now, and the subject is not in question.
+  - Moving them changed no route, controller, or permission: `ALL_HREFS` is
+    derived from every group, so `bestMatch()` still lights the right entry.
+- **Settings has been in four places, and the fourth is one entry under a
+  label that says what it is.** It began as a 224px section column beside the
+  page, which at 1024px left the forms about 468px — squeezed at exactly the
+  width where a two-column layout was meant to start helping. So it became a
+  sidebar entry with seven `children` like every module, and the column was
+  deleted. That was wrong in a different way: it filed "change my password"
+  and "back up the database" level with Payroll. So it left the sidebar
+  entirely and hung off the two places an account is reached — the user card
+  and the topbar. Now it is back in the sidebar as **`System Settings` under
+  an `Administration` group**, and the group label is the whole difference
+  from the second answer: **the objection was never the sidebar, it was the
+  ranking**, and a heading that says "administration" is what ranks it apart
+  from the company's work. Nothing about the routes or the permissions has
+  moved through any of the four.
+  - **One entry, not seven `children`.** The dropdown of seven is what made it
+    read as a sixth module. The sections already live on the page as a row, so
+    the sidebar carries a door and the page carries the sub-navigation.
+  - **`SettingsLayout` renders no section list at all, and that is what
+    settled a long argument.** The sections were a 224px column beside the
+    content (deleted — at 1024px, once the sidebar and page padding come off,
+    it left the forms about 468px, squeezed at exactly the width where a
+    two-column layout is meant to start helping), then a tab row above it (a
+    row costs *height*, which a settings form has to spare, and not width),
+    then both at different breakpoints. Every one of those was trying to put
+    the sub-navigation on the same screen as the thing it navigates to. With
+    `/settings` a menu, that question does not arise: the list is the page you
+    came from, and drawing it again inside each section is the same seven rows
+    on two consecutive screens. A section page carries a one-line **back
+    link** instead — one line is not a duplicate, and without it a section is a
+    dead end, since the topbar accepts `breadcrumbs` and does not render them.
+  - **The entry carries no `roles`.** `/settings` redirects to the first
+    section the person may open, and Appearance and Security belong to every
+    signed-in user — filtering the entry by role would hide the door to
+    somebody's own password.
+  - **`activePrefix: '/settings'` is what lights it**, not `bestMatch()`. The
+    sub-navigation is a row on the page rather than `children` here, so there
+    is no child href to match from `/settings/security`. The two gears still
+    compute their own state from the URL — a second door to the same place,
+    and a control that never shows it is current is one people click twice.
+  - **`/settings` is the section menu, not a section.** It renders
+    `Settings/Index` — the seven rows with a one-line blurb each — and a
+    section is the next click. It used to redirect, which was right while the
+    only way in was a gear (the person clicking had already decided they
+    wanted *something* in here) and wrong the moment `System Settings` became
+    a sidebar entry: a nav link that silently lands somebody on the company's
+    regional formats has chosen a section on their behalf. The index and the
+    layout share one `visibleSections()` rather than filtering twice — a row
+    offered on the menu and then missing from the column beside it would be a
+    door that vanishes once you walk through it.
+  - **The redirect it replaced had already been fixed once**, and the fix is
+    the reason the menu needs no role check of its own. It always
     redirected to General, which is admin-only: harmless while the only way in
     was a role-filtered sidebar entry, and a 403 the moment the gear became a
     door shown to everybody.
@@ -291,7 +527,45 @@ Light and dark both work because components reference tokens, not values.
   a stat at **zero drops to grey by itself**, because "0 absent" in red reads as
   a problem when it is the opposite. The headline number in `StatCard` stays in
   the foreground colour: it is the thing being read.
-- **The dashboard reads in four bands**, top to bottom: headline `StatCard`s,
+- **The dashboard opens on the reader's own record, above the company's
+  figures.** Everything below it is the organisation looking at itself — how
+  many people, whose leave is waiting, what payroll came to — and for a
+  rank-and-file login, which is most of the workforce, none of that is theirs
+  to act on. `ProfileCard` answers the question the rest of the screen does
+  not: *where do I go*. Name, employee number, position, department, client and
+  supervisor, then the four screens that belong to that person — their 201
+  file, their attendance calendar, leave, and payslips.
+  - **Every part of it is a link, which is the point rather than a flourish.**
+    A card that states a department and cannot open it has told the reader
+    something they already knew about themselves.
+  - **The client is the one thing deliberately *not* linked.** `/hr/clients` is
+    behind `manageOrganization`, so for the employees most likely to be
+    deployed to one it would be a link into a 403 — the same rule the org
+    directory follows when it draws a plain row instead of a link.
+  - **`profile.employee` is null for a login with no 201 file**, and that is a
+    real case rather than a defensive check: an administrator need not be an
+    employee at all. The card falls back to the account and drops the four
+    links, which are built from `employee.id` and would otherwise be four 404s
+    on the first screen that account ever sees.
+  - **Their own salary is on it, and the policy is asked rather than assumed.**
+    `EmployeePolicy::viewSensitive` returns true for HR *and* for the person
+    the record belongs to, so an employee has always been able to open their
+    own 201 file and read their own rate — withholding it from their own
+    dashboard would be the screen disagreeing with the gate. The block is built
+    behind `$user->can('viewSensitive', $employee)`, so the day this card is
+    widened to somebody else's record the compensation stops being drawn on its
+    own rather than because a class was remembered.
+  - **Government numbers and the bank account stay out regardless.** They are
+    what a stolen dump is worth stealing and nothing on a landing page needs
+    them. Asserted against the whole rendered payload rather than the shape of
+    the array, the way `DirectoryTest` does it.
+  - Attendance is counted through `TimekeepingService::PRESENT_STATUSES` rather
+    than a fourth private copy of that list, and both halves of the month are
+    shown — "18 days in" and "2 days missed" are different questions, and the
+    second is the one somebody acts on. Each links to the employee calendar
+    carrying the same `from`/`to` it counted, so the screen it opens returns the
+    number on the card.
+- **Below that it reads in four bands**, top to bottom: headline `StatCard`s,
   then the `SplitStatCard` / `MeterCard` detail row, then charts, then the
   three summary cards. `StatTile` and `TilePreview` are the units the summary
   cards are built from — a row of tinted figures over the single most recent
@@ -367,26 +641,68 @@ legal to dispatch.
 - **A null is a valid answer.** The prompt says so explicitly, and the form
   only fills fields that came back non-null — overwriting with a null would
   erase a correction HR had already typed.
-- **It runs on the host, not in the cloud.** `SCANNER_DRIVER=ollama` (the
-  default) sends the image to Ollama on `127.0.0.1` — `glm-ocr`, 0.9B and
-  2.2 GB, small enough for a 4 GB card and built for documents rather than
-  chat. The decision is not really about cost: a 201-file scan is a
-  photograph of somebody's PhilSys ID or NBI clearance, and posting that to a
-  third-party API is a cross-border transfer of personal data under RA 10173.
-  Locally the image never leaves the machine.
-- **Three drivers, one shape.** `ollama` (local, default), `gemini` (hosted,
-  free tier), `anthropic` (hosted, paid). All three are constrained by the
-  same JSON schema, so everything downstream of `read()` is driver-agnostic —
-  and a test asserts the normalised keys are identical across the three,
-  because a drift would otherwise only appear in production on whichever
-  driver the suite does not exercise.
-- **`gemini` exists because Ollama cannot be deployed.** It has to be
-  installed and running on whatever serves the app, and a small VPS cannot
-  hold even a 2.2 GB vision model — so on a deployed instance the scanner
-  goes dark. Gemini runs from anywhere. The cost is exactly what Ollama was
-  chosen to avoid: the scan leaves the country, which under RA 10173 needs
-  consent and disclosure. Switching a real deployment to it is a decision
-  someone makes deliberately, not by editing an env file.
+- **The local driver was removed, and that is the biggest single decision
+  here.** There was a fourth driver — Ollama running `glm-ocr` on
+  `127.0.0.1` — and it was the *default*, because a 201-file scan is a
+  photograph of somebody's PhilSys ID or NBI clearance and locally the image
+  never left the machine. It went because **it could not run where the system
+  runs**: Ollama has to be installed on whatever serves the app, and a small
+  VPS cannot hold even a 2.2 GB vision model. So the default driver was one
+  that goes dark on every deployment, and a fresh clone shipped pointing at a
+  feature that could not work.
+  - The argument that decided it: **a local option nobody can deploy is not a
+    privacy control.** It is a privacy control that is switched off in
+    production, which is the only place it would have mattered. Keeping it
+    made the repository *look* like it protected the data while the running
+    system did not.
+  - **So the RA 10173 obligation is now unavoidable rather than avoided.**
+    Every scan is a cross-border transfer of personal data. That has to be met
+    with disclosure to the employee and consent on file — it is no longer
+    something a config value can satisfy, and there is no driver left that
+    sidesteps it. Saying so plainly is the point; deleting the reasoning along
+    with the driver would have left the system quietly doing the thing the
+    design used to refuse.
+  - `SCANNER_DRIVER=ollama` left in an old `.env` **goes dark rather than
+    falling through** to a working driver. `.env` is not in the repository, so
+    every machine that ran the old default still has that value after a pull;
+    falling through would silently start sending 201-file photographs abroad
+    from a machine whose owner never chose that. Guarded by a test.
+- **Three drivers, one shape.** `gemini` (hosted, free tier, **default**),
+  `openrouter` (hosted broker), `anthropic` (hosted, paid). All three are
+  constrained by the *same* JSON schema, so everything downstream of `read()`
+  is driver-agnostic — and a test asserts the normalised keys are identical
+  across them, because a drift would otherwise only appear in production on
+  whichever driver the suite does not exercise. Each one wraps that schema
+  differently and nothing else differs: Gemini takes it as
+  `responseJsonSchema`, OpenRouter under a named `response_format.json_schema`,
+  Anthropic as `outputConfig.format`.
+- **`gemini` is the default, and the one to prefer.** Free at this tier,
+  reachable from anywhere, and — the part that matters once every driver is
+  hosted — a **single named processor**. "Google processed it" is an answer;
+  "OpenRouter, and then whichever upstream served it that day" is not.
+- **`openrouter` is a broker, and that is the whole of what to know about
+  it.** One key reaches many models, so changing model is an env edit rather
+  than a new driver — which is genuinely why somebody picks it. But OpenRouter
+  does not run the model: the image goes to OpenRouter and OpenRouter forwards
+  it to whichever upstream is serving that model at that moment. A 201-file
+  scan is a photograph of somebody's PhilSys ID or NBI clearance, so under
+  RA 10173 this is a cross-border transfer to **two** processors rather than
+  one, and which the second is can change without anything here changing.
+  Gemini is a single named processor; a broker is two. It is the worst of the
+  three on the axis this feature was designed around, and it is not the axis
+  it is chosen for.
+  - **`provider.data_collection: deny` is sent on every request**, not left to
+    a dashboard setting. It asks OpenRouter to route only to upstreams that do
+    not retain or train on the prompt — the difference between one
+    cross-border transfer and an indefinite one — and putting it in the body
+    means the guarantee travels with the code that relies on it.
+  - **The likely misconfiguration here is the *model*, not the key**, which is
+    the opposite of every other driver. The catalogue is large and only part
+    of it can both read an image and honour a JSON schema. A model that can do
+    neither answers prose, which reaches the form as a scan that simply found
+    nothing — so `strict: true` is sent, `firstOpenRouterJson()` logs the model
+    name and OpenRouter's `refusal` field, and `scanner:check` lists the model
+    before the key among the likely causes.
 - **The deployment driver had never been run, and did not work.** `gemini`
   was posting an OpenAI-shaped body (`input`, `response_format`) to
   `/v1beta/interactions`, which is not a Gemini endpoint — Gemini names the
@@ -394,14 +710,19 @@ legal to dispatch.
   `contents[].parts[].inline_data`, `systemInstruction`, and
   `generationConfig`. Nothing caught it because every scanner
   test stubs `read()`, which is right for the rules around it and leaves the
-  envelope untested — and the only driver anyone runs locally is Ollama. The
-  driver that exists *for deployment* was therefore the one with no test.
-  `ScannerDriverRequestTest` now asserts what each driver puts on the wire.
+  envelope untested — and at the time the only driver anyone ran locally was
+  the local one, so the driver that existed *for deployment* was the one with
+  no test. `ScannerDriverRequestTest` asserts what each driver puts on the
+  wire, and every driver is a deployment driver now, so every one needs a leg
+  there.
 - **The free tier is 20 scans a day, per model.** Measured, not read: Google's
   429 body names the quota — `GenerateRequestsPerDayPerProjectPerModel-FreeTier`,
   value `20`. Enough to demonstrate the feature and nowhere near enough to run
-  an HR department on, which makes the free tier a *development* driver rather
-  than a deployment one. Paid billing lifts it; so does going back to Ollama.
+  an HR department on. Past it a scan returns nothing and HR types the fields,
+  which is what every other failure here collapses to — so the limit degrades
+  the feature rather than breaking the screen. Paid billing lifts it; so does
+  a paid model on `openrouter`. There is no longer a local driver to fall back
+  to, and that is the trade accepted when it was removed.
 - **Gemini is retried and the other two are not**, because only this one shares
   a quota. Six identical scans on a real key came back three answered and three
   429, so a driver that gave up on the first would look broken half the time
@@ -432,6 +753,48 @@ legal to dispatch.
     which was asserted from the documentation rather than from a request. The
     docs describe `responseJsonSchema`'s dialect; the code was sending
     `responseSchema`.
+- **Thinking is charged against `maxOutputTokens`, and that silently broke the
+  scanner for two days.** `thinkingConfig.thinkingBudget` is `0` on the Gemini
+  request, and it is load-bearing rather than tidy: `gemini-3.5-flash` is a
+  thinking model, `usageMetadata.thoughtsTokenCount` comes out of the same
+  budget the answer has to fit in, and a 201-file photograph is precisely the
+  input it thinks hardest about. Measured on one synthetic card: **458–574
+  thinking tokens of the 1024**, leaving the JSON to be cut mid-string —
+  `{"document_type": "DIGITAL TIN ID",` — which `json_decode` refuses. So a
+  document the model had read **correctly** reached the upload form as "nothing
+  found", with the red "not a valid document" panel on top of it.
+  - **The comment on `MAX_TOKENS` was the bug.** It said a cap that size
+    "cannot truncate" a handful of short fields, which is true of the *answer*
+    and false of the *budget* — an assumption about the model rather than a
+    fact about the API, the same shape as the HSTS scheme check that assumed
+    the environment. The figure did not change; what changed is what else was
+    allowed to spend it.
+  - **It is the right call on the merits, not just a way to buy tokens.** This
+    call is transcription: read what is printed, hand back the fields. Every
+    judgement is made afterwards in PHP — `resolveType()` ranks five sources,
+    `nameMatches()` compares the name, Carbon re-parses the dates — precisely
+    because the small model is good at reading and poor at judging. The
+    thinking was being spent on a decision this code discards.
+  - **`scanner:check` passed throughout, and that is not a flaw in it.** It
+    sends one *generated* card, which needs little thought and answered inside
+    the budget every time. The failure needed a busy real document, so "the
+    key, the model and the request all work" was true and useless — the same
+    gap `ScannerDriverRequestTest` exists to cover, which is where the
+    `thinkingBudget` assertion now lives.
+  - **Logging only `array_keys($body)` is what made it undiagnosable.** The
+    envelope looks perfectly healthy when the reply is truncated — `candidates`,
+    `usageMetadata`, `modelVersion` all present — so the warning reported the
+    one thing identical in the working and the broken case, six times across
+    two days. It now names `finish_reason`, the thinking and output token
+    counts, and the first 30 characters of the text: `MAX_TOKENS` is
+    recoverable by widening the budget, `SAFETY` is the model declining, and
+    those need different fixes. **The head, not the whole reading** — it is a
+    transcription of somebody's government ID and a log is not where that
+    belongs. Same lesson as the discarded `heading`: the evidence that says
+    what to fix has to survive the failure.
+  - Gemini-only. `MAX_TOKENS` is shared with the other two drivers; this field
+    is not, and neither is the failure — OpenRouter and Anthropic are not
+    spending that budget on thought.
 - **The caption is read along with the number, and must not refuse the card.**
   A real scan returned `document_number` as `"NBI ID NO.: N2G4-25-123456"`.
   `numberMatches()` compared for equality, so that read as a *contradiction* —
@@ -525,8 +888,49 @@ legal to dispatch.
   `CredentialExpiryScanner`'s renewal queue to be chased forever for a
   renewal that does not exist. The panel then says **"Does not expire"**
   rather than "Not found", which would read as a failed reading rather than a
-  fact — and the list it reads is shared from the same config, so the screen
-  and the scanner cannot disagree about which documents lapse.
+  fact.
+- **Whether a document expires is not always a fact about its *type*, and a
+  TIN ID is where that broke.** `type_cannot_have` is keyed by type, which
+  works for a résumé or a PSA certificate because every document of that type
+  is alike. `government_id` is not: a TIN ID, a UMID, an adult PhilID and a
+  voter ID are issued for life and print no expiry anywhere, while a
+  **passport and a postal ID do expire** — and a passport's expiry is the kind
+  of thing somebody is turned back at an airport over. So
+  `'government_id' => ['expires_at']` would have been wrong in the expensive
+  direction, silently discarding a correctly read passport expiry, and leaving
+  it out is what let a TIN ID be handed one.
+  - `config('scanner.non_expiring_ids')` names the cards one by one, **keyed
+    by the type the rule may act on** so the config says where it applies
+    rather than the code naming a type inline. The scoping is load-bearing: an
+    NBI clearance prints a real "VALID UNTIL" and its letterhead names an
+    agency, so a list read against every type would eventually clear a real
+    expiry off a real credential.
+  - Matched against **the heading the model transcribed** — evidence printed
+    on the paper, the same source `title_keywords` ranks second of five — and
+    it **clears the date without ever rejecting the type**. A hallucinated
+    expiry on a TIN ID is the model answering a question the card does not
+    have, which is the PSA failure exactly, and it is not a reason to doubt
+    that the paper is a government ID.
+  - **The prompt had been asserting the opposite, in as many words.** It
+    listed `an expiry date ("TIN ID ISSUE / EXPIRY DATE")` among the things an
+    authentic BIR card carries, so the system was *instructing* the
+    hallucination rather than merely failing to catch it. It now states that a
+    TIN ID, UMID, PhilID and voter ID carry no expiry and that a passport and
+    postal ID do. The config rule is the guard behind that fix, not a
+    substitute for it: a model told the right thing can still read a control
+    number or an issue date as an expiry.
+  - **The model condenses the heading rather than transcribing it** — a real
+    scan of a card printing three lines of agency name came back with
+    `heading` of just "TIN ID". So the short name people actually use belongs
+    on the keyword list beside the formal one, which is why `national id` sits
+    with `philippine identification`.
+  - **The panel reads one `never_expires` flag off the scan**, and the
+    `neverExpires` prop the controller used to derive is gone. The component
+    matched `scan.type` against that list, which can only ever answer for a
+    type that never expires as a class — so a TIN ID showed "Not found" under
+    Expires, inviting HR to type a date that does not exist. Both grains now
+    answer through the same field, so there is no second copy of the rule for
+    the screen to disagree with.
 - **An expiry date already in the past refuses the upload**, alongside the
   name and type checks. It reads the **form field**, not the scan, and that is
   the design: the model misreads this date — a real upload returned "Jul 25,
@@ -570,28 +974,29 @@ legal to dispatch.
   flattens newlines and caps length: these land in single-line inputs, where
   a newline silently becomes a space and a block of OCR output arrives
   looking like a deliberate answer.
-- **A dark feature is not a broken one**: with no driver configured (or no
-  key on the anthropic driver) `can.scanDocuments` is false, the button is
-  never drawn, and the endpoint 404s. Uploading by hand works exactly as
-  before. `isEnabled()` deliberately asks config, not the network — pinging
-  Ollama would make the button truthful but put an HTTP call in every page
-  render and tie the test suite to what happens to be running. A server that
-  is down is handled where every other failure is: `read()` logs and returns
-  null, the form stays empty, HR types the fields.
+- **A dark feature is not a broken one**: with no key for the configured
+  driver `can.scanDocuments` is false, the button is never drawn, and the
+  endpoint 404s. Uploading by hand works exactly as before. `isEnabled()`
+  deliberately asks config, not the network — calling the provider would make
+  the button truthful but put an HTTP request in every page render and tie the
+  test suite to a third party being up. A revoked key is handled where every
+  other failure is: `read()` logs and returns null, the form stays empty, HR
+  types the fields.
 - **`php artisan scanner:check` asks whether the configured driver is really
-  there.** `isEnabled()` deliberately reads config rather than the network, and
-  the cost of that is a deployment with `OLLAMA_HOST` still set but no Ollama
-  behind it: the button draws and every scan fails silently. This is the other
+  there.** `isEnabled()` reads config rather than the network, and the cost of
+  that is a deployment with a key that is present but wrong, revoked, or out
+  of quota: the button draws and every scan fails silently. This is the other
   half of that bargain — one real image through the real driver, run once after
   a deploy or an env change, reporting *switched off* and *configured but
   broken* as the different answers they are. Not automatic and it gates
   nothing.
 - Images only, ≤5 MB (`config/scanner.php`). A PDF or DOCX upload skips the
   scanner rather than failing.
-- **Setup**: `winget install Ollama.Ollama` then `ollama pull glm-ocr`. The
-  server starts itself on boot. First scan after a reboot takes ~40 s while
-  the model loads into VRAM; every one after that is ~3 s, which is why
-  `scanner.ollama.timeout` is 180 and not 30.
+- **Setup**: get a free key at `aistudio.google.com/apikey`, put
+  `GEMINI_API_KEY` in `.env`, then `php artisan config:clear` and
+  `php artisan scanner:check`. Nothing to install — every driver is hosted,
+  which is the whole reason the local one went. The same three lines are what
+  a deployment needs, in the server's own `.env` and never in Git.
 - `DocumentScanner::read()` is `protected` for one reason: the SDK's
   `MessagesService` is `final`, so tests stub that single method to exercise
   every rule around it without a key or a network call.
@@ -1012,6 +1417,66 @@ redirects to `/hr/departments` rather than 404ing.
   band is optional and advisory, but a rate keyed against a bandless position
   has nothing to be compared to, which is worth seeing.
 
+## Educational & qualification records (Module 1)
+
+**A Qualifications section on the employee's own profile**, between Employment
+and Documents — three lists: schooling, completed trainings and certifications,
+and skills. It answers what somebody is *qualified for*, which the rest of the
+201 file does not: employment says what they are paid to do, documents say what
+paper is on file, and neither says whether this driver may be sent on a job
+that needs a forklift ticket.
+
+- **Three tables, not one with a `type` column.** The three are alike only in
+  belonging to a person: a school has a course and a year, a training has a
+  provider and an expiry, a skill has a grade and neither. One table would be
+  eleven mostly-null columns and a validation rule per type pretending to be a
+  schema.
+- **The paper stays in Documents.** A diploma, a transcript, and a TESDA
+  certificate are *evidence*; these rows are the *fact*, and the fact survives
+  the paper going missing. Filing it twice would be two answers to one
+  question — which is why `diploma` and `transcript` became document types of
+  their own rather than fields here.
+- **Highest attainment is derived, never stored.** `Employee::highestEducation()`
+  ranks by the order of `config('qualifications.education_levels')`, so adding
+  a degree cannot leave a stale flag behind, and an unknown level ranks *last*
+  so a level dropped from config cannot outrank a real one. The same config
+  drives the form's dropdown, sent from the controller rather than restated in
+  the component: the order is what makes "highest" mean anything, and a second
+  copy would drift from the one the server ranks by.
+- **A blank expiry on a training means "does not lapse", not "not typed".** The
+  screen says so in those words, the same distinction the document scanner
+  draws — "—" there would read as a date somebody forgot. `expiryState()` reads
+  `credentials.warning_days.certificate` rather than holding its own number, so
+  this row and the Credentials screen cannot disagree about the same TESDA
+  card.
+- **No service, deliberately.** A school and a training course are recorded
+  facts, not derived ones: nothing computes off them and nothing else has to
+  agree with them, so a service that only forwarded to `create()` would be a
+  layer pretending to earn its place. The rules that do exist — which levels,
+  which grades, what a plausible year is — live in `config/qualifications.php`.
+- **Writes are gated on `EmployeePolicy::update`, not a permission of their
+  own**: editing somebody's qualifications is editing their record. Reading is
+  outside `viewSensitive` for the opposite reason — a school and a forklift
+  ticket are not salary, and a supervisor deciding who to send on a run
+  legitimately needs them.
+- **A child row is checked against its parent.** Both ids are in the URL and
+  Laravel binds them independently, so `/employees/7/skill/12` resolves happily
+  when skill 12 is employee 9's — and the policy check passed on employee 7.
+  Without `belongsTo()`, being allowed to edit one person is being allowed to
+  delete a row off anybody. Guarded by a test.
+- **Duplicate skills are caught case-insensitively in PHP, not by a unique
+  index.** "Forklift" and "forklift" are the same skill and a list holding both
+  is a list nobody can count — but a database uniqueness rule compares by the
+  driver's collation, which differs between the Postgres this runs on and the
+  SQLite the tests use.
+- **`EmployeeEducation` states its table name.** Laravel treats "education" as
+  uncountable and looks for `employee_education`; renaming the table to match
+  would leave one singular table in a schema where nothing else is.
+- **Skills are free text today, and that is the known limit.** The upgrade is a
+  skills library beside Departments and Positions, with employees tagged from
+  it — which is what "who has a Forklift NC II" needs, and what a client asking
+  for five certified operators is really asking.
+
 ## 201 file completeness (Module 1)
 
 **201 File Status** answers what Credentials doesn't: not "what is about to
@@ -1049,11 +1514,62 @@ plus the assigned `Shift`.
   `OvertimeRequest` — that gate belongs to Payroll.
 - `TimekeepingService::record()` upserts one row per employee/date.
 
-Seven screens, one sidebar entry with `children`: **Daily Records** (DTR + CSV
-import), **Overtime** (file / approve / reject), **Shifts & Schedules**,
-**Holidays**, **Reports** (per-employee aggregation, CSV export),
-**Exceptions**, and **History**. Only HR records or corrects time; approvers
-are HR or the employee's own supervisor, never the requester.
+Eight sidebar entries under one `children` dropdown — **Records** (the cutoff
+summary, below), **Period DTR** (the cutoff sheet, below), **Overtime** (file /
+approve / reject), **DTR Corrections** (below), **Shifts & Schedules**,
+**Holidays**, **Exceptions**, and **History** — plus one screen with no entry
+of its own: an employee's own calendar, reached by clicking their row on
+Records. Only HR writes a time record directly; approvers are HR or the
+employee's own supervisor, never the requester.
+
+**Records (`/hr/timekeeping`) is one row per employee, not one per day.** It
+was "Daily Records": a paginated list of individual days with dropdowns for
+employee, department, and status. That answered "what happened on this day for
+this person", which is a question you have to already know the answer to before
+you can ask it. What HR opens the screen with is "who came in this month, and
+for how many days", so the table counts per person over a cutoff, and each row
+**opens** to the days behind it.
+
+- **The three dropdowns went with the change.** What replaced them is two date
+  inputs and three presets — **Whole month**, **1–15**, **16–end** — because a
+  cutoff here is a range, and a fourth control naming the same range would be a
+  second answer to what "this cutoff" means.
+- **Reports was folded in and now redirects here.** It rendered the same
+  per-employee figures for the same range with no way to reach the days behind
+  them. `/hr/timekeeping/reports` carries its range across rather than 404ing;
+  the CSV export survived as `/hr/timekeeping/export` with its
+  `DataAccessLogger` row. **That export used to resolve its own range** from a
+  `period` name, so the button on a screen showing 1–15 handed back the whole
+  month with neither side saying so — it reads `from` and `to` now.
+- **Somebody with no attendance at all is still a row, at zero.**
+  `attendanceByEmployee()` paginates *employees* and aggregates their logs,
+  where `employeeSummaries()` groups the logs themselves and cannot show a
+  person who has none. On a screen answering "who came in", the person who did
+  not is the answer.
+- **The tiles no longer link, and that is not a regression.** Days Present and
+  Absences are now the totals of two columns of the table directly beneath
+  them, and every row opens to the days behind it.
+- `TimekeepingService::PRESENT_STATUSES` states what "came in" means once —
+  three statuses, because a day somebody was late for is still a day they were
+  there. Four places count it, and a copy that fell out of step would put two
+  figures for the same fortnight on one screen.
+
+**The employee screen (`/hr/timekeeping/employee/{employee}`) is a calendar
+first and a table second.** A fortnight as a list of dates makes the reader
+count the weekends out of it themselves; laid out Monday to Sunday, three
+missed Mondays is the thing you see rather than something you work out.
+
+- **Weeks run Monday to Sunday whatever day the cutoff starts on**, so every
+  row has seven cells. Days outside the cutoff are **greyed, not dropped** — a
+  week missing its first two days stops being a week.
+- **A day inside the cutoff with no record is left blank, never drawn absent.**
+  Nothing recorded is not the same claim as "did not come in".
+- **Each week carries its own total**, which no other screen answers: daily
+  totals are on the row and range totals are on the tiles, and neither says
+  whether somebody worked a 60-hour week. Summed over the days inside the
+  cutoff only, so it matches what the payslip will pay.
+- Gated on `EmployeePolicy::view`, and `daysFor()` reads through
+  `scopedQuery()` as well, so the id in the URL decides nothing on its own.
 
 A shift still referenced by a schedule or a time record is **deactivated**
 instead of deleted, so attendance history keeps its shift.
@@ -1070,6 +1586,84 @@ leave those records classified against a rule that no longer exists. Validating
 the (date, name) key needs `whereDate`, not `Rule::unique` — see the
 date-cast-column gotcha below.
 
+**Period DTR (`/hr/timekeeping/period`) is where a cutoff is encoded.** A
+manpower agency's clients send a fortnight of attendance for everybody they
+were deployed, and encoding that one modal at a time is 600 openings for forty
+people. So the whole cutoff is one grid — employees down, days across — and one
+save.
+
+- **The cutoff comes from `payroll_periods`, not a range of its own**, so the
+  DTR and the run that pays from it cannot cover different days. Where no
+  period exists the calendar half-month stands in and the screen says so:
+  refusing to open would invert the order of the work.
+- **Statuses, not punches** — a real limit, stated as one. Safe for pay because
+  `PayrollCalculator` takes basic pay from the monthly salary and deducts
+  absences separately; `hours_worked` only rides along for display.
+- **A day already carrying punches is locked, never overwritten**, and the
+  count left alone is *stated* on the save.
+- **Only cells that actually changed are written.** `AttendanceLog` is
+  `Auditable`, so writing the grid unconditionally would leave 600 audit rows
+  behind every time somebody pressed Save.
+- **Rest days and holidays are proposed, never applied** — the same bargain
+  `DocumentScanner` makes with a filled form.
+- **`record()` is still the only door into `attendance_logs`.** It took an
+  optional `$context` so a caller filling a cutoff hands over the shift, rest
+  day, and holiday it already loaded; the rule for *which* schedule governs a
+  date moved into `scheduleFor()`, which `resolveShift()` and the sheet both
+  call.
+
+**Leave is cross-checked against attendance, and that fixed a pay bug.**
+`LeaveService::approvedLeaveDates()` is the join between Modules 2 and 3 — one
+query, keyed `employeeId|Y-m-d` — and it is what tells an absence from an AWOL.
+Before it, each module held half the answer.
+
+- **Approved unpaid leave was deducted twice.** The day counted as an absence
+  *and* again as unpaid leave, so a week of authorised leave without pay cost
+  two weeks of salary.
+- **Approved paid leave was deducted at all.** A VL day is already inside the
+  basic salary, so taking it off again docked somebody for leave they were
+  entitled to.
+- Both were invisible from the payslip, which shows the two as separate lines
+  that each looked individually correct.
+
+`PayrollService::unexcusedAbsentDays()` now counts only absences with nothing
+filed behind them, and whether a day is covered is *asked of LeaveService*
+rather than re-derived — so payroll, the exception scanner and the DTR screen
+cannot reach different conclusions about the same Tuesday.
+
+**DTR Corrections (`/hr/timekeeping/adjustments`) is the exception-handling
+step.** HR can already write a time record directly; employees cannot and never
+should be able to, because a DTR somebody can rewrite is not a record of
+anything. They say what the day should have said and why, and a supervisor or
+HR decides before it touches the log.
+
+- **Approving *applies* the correction through `TimekeepingService::record()`**,
+  so the day is recomputed by the same calculator payroll depends on. Both
+  halves in one transaction: an approval whose apply failed would leave a
+  request marked approved and a record that never changed — the worst of the
+  three states, because it looks handled.
+- **A blank punch leaves the existing one alone.** A request to add a missing
+  time-out says nothing about the time-in.
+- **What the day currently says is read live, not snapshotted at filing**, so
+  an approver decides against the record as it stands. A day nobody keyed comes
+  back null — the difference between "correct this" and "create this".
+- Policy mirrors overtime's: everybody files their own, HR has no exemption and
+  needs none, and the approver may never be the requester. One open request per
+  day.
+
+**Overtime is filed by the person who worked it, and by nobody else.**
+`OvertimeRequestPolicy::create` requires an employee record rather than
+exempting `isHrAdmin()`. It used to work the other way, which made HR both the
+claimant and an approver of the same claim — worse than on leave, because
+`PayrollService::approvedOvertimeHours()` reads approved requests straight onto
+a payslip. `update` is the owner's too: a request states what somebody claims
+they worked, and HR that disagrees has `decide()`.
+
+**Imports are recorded durably.** `DataAccessLogger::imported()` writes the
+batch — file, counts, and the rows refused — because the importer's per-row
+report is flashed to the session and gone on the next page load. The rows that
+did not land are exactly the ones somebody comes looking for a month later.
+
 **Exceptions** is the automated DTR checker: `AttendanceExceptionScanner` is a
 database-free, config-driven rule engine (same pattern as
 `AttendanceCalculator`) that flags two kinds of anomaly over the filtered
@@ -1079,6 +1673,20 @@ absence, even when no single day crosses a threshold). Thresholds live in
 `config/timekeeping.php`, not code, so tightening a rule is a config edit. A
 missing time-out is never flagged for *today* — only for a day already in the
 past, per `stale_open_punch_days`.
+
+It also runs the leave cross-check, which produces two findings pointing in
+opposite directions:
+
+- **`awol`** — absent with nothing filed. Critical: it is a disciplinary matter
+  and an unpaid day, and nobody chasing it on the day will remember it at
+  cutoff.
+- **`unrecorded_leave`** — absent on a day an approved leave *does* cover, so
+  the DTR row is stale because the leave was approved after the day was keyed.
+  A warning rather than an error: payroll already ignores it, so the money is
+  right and only the record reads wrong.
+
+The range comes from the logs themselves rather than a new parameter, so every
+existing caller keeps working.
 
 **History** is the audit trail for DTR edits — who changed a record, when, and
 what changed — reusing the same `viewAuditLog` gate as Settings > Security
@@ -1219,7 +1827,10 @@ pending `OvertimeRequest` quietly pays nothing. `PayrollReadinessChecker` runs
 those checks *before* the money is computed and shows them on the run screen:
 `blocker` (paying from this would be wrong) versus `warning` (payable, but
 someone should have decided). It reuses `AttendanceExceptionScanner` rather
-than re-deriving what a bad record looks like. **Nothing here hard-stops a
+than re-deriving what a bad record looks like. It is also where an external
+fact that must not move money on its own surfaces instead —
+`unservedSuspensions()` reports a Core 4 suspension the DTR does not account
+for (see the API section above). **Nothing here hard-stops a
 run** — a payroll that cannot be run is worse than one that warns loudly — and
 the panel is hidden once a run is approved, since the figures are then history
 and the advice can no longer be applied.
@@ -1336,6 +1947,141 @@ to every signed-in user.
 The access rules themselves are Module 1's (`scopedQuery()` + policies, salary
 behind `viewSensitive`). What follows is the layer underneath them.
 
+- **There are two second factors, and the emailed one exists because the other
+  was never switched on.** Fortify's TOTP had been enabled for weeks with
+  **zero accounts enrolled** — which is the whole argument for adding a second
+  channel rather than tuning the first. TOTP asks somebody to install an app,
+  scan a QR code and keep recovery codes safe *before* it protects anything,
+  and a control nobody finishes setting up is a control that is off. An
+  emailed code asks for an inbox they already have open.
+  - **`RequireOtp` holds the session, not the account.** The flag is
+    `otp.verified_at` in the session, so a second machine asks again and
+    signing out forgets it — which is what somebody expects from a factor whose
+    job is to notice a login they did not make.
+  - **The first *held request* sends the code, not the login controller.** One
+    rule then covers every way into a session: the login form, a remembered
+    cookie being honoured, and a session that was authenticated before the
+    factor was switched on. Hooking the login event instead would have let the
+    last two walk straight past a screen that was never shown.
+  - **It sits after `RequirePasswordChange` in the middleware stack, and the
+    order is the argument.** A provisioned password is shared by construction,
+    so the code would otherwise be a second factor guarding a first one that
+    is already known to somebody else. Replacing the password comes first;
+    proving the inbox comes second.
+  - **The code is hashed, never stored.** A live six-digit code in plaintext
+    would make that column a better target than the password hash beside it:
+    a password hash cannot be replayed and a plaintext OTP can. `otp_code_hash`
+    is in `$hidden` for the same reason `two_factor_secret` is.
+  - **`max_attempts` is what makes six digits a factor rather than a
+    formality.** A million combinations is a lot for a person and nothing for
+    a script: with unlimited guesses inside the five-minute window the code is
+    decoration. Five wrong answers **burn the code, and never lock the
+    account** — locking would hand anybody who knows an email address a way to
+    keep its owner out, which is a denial of service dressed as a control.
+  - **A code works once**, cleared on success so it cannot be replayed out of
+    browser history, a second tab, or a proxy log. The session id is
+    regenerated on the way through, because the one before the factor cleared
+    may have been seen by whoever had the password.
+  - **The screen always offers a way to sign out**, and `logout` is on the
+    middleware's allow-list. An inbox nobody can reach — wrong address on the
+    account, mail unconfigured on the server — would otherwise be a permanent
+    lockout rather than an inconvenience. It is the same reasoning that puts
+    logout on `RequirePasswordChange`'s list.
+  - **With `MAIL_MAILER=log` the code goes to `storage/logs/laravel.log` and is
+    never delivered**, so the Settings card *warns before the switch is thrown*
+    rather than refusing. Reading the log is a legitimate way to demonstrate
+    the feature, and refusing would make it undemonstrable on a fresh clone —
+    but somebody who switches it on and signs out without knowing that is
+    locked to the code screen until they use the sign-out link.
+  - Off by default (`OTP_DEFAULT_ENABLED=false`). A default that holds every
+    login behind a code is only safe once mail is known to deliver.
+  - **An SMS channel was built here and taken back out, and the reason is not
+    the code.** It worked: a `SmsSender` with Semaphore and Twilio drivers on
+    one shape, the number read off `employees.mobile_number`, E.164 conversion
+    at the edge, and an email fallback for accounts that could not receive a
+    text. What killed it is that **every SMS gateway reachable from the
+    Philippines is prepaid** — so the channel carries a running cost and a day
+    it stops working, which for the *only* way into a system is the wrong
+    trade. Two facts settled it: this is coursework with no budget, and two of
+    the accounts on this system had no phone number at all, including the
+    administrator's.
+    - Email costs nothing, needs no account, and its address **is** the login,
+      which is what makes it the floor rather than one option among two. If SMS
+      returns it returns *beside* this, never instead of it, and the fallback
+      is what makes that safe.
+    - The reverted work is worth not rediscovering: the number belongs on the
+      employee record and must not be copied onto `users` (it would drift the
+      way `users.name` can, silently), a gateway with no credentials has to go
+      dark rather than fall through, and `send()` has to report failure without
+      discarding the code — a gateway that accepts a message and then times out
+      would otherwise leave somebody holding a code the database had forgotten.
+  - The API stack is outside it, exactly like `RequirePasswordChange`: a
+    Sanctum token is a machine credential on a biometric device with no inbox
+    and nobody at the other end to read one.
+- **Two-factor authentication is on, and `confirmPassword` is the half people
+  forget.** A password was the whole front door of a system holding salary,
+  government identifiers and bank details — and a password is the credential
+  most likely to be reused, phished, or read back off the chat message it was
+  handed over in. Fortify ships the whole feature; it was simply switched off.
+  - **`confirmPassword: true` makes *disabling* re-ask for the password too.**
+    Without it the cheapest way past a second factor is an unlocked machine and
+    one click: the attacker never needs the phone, they remove the requirement.
+    Guarded by a test in both directions.
+  - **Three states, not a toggle.** Fortify writes the secret the moment
+    somebody asks to enable 2FA and only sets `two_factor_confirmed_at` once
+    they have typed a code from their app. Somebody who closed the tab halfway
+    holds a secret and *no protection*, and the login flow correctly does not
+    challenge them — so the Settings card says "not on yet" rather than
+    reporting a factor that was never finished. Telling them otherwise is the
+    reading that ends with a person trusting a door that is open.
+  - **`two_factor_secret` and `two_factor_recovery_codes` are in `$hidden`,
+    and that was a real find.** `TwoFactorAuthenticatable` brings the behaviour
+    but not the hiding — the starter kits add those two entries and this
+    project has no starter kit. Without them the secret serialises like any
+    other column, and Settings > Security puts the signed-in user's account
+    into an Inertia payload, so it would have reached the browser, the page
+    cache and browser history on every visit. Caught by a test rather than by
+    review, which is the only reason it is not still true.
+  - The QR code and the recovery codes are **fetched when the panel is opened**
+    rather than shipped with the page, for the same reason: they are the secret
+    itself, and putting them in every Settings payload would put them in every
+    Settings page cache.
+  - **Losing `APP_KEY` locks every enrolled account out of its second factor** —
+    Fortify encrypts both columns. That key is the first thing to back up.
+- **Government identifiers and the bank account are encrypted at rest.** SSS,
+  PhilHealth, Pag-IBIG, TIN, the bank account number, and the licence number
+  are `encrypted` casts. `viewSensitive` already decides who may *see* them;
+  this decides what is readable in the file the database sits in, which is a
+  different question and one an application gate cannot answer at all. A name
+  and a department are what a colleague already knows; a TIN and a bank account
+  are what somebody opens a loan with.
+  - **Checked before it was written, not after**: nothing filters, sorts or
+    groups by these columns in SQL. `RecordIntegrityChecker::sharedNumbers()`
+    finds duplicates by loading the rows and comparing **in PHP**, which is why
+    duplicate detection survived — a version written as a SQL `groupBy` would
+    have gone silently blind, because ciphertext differs per row even for
+    identical input. There is a test for exactly that, and it exists to stop
+    somebody "optimising" the comparison into SQL later.
+  - The migration **widens the columns to `text` first**: the ciphertext is a
+    few hundred characters and a twelve-digit TIN no longer fits `string(32)`,
+    which would have truncated it with no error worth reading. It rewrites
+    through the query builder rather than Eloquent, because the casts are
+    already declared by the time it runs.
+  - The cost, stated: an encrypted column cannot be searched or indexed.
+    Nothing needs that today; if it ever does, the answer is a blind index — a
+    second column holding a keyed hash — not undoing this.
+- **Employee photos are re-encoded rather than stored.** They sit on the
+  *public* disk on purpose, so an avatar costs no PHP request — which means the
+  file is served to anyone with the URL with no policy in front of it. A phone
+  photo carries EXIF and EXIF carries GPS, so a picture taken at somebody's
+  house would put the coordinates of their home on a public URL. Laravel's
+  `image` rule does not catch this: it checks the format, not what travels
+  inside it. `PhotoStore` decodes to a pixel buffer and writes a fresh JPEG,
+  which keeps the picture and discards every chunk that came with it — EXIF,
+  GPS, camera serial, thumbnails, and anything a crafted file smuggled past the
+  mime check. A file that cannot be decoded is **refused rather than stored
+  raw**, and the record keeps the photo it already had: storing it unprocessed
+  is the one path that would defeat the point.
 - **Authentication is Fortify's.** Signing in, signing out, and the password
   reset flow are `laravel/fortify` routes; the Inertia pages are pointed at
   them from `FortifyServiceProvider`. Its config is trimmed rather than left
@@ -1379,12 +2125,19 @@ behind `viewSensitive`). What follows is the layer underneath them.
   the PUT that changes the password, and logout. Logout is there because
   trapping someone in a session they cannot leave is worse than the risk being
   managed, and signing out reduces exposure rather than adding to it.
-  - The flag is cleared **only** by `SecurityController::updatePassword()`, so
-    the hold is lifted by the act that removes the reason for it rather than by
-    a "done" button reachable without changing anything. That same path also
-    revokes the account's API tokens, since a token issued while the shared
-    password was live was issued to whoever held it — rotating one and leaving
-    the other is half a rotation.
+  - The flag is cleared by the act that removes the reason for it rather than
+    by a "done" button reachable without changing anything — and by **both**
+    acts that qualify: `SecurityController::updatePassword()` and
+    `ResetUserPassword`. Each also revokes the account's API tokens, since a
+    token issued while the shared password was live was issued to whoever held
+    it, and rotating one while leaving the other is half a rotation.
+  - **The reset path was missed at first, and the miss was a trap with no way
+    out.** Only the Settings form cleared the flag, so somebody who took the
+    other route to the same act — the emailed reset link — chose a password
+    nobody else had ever seen and was *still* held afterwards, on a screen
+    telling them to replace a password they had just replaced. Nothing inside
+    the reset flow could lift it. A reset is the user choosing their own
+    password, which is the entire condition the flag describes.
   - **The API stack is deliberately outside this.** A Sanctum token is an
     unattended credential on a biometric device with nobody at the other end to
     type a new password; holding it would take the timeclock down rather than
@@ -1472,8 +2225,38 @@ behind `viewSensitive`). What follows is the layer underneath them.
   needs a nonce threaded through the Vite tags and the Inertia root, and a
   half-written one breaks the payslip print view. The three directives it does
   set — `frame-ancestors`, `object-src`, `base-uri` — cannot break a script or
-  a stylesheet. HSTS is sent only when `$request->secure()`: over plain
-  `http://core2.test` it would pin the dev host to TLS it does not serve.
+  a stylesheet.
+- **HSTS is sent over TLS *and* outside `local`, and the second half was added
+  after it nearly cost a year.** The scheme check alone used to be the whole
+  guard, on the reasoning that development is served over plain http so the
+  branch could never fire. That was an assumption about the environment rather
+  than a rule, and it stopped being true the moment somebody pressed **Secure**
+  in Herd: the site began answering on https with a self-signed certificate,
+  Herd rewrote `APP_URL` to `https://`, and nginx started **301-ing http to
+  https** — so "just use http" was no longer available. One click through the
+  browser's certificate warning would then have pinned `core2.test` to HTTPS
+  for `max-age=31536000`, with `includeSubDomains` taking every
+  `*.core2.test` with it.
+  - **Turning TLS back off does not undo that.** HSTS lives in the browser, so
+    the host stays unreachable over http until the max-age expires or somebody
+    digs it out of `chrome://net-internals/#hsts`. It is the only header here a
+    browser remembers, and the only one that outlives the mistake that sent it.
+  - **Unsecuring is the wrong recovery once a browser has been pinned**, which
+    is how this was found out. `herd unsecure` was the first move; the browser
+    kept upgrading to https and got `ERR_CONNECTION_REFUSED` instead, because
+    nothing was listening on 443 any more. The pin is browser state, so taking
+    TLS away makes the site *less* reachable, not more.
+  - **The actual fix was to make https work**: Herd's CA
+    (`~/.config/herd/config/valet/CA/LaravelValetCASelfSigned.crt`) was never
+    in the Windows trust store, which is the whole of `ERR_CERT_AUTHORITY_INVALID`.
+    Importing it into `Cert:\CurrentUser\Root` and re-running `herd secure core2`
+    leaves the site on https with a certificate Chromium accepts — verified
+    with `Invoke-WebRequest`, which validates against the same Windows store the
+    browser uses, rather than with `curl`, which carries its own CA bundle and
+    answers a different question.
+  - Guarded by `HardeningTest` now. It already asserted both scheme cases; what
+    it could not catch was the environment, because nothing had ever put the
+    suite in `local`.
 
 **Before deploying**, `APP_DEBUG` must be `false` (a stack trace prints the
 database password), `SESSION_SECURE_COOKIE` true, and `SESSION_ENCRYPT`
@@ -1534,6 +2317,33 @@ considered — session payloads are plaintext in the `sessions` table today.
   the 1st. `AttendanceExceptionTest` travels to mid-month in `setUp()` for
   exactly this reason. The same trap caught a hard-coded `2026-08-01`
   assertion in `SecurityTest`, which had been passing by coincidence.
+- **`SESSION_SAME_SITE=none` requires `SESSION_SECURE_COOKIE=true`, and getting
+  that wrong breaks sign-in with no error anywhere.** Since Chrome 80 the
+  pairing is mandatory: a `Set-Cookie` carrying `SameSite=None` and no `Secure`
+  attribute is **discarded by the browser on arrival**. That drops the session
+  cookie *and* `XSRF-TOKEN`, so every form posts without a token, Laravel
+  answers 419, and `router.on('invalid')` bounces back to `/login` — signing in
+  looks like it silently does nothing.
+  - **Nothing server-side can see it.** The response is correct and the browser
+    throws it away afterwards, so the suite passes and `curl` logs in fine
+    (curl does not enforce the rule). The tell is the **audit log**: because the
+    419 happens before authentication is attempted, not even a `login_failed`
+    row is written. A user who "cannot log in" with no failed-login rows behind
+    them is a session-cookie problem, not a password problem.
+  - `none` is deliberate — it is what lets the app run inside an IDE webview's
+    iframe, the same reason `SecurityHeaders` skips `X-Frame-Options` in local.
+    It only works over TLS, so it is coupled to the site being secured in Herd.
+  - Guarded by `HardeningTest::test_a_same_site_none_session_cookie_is_also_secure`,
+    which is a no-op on the default `lax` and fails loudly on the broken pair.
+- **`APP_URL` is pinned in `phpunit.xml`, and it has to be.** It was unset, so
+  it fell through to the developer's own `.env` — and a relative-path request
+  in a test (`$this->get('/login')`) builds its absolute URL from that value,
+  so the *scheme* of one laptop's local site decided what the suite asserted.
+  Pressing **Secure** in Herd rewrites `APP_URL` to `https://`, which flipped
+  every such request to TLS and failed the HSTS assertions on a machine where
+  no code had changed. Anything a test reads out of the environment rather than
+  out of the code is a test that passes by coincidence — the same shape as the
+  hard-coded date in `SecurityTest` further up this list.
 - **`ilike` is Postgres-only.** Tests run on SQLite — pick the operator from
   `getDriverName()`, as `Employee::scopeSearch` does.
 - **Factory sequences.** Batch `create()` runs every `definition()` before the

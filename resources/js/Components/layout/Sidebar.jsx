@@ -1,6 +1,6 @@
 import { Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, LogOut, PanelLeftClose, Settings } from 'lucide-react';
+import { ChevronDown, LogOut, Menu, Settings } from 'lucide-react';
 import PrimePowerLogo, { LogoMark } from '@/Components/layout/PrimePowerLogo';
 import { NAV_GROUPS, isHrefActive, isItemActive, visibleGroups } from '@/config/navigation';
 import { cn, initials } from '@/lib/utils';
@@ -27,10 +27,13 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
     const groups = useMemo(() => visibleGroups(NAV_GROUPS, role), [role]);
 
     /*
-     * Settings is not in NAV_GROUPS, so `bestMatch()` finds nothing on a
-     * settings page and no nav entry lights. The gear in the user card below
-     * has to answer for itself instead — a control that never shows it is
-     * current is one people click twice.
+     * The gear in the user card answers for itself.
+     *
+     * Settings is in NAV_GROUPS again, under Administration, so the nav entry
+     * does light on a settings page — but this gear is a second door to the
+     * same place and is not driven by `bestMatch()`. Computed here rather than
+     * read off the entry so the two cannot disagree about the same URL, and a
+     * control that never shows it is current is one people click twice.
      */
     const settingsActive = currentUrl.split('?')[0].startsWith('/settings');
 
@@ -135,7 +138,13 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                 title="Collapse sidebar"
                                 className="hidden shrink-0 rounded-md p-1.5 text-sidebar-muted transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground lg:grid lg:place-items-center"
                             >
-                                <PanelLeftClose className="h-4.5 w-4.5" aria-hidden="true" />
+                                {/* A hamburger rather than a panel-with-arrow.
+                                    The arrow icon names a direction the rail
+                                    moves in, which is only legible once you
+                                    already know what the control does; three
+                                    lines is the one glyph everybody reads as
+                                    "the menu" without being told. */}
+                                <Menu className="h-4.5 w-4.5" aria-hidden="true" />
                             </button>
                         </>
                     )}
@@ -146,7 +155,27 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                     {groups.map((group, groupIndex) => (
                         <div key={group.label ?? `group-${groupIndex}`}>
                             {group.label && !collapsed && (
-                                <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-sidebar-muted">
+                                <p
+                                    /*
+                                     * The brand blue at full strength — the
+                                     * same `--sidebar-primary` the active row
+                                     * uses for its text and icon.
+                                     *
+                                     * It was the muted grey, then briefly the
+                                     * blue at 75%, on the reasoning that a
+                                     * label should sit behind the rows it
+                                     * introduces. That reasoning holds for
+                                     * body text and not for this: at 10px,
+                                     * uppercase and letter-spaced, a colour
+                                     * held back reads as *disabled* rather
+                                     * than as secondary. These labels are the
+                                     * only structural text in the sidebar —
+                                     * they name the parts of the system — and
+                                     * the size is already doing the work of
+                                     * ranking them below the rows.
+                                     */
+                                    className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-sidebar-primary"
+                                >
                                     {group.label}
                                 </p>
                             )}
@@ -174,7 +203,33 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                     );
 
                                     return (
-                                        <li key={item.id}>
+                                        <li key={item.id} className="relative">
+                                            {/*
+                                             * A rule flush against the
+                                             * sidebar's inner edge, marking the
+                                             * open module.
+                                             *
+                                             * The pill alone says "this row is
+                                             * highlighted"; a bar at the edge
+                                             * says *where you are* — it survives
+                                             * being read at a glance and out of
+                                             * the corner of the eye, which a
+                                             * tinted row of the same shape as
+                                             * every other row does not.
+                                             *
+                                             * `-right-3` is the nav's own `px-3`
+                                             * cancelled out, so it lands on the
+                                             * content edge rather than floating
+                                             * inside the padding. Not drawn
+                                             * collapsed: there is no row left
+                                             * for it to belong to.
+                                             */}
+                                            {active && !collapsed && (
+                                                <span
+                                                    className="pointer-events-none absolute -right-3 bottom-1.5 top-1.5 w-[3px] rounded-l-full bg-sidebar-primary"
+                                                    aria-hidden="true"
+                                                />
+                                            )}
                                             {hasChildren ? (
                                                 <button
                                                     type="button"

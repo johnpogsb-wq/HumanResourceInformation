@@ -243,7 +243,7 @@ class DocumentBatchTest extends TestCase
     /** A filer whose scanner returns one canned reading per file, in order. */
     private function filerReading(array $readings): BulkDocumentFiler
     {
-        config(['scanner.driver' => 'ollama', 'scanner.ollama.host' => 'http://127.0.0.1:11434']);
+        config(['scanner.driver' => 'gemini', 'scanner.gemini.api_key' => 'test-key']);
 
         $scanner = new class($readings) extends DocumentScanner
         {

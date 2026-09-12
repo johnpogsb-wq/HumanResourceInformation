@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\ArchiveController;
+use App\Http\Controllers\AttendanceAdjustmentController;
 use App\Http\Controllers\AttendanceExceptionController;
 use App\Http\Controllers\AttendanceHistoryController;
 use App\Http\Controllers\AttendanceReportController;
@@ -15,6 +17,7 @@ use App\Http\Controllers\DirectoryController;
 use App\Http\Controllers\DocumentBatchController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EmployeeImportController;
+use App\Http\Controllers\EmployeeQualificationController;
 use App\Http\Controllers\EndorsementController;
 use App\Http\Controllers\HolidayController;
 use App\Http\Controllers\KpiController;
@@ -27,6 +30,7 @@ use App\Http\Controllers\OvertimeController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\PerformanceController;
+use App\Http\Controllers\PeriodAttendanceController;
 use App\Http\Controllers\PositionController;
 use App\Http\Controllers\RecordIntegrityController;
 use App\Http\Controllers\ReviewCycleController;
@@ -43,6 +47,7 @@ use App\Http\Controllers\ThirteenthMonthController;
 use App\Http\Controllers\TimekeepingController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 Route::get('/', fn () => redirect()->route('dashboard'));
 
@@ -104,6 +109,45 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::patch('employees/{employee}/position', [EmployeeController::class, 'updatePosition'])
             ->name('employees.position');
 
+        /*
+         * Sending somebody to a client, or bringing them back in-house.
+         * Reached from the Clients screen and addressed as the *employee* for
+         * the same reason the position move is: that is whose record changes,
+         * so it is gated on `update` for them rather than on
+         * `manageOrganization`.
+         */
+        Route::patch('employees/{employee}/deployment', [EmployeeController::class, 'updateDeployment'])
+            ->name('employees.deployment');
+
+        /*
+         * Educational & qualification records — schooling, completed
+         * trainings, and skills. Named `education`/`training`/`skill` so the
+         * form request can tell which of the three it is validating from the
+         * route name alone.
+         */
+        Route::post('employees/{employee}/education', [EmployeeQualificationController::class, 'storeEducation'])
+            ->name('employees.education.store');
+        Route::put('employees/{employee}/education/{education}', [EmployeeQualificationController::class, 'updateEducation'])
+            ->name('employees.education.update');
+        Route::delete('employees/{employee}/education/{education}', [EmployeeQualificationController::class, 'destroyEducation'])
+            ->name('employees.education.destroy');
+
+        Route::post('employees/{employee}/training', [EmployeeQualificationController::class, 'storeTraining'])
+            ->name('employees.training.store');
+        Route::put('employees/{employee}/training/{training}', [EmployeeQualificationController::class, 'updateTraining'])
+            ->name('employees.training.update');
+        Route::delete('employees/{employee}/training/{training}', [EmployeeQualificationController::class, 'destroyTraining'])
+            ->name('employees.training.destroy');
+
+        Route::post('employees/{employee}/skill', [EmployeeQualificationController::class, 'storeSkill'])
+            ->name('employees.skill.store');
+        Route::put('employees/{employee}/skill/{skill}', [EmployeeQualificationController::class, 'updateSkill'])
+            ->name('employees.skill.update');
+        Route::delete('employees/{employee}/skill/{skill}', [EmployeeQualificationController::class, 'destroySkill'])
+            ->name('employees.skill.destroy');
+
+        Route::get('my-profile', [EmployeeController::class, 'myProfile'])->name('my-profile');
+
         Route::resource('employees', EmployeeController::class);
 
         /*
@@ -138,10 +182,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('credentials', [CredentialController::class, 'index'])->name('credentials');
 
         /*
-         * AI & Analytics — how the scanner is actually performing, measured
-         * from what HR did with its proposals rather than from the model's
-         * opinion of itself.
+         * AI & Analytics — Workforce demographics, timekeeping insights,
+         * multi-file AI scanner, and OCR performance benchmarking.
          */
+        Route::get('analytics/workforce', [AnalyticsController::class, 'workforce'])
+            ->name('analytics.workforce');
+        Route::get('analytics/attendance', [AnalyticsController::class, 'attendance'])
+            ->name('analytics.attendance');
+
+        // Centralized AI Batch Document Scanner
+        Route::get('employees/documents/batch', [DocumentBatchController::class, 'create'])
+            ->name('employees.documents.batch');
+        Route::post('employees/documents/batch/examine', [DocumentBatchController::class, 'examine'])
+            ->name('employees.documents.batch.examine');
+        Route::post('employees/documents/batch', [DocumentBatchController::class, 'store'])
+            ->name('employees.documents.batch.store');
+
         Route::get('scan-accuracy', [ScanAccuracyController::class, 'index'])
             ->name('scanAccuracy');
 
@@ -212,8 +268,35 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('timekeeping', [TimekeepingController::class, 'store'])->name('timekeeping.store');
         Route::post('timekeeping/import', [TimekeepingController::class, 'import'])
             ->name('timekeeping.import');
+        // The cutoff sheet — a fortnight of attendance for a whole department
+        // or client at once. Declared before the {attendanceLog} wildcard so
+        // "period" is never read as a record id.
+        Route::get('timekeeping/period', [PeriodAttendanceController::class, 'index'])
+            ->name('timekeeping.period');
+        Route::post('timekeeping/period', [PeriodAttendanceController::class, 'store'])
+            ->name('timekeeping.period.store');
+
+        // One person's cutoff, as a calendar. Reached by clicking their row on
+        // Records; gated on EmployeePolicy::view rather than on the log.
+        Route::get('timekeeping/employee/{employee}', [TimekeepingController::class, 'show'])
+            ->name('timekeeping.employee');
+
         Route::delete('timekeeping/{attendanceLog}', [TimekeepingController::class, 'destroy'])
             ->name('timekeeping.destroy');
+
+        /*
+         * The exception-handling step: an employee cannot edit a time record
+         * and never should be able to, so a discrepancy on their DTR becomes a
+         * request a supervisor or HR decides on before it reaches the log.
+         */
+        Route::get('timekeeping/adjustments', [AttendanceAdjustmentController::class, 'index'])
+            ->name('adjustments');
+        Route::post('timekeeping/adjustments', [AttendanceAdjustmentController::class, 'store'])
+            ->name('adjustments.store');
+        Route::post('timekeeping/adjustments/{adjustment}/decide', [AttendanceAdjustmentController::class, 'decide'])
+            ->name('adjustments.decide');
+        Route::post('timekeeping/adjustments/{adjustment}/cancel', [AttendanceAdjustmentController::class, 'cancel'])
+            ->name('adjustments.cancel');
 
         // Overtime filing and approval
         Route::get('timekeeping/overtime', [OvertimeController::class, 'index'])->name('overtime');
@@ -241,9 +324,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('timekeeping/schedules/{schedule}', [ScheduleController::class, 'destroySchedule'])
             ->name('schedules.destroy');
 
-        // Attendance summary reports
-        Route::get('timekeeping/reports', [AttendanceReportController::class, 'index'])->name('reports');
-        Route::get('timekeeping/reports/export', [AttendanceReportController::class, 'export'])->name('reports.export');
+        /*
+         * The per-employee attendance summary is the Records screen itself
+         * now, so Reports has nowhere left to be: it showed the same rows for
+         * the same range with no way to reach the days behind them. The route
+         * redirects rather than 404s, carrying the range across, the same way
+         * /settings/organization still lands somewhere useful.
+         */
+        Route::get('timekeeping/reports', fn (Request $request) => redirect()->route(
+            'hr.timekeeping',
+            $request->only('from', 'to'),
+        ))->name('reports');
+
+        Route::get('timekeeping/export', [AttendanceReportController::class, 'export'])
+            ->name('timekeeping.export');
 
         // Automated exception checker — flags DTR records worth a second look.
         Route::get('timekeeping/exceptions', [AttendanceExceptionController::class, 'index'])->name('exceptions');
@@ -370,17 +464,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
 */
 Route::middleware(['auth', 'verified'])->prefix('settings')->name('settings.')->group(function () {
     /*
-     * The first section this person may actually open.
+     * The menu, not a section.
      *
-     * It always landed on General, which is admin-only — fine while the only
-     * way in was a sidebar entry whose children were already filtered by role,
-     * and wrong the moment Settings became a single door in the topbar and the
-     * user card. A rank-and-file user clicking the gear would have been shown
-     * a 403 for a screen they never asked for.
+     * This redirected — to General for an admin and Appearance for everybody
+     * else, the second half being a fix in its own right, since General is
+     * admin-only and the old redirect sent every role into a 403. Both are
+     * gone: `System Settings` is a sidebar entry now, and a nav entry that
+     * silently lands somebody on the company's regional formats has answered a
+     * question they did not ask. The seven sections are the subject, so the
+     * list is what `/settings` renders and a section is the next click.
+     *
+     * No role check here. The page draws only what `visibleSections()` allows
+     * and each section route keeps its own 403 — this decides what is offered,
+     * never what is permitted.
      */
-    Route::get('/', fn (Request $request) => redirect()->route(
-        $request->user()->isAdmin() ? 'settings.general' : 'settings.appearance',
-    ));
+    Route::get('/', fn () => Inertia::render('Settings/Index'))->name('index');
 
     Route::get('general', [SettingsController::class, 'general'])->name('general');
     Route::put('general', [SettingsController::class, 'updateGeneral'])->name('general.update');
@@ -405,6 +503,7 @@ Route::middleware(['auth', 'verified'])->prefix('settings')->name('settings.')->
     Route::get('security', [SecurityController::class, 'index'])->name('security');
     Route::put('security/profile', [SecurityController::class, 'updateProfile'])->name('security.profile');
     Route::put('security/password', [SecurityController::class, 'updatePassword'])->name('security.password');
+    Route::put('security/otp', [SecurityController::class, 'updateOtp'])->name('security.otp');
     Route::post('security/tokens/revoke-all', [SecurityController::class, 'revokeTokens'])->name('security.tokens.revokeAll');
     Route::delete('security/tokens/{token}', [SecurityController::class, 'revokeToken'])->name('security.tokens.revoke');
     Route::delete('security/account', [SecurityController::class, 'destroyAccount'])->name('security.account');

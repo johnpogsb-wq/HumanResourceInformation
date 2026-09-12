@@ -9,6 +9,7 @@ import {
     DateInput,
     Field,
     Input,
+    InputError,
     Modal,
     Pagination,
     Select,
@@ -42,8 +43,15 @@ export default function Overtime({
     const [fileOpen, setFileOpen] = useState(false);
     const [decision, setDecision] = useState(null); // { request, status }
 
+    /*
+     * Always the signed-in user's own record. The form used to offer HR a
+     * picker for whose overtime to file; it does not, because HR also decides
+     * on these — see OvertimeRequestPolicy::create. The id still rides in the
+     * payload and is still checked server-side, since the missing picker is
+     * not the rule.
+     */
     const form = useForm({
-        employee_id: can.fileForOthers ? '' : (ownEmployeeId ?? ''),
+        employee_id: ownEmployeeId ?? '',
         date: '',
         start_time: '',
         end_time: '',
@@ -66,8 +74,9 @@ export default function Overtime({
         form.post('/hr/timekeeping/overtime', {
             preserveScroll: true,
             onSuccess: () => {
+                // reset() restores the initial data, which already holds the
+                // filer's own id — nothing further to put back.
                 form.reset();
-                if (!can.fileForOthers) form.setData('employee_id', ownEmployeeId ?? '');
                 setFileOpen(false);
             },
         });
@@ -326,29 +335,13 @@ export default function Overtime({
                 show={fileOpen}
                 onClose={() => setFileOpen(false)}
                 title="File Overtime"
-                description="An end time at or before the start is treated as running past midnight."
+                description="Your own overtime. An end time at or before the start is treated as running past midnight."
                 maxWidth="lg"
             >
                 <form onSubmit={submit} className="space-y-4">
-                    {can.fileForOthers && (
-                        <Field label="Employee" required error={form.errors.employee_id}>
-                            {({ id }) => (
-                                <Select
-                                    id={id}
-                                    value={form.data.employee_id}
-                                    onChange={(event) =>
-                                        form.setData('employee_id', event.target.value)
-                                    }
-                                    placeholder="Select employee"
-                                    error={form.errors.employee_id}
-                                    options={employees.map((employee) => ({
-                                        value: employee.id,
-                                        label: employee.full_name,
-                                    }))}
-                                />
-                            )}
-                        </Field>
-                    )}
+                    {/* The error still has somewhere to land: the id is posted
+                        and checked even though no control sets it. */}
+                    <InputError message={form.errors.employee_id} />
 
                     <div className="grid gap-4 sm:grid-cols-3">
                         <Field label="Date" required error={form.errors.date}>

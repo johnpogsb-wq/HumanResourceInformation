@@ -4,9 +4,12 @@ namespace Tests\Feature\HR;
 
 use App\Models\AttendanceLog;
 use App\Models\Employee;
+use App\Models\LeaveRequest;
+use App\Models\LeaveType;
 use App\Models\User;
 use App\Services\AttendanceExceptionScanner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -118,11 +121,74 @@ class AttendanceExceptionTest extends TestCase
 
         $this->actingAs($this->hr())
             ->get('/hr/timekeeping/exceptions')
-            ->assertInertia(fn (Assert $page) => $page
-                ->has('exceptions', 1)
-                ->where('exceptions.0.type', AttendanceExceptionScanner::TYPE_FREQUENT_ABSENCE)
-                ->where('exceptions.0.severity', 'critical'),
-            );
+            ->assertInertia(function (Assert $page) {
+                $types = collect($page->toArray()['props']['exceptions'])->pluck('type');
+
+                // Four findings, saying two different things: each day is an
+                // AWOL on its own — nothing was filed for any of them — and
+                // the three together are a pattern.
+                $this->assertSame(3, $types->filter(
+                    fn ($type) => $type === AttendanceExceptionScanner::TYPE_AWOL,
+                )->count());
+
+                $this->assertTrue($types->contains(
+                    AttendanceExceptionScanner::TYPE_FREQUENT_ABSENCE,
+                ));
+            });
+    }
+
+    public function test_an_absence_covered_by_approved_leave_is_not_awol(): void
+    {
+        $employee = Employee::factory()->create();
+        $date = now()->subDay();
+
+        AttendanceLog::factory()->absent()->create([
+            'employee_id' => $employee->id,
+            'log_date' => $date->toDateString(),
+        ]);
+
+        $this->approvedLeave($employee, $date);
+
+        $this->actingAs($this->hr())
+            ->get('/hr/timekeeping/exceptions')
+            ->assertInertia(function (Assert $page) {
+                $exceptions = collect($page->toArray()['props']['exceptions']);
+
+                $this->assertFalse($exceptions->pluck('type')->contains(
+                    AttendanceExceptionScanner::TYPE_AWOL,
+                ));
+
+                /*
+                 * Still a finding, but a different one: the leave was approved
+                 * after the day was keyed, so the DTR row is stale. A warning
+                 * rather than an error — payroll already ignores it, so the
+                 * money is right and only the record reads wrong.
+                 */
+                $stale = $exceptions->firstWhere(
+                    'type',
+                    AttendanceExceptionScanner::TYPE_UNRECORDED_LEAVE,
+                );
+
+                $this->assertNotNull($stale);
+                $this->assertSame('warning', $stale['severity']);
+            });
+    }
+
+    public function test_a_day_marked_on_leave_raises_nothing(): void
+    {
+        $employee = Employee::factory()->create();
+
+        // The row already says what happened, so there is nothing to
+        // reconcile — the cross-check only ever looks at absences.
+        AttendanceLog::factory()->create([
+            'employee_id' => $employee->id,
+            'log_date' => now()->subDay()->toDateString(),
+            'status' => AttendanceLog::STATUS_ON_LEAVE,
+        ]);
+
+        $this->actingAs($this->hr())
+            ->get('/hr/timekeeping/exceptions')
+            ->assertInertia(fn (Assert $page) => $page->has('exceptions', 0));
     }
 
     public function test_a_clean_record_produces_no_exceptions(): void
@@ -208,6 +274,18 @@ class AttendanceExceptionTest extends TestCase
         parent::setUp();
 
         $this->travelTo(now()->startOfMonth()->addDays(14)->setTime(9, 0));
+    }
+
+    /** An approved leave covering one day, of a type that is paid. */
+    private function approvedLeave(Employee $employee, Carbon $date): void
+    {
+        LeaveRequest::factory()
+            ->approved()
+            ->on($date->toDateString())
+            ->create([
+                'employee_id' => $employee->id,
+                'leave_type_id' => LeaveType::factory()->create(['name' => 'Vacation Leave'])->id,
+            ]);
     }
 
     private function hr(): User

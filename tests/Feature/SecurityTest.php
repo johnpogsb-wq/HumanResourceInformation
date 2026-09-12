@@ -8,8 +8,10 @@ use App\Models\EmployeeDocument;
 use App\Models\User;
 use App\Services\DataAccessLogger;
 use App\Services\EmployeeService;
+use App\Services\RecordIntegrityChecker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -180,12 +182,14 @@ class SecurityTest extends TestCase
 
     public function test_the_attendance_report_export_records_its_range(): void
     {
-        // `period=custom` is what makes from/to load-bearing — every other
-        // period derives its range from the anchor, so without it this asserted
-        // against whatever month the suite happened to run in and passed by
-        // coincidence for as long as that month was August 2026.
+        /*
+         * The export takes from/to and nothing else now, so there is no
+         * `period` left to make them load-bearing. That was the fix for this
+         * test asserting against whatever month the suite happened to run in;
+         * the two dates are the only range the endpoint has.
+         */
         $this->actingAs(User::factory()->hrStaff()->create())
-            ->get('/hr/timekeeping/reports/export?period=custom&from=2026-08-01&to=2026-08-31')
+            ->get('/hr/timekeeping/export?from=2026-08-01&to=2026-08-31')
             ->assertOk();
 
         $entry = AuditLog::where('event', DataAccessLogger::EVENT_EXPORTED)->latest('id')->first();
@@ -195,6 +199,68 @@ class SecurityTest extends TestCase
         // The range is what makes the row answer anything.
         $this->assertSame('2026-08-01', $entry->new_values['from']);
         $this->assertSame('2026-08-31', $entry->new_values['to']);
+    }
+
+    // --- What a stolen database dump would hold -----------------------------
+
+    /**
+     * `viewSensitive` decides who may *see* a TIN. This decides what is
+     * readable in the file the database sits in — a different question, and
+     * the one an application gate cannot answer at all.
+     *
+     * Asserted against the raw column rather than the model, because the cast
+     * would decrypt it and the test would pass on plaintext.
+     */
+    public function test_government_identifiers_are_encrypted_at_rest(): void
+    {
+        $employee = Employee::factory()->create([
+            'sss_number' => '34-1234567-8',
+            'tin' => '123-456-789-000',
+            'bank_account_number' => '0011-2233-4455',
+        ]);
+
+        $raw = DB::table('employees')->where('id', $employee->id)->first();
+
+        foreach (['sss_number', 'tin', 'bank_account_number'] as $field) {
+            $this->assertNotSame(
+                $employee->{$field},
+                $raw->{$field},
+                "{$field} is still readable in the column.",
+            );
+        }
+
+        // And the application still reads them back unchanged — an encryption
+        // that costs the feature is not a trade anybody made.
+        $employee->refresh();
+
+        $this->assertSame('34-1234567-8', $employee->sss_number);
+        $this->assertSame('0011-2233-4455', $employee->bank_account_number);
+    }
+
+    /**
+     * The one thing encryption could plausibly have broken.
+     *
+     * `RecordIntegrityChecker` reports a number held by two people, and a
+     * ciphertext differs per row even for identical input — so a duplicate
+     * check written as a SQL `groupBy` would have gone silently blind here.
+     * It loads the rows and compares in PHP, which is why this still works,
+     * and this test is what stops somebody "optimising" it into SQL later.
+     */
+    public function test_duplicate_detection_survives_encryption(): void
+    {
+        Employee::factory()->create(['tin' => '123-456-789-000']);
+        Employee::factory()->create(['tin' => '123-456-789-000']);
+
+        // scan() returns one row per employee, each carrying its findings.
+        $types = app(RecordIntegrityChecker::class)
+            ->scan(Employee::query())
+            ->flatMap(fn (array $row) => $row['findings'])
+            ->pluck('type');
+
+        $this->assertTrue(
+            $types->contains('duplicate_number'),
+            'Two employees share a TIN and nothing reported it.',
+        );
     }
 
     /** @return array{0: User, 1: Employee, 2: EmployeeDocument} */

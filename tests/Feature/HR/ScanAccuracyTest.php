@@ -53,7 +53,7 @@ class ScanAccuracyTest extends TestCase
     /** A failed call has no proposal, so there is nothing to measure. */
     public function test_a_failed_scan_records_nothing(): void
     {
-        config(['scanner.driver' => 'ollama', 'scanner.ollama.host' => 'http://127.0.0.1:11434']);
+        config(['scanner.driver' => 'gemini', 'scanner.gemini.api_key' => 'test-key']);
         Http::fake(['*' => Http::response('model not found', 404)]);
 
         $employee = Employee::factory()->create();
@@ -232,16 +232,17 @@ class ScanAccuracyTest extends TestCase
     // --- Fixtures ----------------------------------------------------------------
 
     /**
-     * A local driver that answers, without one running.
+     * A driver that answers, without calling one.
      *
-     * Ollama *is* installed on the development machine, so a test that simply
-     * called the endpoint reached it: fourteen seconds, and a result that
-     * depended on what happened to be loaded. A test suite must not ask the
-     * network what it thinks.
+     * `read()` is stubbed rather than faked at the HTTP layer, because the
+     * thing under test here is what the accuracy figures do with a reading —
+     * not how the reading got back. A test suite must not ask the network
+     * what it thinks; when it did, one of these took fourteen seconds and
+     * depended on whatever model happened to be loaded.
      */
     private function scannerAnswering(array $reading): void
     {
-        config(['scanner.driver' => 'ollama', 'scanner.ollama.host' => 'http://127.0.0.1:11434']);
+        config(['scanner.driver' => 'gemini', 'scanner.gemini.api_key' => 'test-key']);
 
         Http::fake(['*' => Http::response(['response' => json_encode($reading)])]);
     }
@@ -250,7 +251,7 @@ class ScanAccuracyTest extends TestCase
     {
         return DocumentScan::create([
             'employee_id' => Employee::factory()->create()->id,
-            'driver' => 'ollama',
+            'driver' => 'gemini',
             'model' => 'glm-ocr',
             'duration_ms' => $ms,
             'proposed' => $proposed,
