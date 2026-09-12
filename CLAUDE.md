@@ -119,6 +119,48 @@ otherwise. `none` is what lets the app run inside an IDE webview's iframe.
 the secured site remembers to upgrade it, and nothing here depends on the
 plain-http path working.
 
+**The two stacks live in `backend/` and `frontend/`, and the split is of
+dependencies rather than of deployment.** Composer and `vendor/` are in
+`backend/`; npm and `node_modules/` are in `frontend/`; the repository root
+holds neither. It is still one Inertia app — `frontend/` builds *into*
+`backend/public/build`, and the Blade shell reads the manifest from there.
+
+- **Herd serves `Core2/backend`, not `Core2`.** `core2.test` was a *parked*
+  site (Herd parks `~/Herd` and serves each subfolder's `public/`), so moving
+  `public/` one level down broke it outright. It is an explicit
+  `herd link core2` from inside `backend/` now, re-secured afterwards because
+  linking issues a new certificate. **A deployment's document root is
+  therefore `backend/public`**, not the `public/` every Laravel guide assumes.
+- **Three config files reach across the split, and each one fails silently if
+  it is wrong.** `frontend/vite.config.js` sets
+  `publicDirectory: '../backend/public'` so the manifest lands where Laravel
+  looks; `frontend/tailwind.config.js` points three of four content globs at
+  `../backend/` because the Blade shell and the paginator views are markup
+  too (drop them and those classes vanish from the stylesheet with no error);
+  and `backend/config/inertia.php` is published **solely** to repoint
+  `page_paths` at `../frontend/resources/js/Pages`.
+- **The JSX deliberately kept the `resources/js/` prefix** inside `frontend/`
+  rather than being renamed to `src/`. The manifest keys are relative to the
+  Vite root, so renaming would have rewritten all 211 page entries and broken
+  `@vite(['resources/js/app.jsx', …])` in the Blade. The one-line saving of a
+  shorter path is not worth a manifest rewrite.
+- **`assertInertia` is what catches a wrong `page_paths`.** It checks the page
+  component is really on disk, so the split failed 37 tests with "Inertia page
+  component file does not exist" — the assertion doing its job. Nothing failed
+  at request time, because `ensure_pages_exist` is false outside tests; the
+  tests were the only thing that noticed.
+- **Cross-folder scripts are explicit.** `frontend/package.json`'s `test`,
+  `lint:php` and `fix:php` all `cd ../backend` first, which keeps
+  `npm run check` a single gate over both stacks. CI names a
+  `working-directory` on every step for the same reason.
+- **Paths elsewhere in this file are relative to their own stack folder.**
+  `app/Services/…`, `routes/web.php`, `config/payroll.php` and
+  `database/migrations/…` mean `backend/…`; `resources/js/…`,
+  `resources/css/app.css` and `scripts/check-imports.mjs` mean `frontend/…`.
+  Stated once here rather than prefixing several hundred references, which
+  would be churn with no reader benefit — the stack a path belongs to is
+  unambiguous from its extension.
+
 **Architecture:** Inertia renders the UI *and* a token-authenticated REST API
 lives at `/api/v1`. Both entry points call the same Service class, so behaviour
 can't drift between them. Controllers stay thin: authorize, delegate, respond.
@@ -300,14 +342,21 @@ Request ─┬─ Http/Controllers/EmployeeController      (Inertia -> Pages/…
 
 ## Commands
 
-| Task | Command |
-|---|---|
-| Run tests | `php artisan test` |
-| Format PHP | `vendor/bin/pint` |
-| Format JS | `npm.cmd run format` |
-| Everything | `npm.cmd run check` |
-| Dev assets | `npm.cmd run dev` |
-| Build assets | `npm.cmd run build` |
+Every command runs from one of the two stack folders, never the repository
+root — the root has no `composer.json` and no `package.json` since the split.
+
+| Task | Command | From |
+|---|---|---|
+| Run tests | `php artisan test` | `backend/` |
+| Format PHP | `vendor/bin/pint` | `backend/` |
+| Format JS | `npm.cmd run format` | `frontend/` |
+| **Everything** | `npm.cmd run check` | `frontend/` |
+| Dev assets | `npm.cmd run dev` | `frontend/` |
+| Build assets | `npm.cmd run build` | `frontend/` |
+
+`npm.cmd run check` is still the single gate over both stacks: its `test` and
+`lint:php` steps `cd ../backend` themselves, so it covers formatting,
+typecheck, the import check, Pint, and all 1028 tests from one command.
 
 **On this machine, `npm` is blocked by the PowerShell execution policy — use
 `npm.cmd`.** Assets are pre-built, so the site works without `npm run dev`.

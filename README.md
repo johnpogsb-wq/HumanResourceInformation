@@ -44,27 +44,45 @@ database — joined to the HRIS by one plain link. See
 
 ## Architecture
 
-**The backend and frontend already live in separate folders** — nothing to
-split, because Laravel and React were never mixed together in the first
-place:
+**Each stack owns its folder and its own dependencies** — composer in
+`backend/`, npm in `frontend/`, nothing shared at the root:
 
 ```
 core2/
-├── app/              ← PHP backend (controllers, models, services, policies)
-├── routes/           ← PHP backend (web.php, api.php)
-├── database/         ← PHP backend (migrations, seeders)
-├── config/           ← PHP backend
+├── backend/                    ← PHP / Laravel
+│   ├── composer.json, vendor/      the backend's dependencies
+│   ├── app/, routes/, database/, config/
+│   ├── resources/views/            Blade — the shell Inertia renders into
+│   └── public/                     the web root; Vite's output lands here
 │
-├── resources/js/     ← React frontend (all the .jsx pages and components)
-├── resources/css/    ← Frontend styling
+├── frontend/                   ← JavaScript / React
+│   ├── package.json, node_modules/ the frontend's dependencies
+│   ├── vite.config.js, tailwind.config.js, tsconfig.json
+│   └── resources/js/, resources/css/
 │
-├── resources/views/app.blade.php   ← the ONE line that ties them together:
-│                                       @vite(['resources/js/app.jsx', …])
-│
-└── landing/          ← a genuinely separate project: the public landing page.
-                         Own package.json, own build, deployed to Vercel.
-                         Knows nothing about the HRIS but its sign-in URL.
+├── landing/                    ← separate again: the public landing page
+│                                  (own package.json, deployed to Vercel)
+└── docs/, README.md, CLAUDE.md
 ```
+
+**The split is of dependencies, not of deployment.** The two halves are still
+one Inertia app: `frontend/` builds and writes its output into
+`backend/public/build`, and `backend/resources/views/app.blade.php` reads it
+from there through `@vite(['resources/js/app.jsx', …])`. Three consequences
+worth knowing before editing config:
+
+- **Vite emits across the split.** `frontend/vite.config.js` sets
+  `publicDirectory: '../backend/public'`. The JS deliberately stayed at
+  `frontend/resources/js/` rather than being renamed to `src/`, so the
+  manifest keys remain `resources/js/…` and the Blade needed no change —
+  renaming it would rewrite all 211 page entries in the manifest.
+- **Tailwind scans across the split.** Three of the four globs in
+  `frontend/tailwind.config.js` point into `../backend/` — the Blade shell and
+  Laravel's paginator views are markup too, and dropping them silently removes
+  those classes from the stylesheet.
+- **`backend/config/inertia.php` is published for one key.** `page_paths` has
+  to point at `../frontend/resources/js/Pages`, or `assertInertia` fails 37
+  tests looking for components in the wrong folder.
 
 **What is *not* separated is the deployment** — this ships as one app, not
 two. Inertia.js is why: a Laravel controller calls
@@ -75,10 +93,12 @@ no separate frontend server calling a JSON API to render a screen — the
 [docs/INTEGRATION.md](docs/INTEGRATION.md)), not for this frontend to call
 itself.
 
-That is also why there is one deploy, not two: `npm run build` compiles
-`resources/js/` into static files under `public/build/`, and from that point
-on Node is not needed on the server at all — Laravel just serves those
-compiled files like any other static asset. One PHP host, one domain.
+That is also why there is one deploy, not two: `cd frontend && npm run build`
+compiles the JSX into static files under `backend/public/build/`, and from
+that point on Node is not needed on the server at all — Laravel just serves
+those compiled files like any other static asset. One PHP host, one domain,
+with **`backend/public` as the document root** (not `public/`, since the
+split).
 
 ### Request flow (inside the backend folder)
 

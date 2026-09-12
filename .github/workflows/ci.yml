@@ -4,6 +4,11 @@ name: CI
 # usually deployed continuously, but the value here is not deployment — it is
 # that a change which breaks the suite is visible on GitHub before anyone
 # pulls it, rather than on someone else's machine an hour later.
+#
+# Every step below names a `working-directory`, because the two stacks live in
+# their own folders now: composer in `backend/`, npm in `frontend/`. A bare
+# `composer install` at the repo root would find no composer.json and fail
+# with a message that reads like a broken runner rather than a wrong path.
 on:
   push:
     branches: [main]
@@ -66,10 +71,11 @@ jobs:
       - name: Cache Composer packages
         uses: actions/cache@v4
         with:
-          path: vendor
-          key: composer-${{ hashFiles('composer.lock') }}
+          path: backend/vendor
+          key: composer-${{ hashFiles('backend/composer.lock') }}
 
       - name: Install PHP dependencies
+        working-directory: backend
         run: composer install --no-interaction --prefer-dist --no-progress
 
       - name: Set up Node
@@ -77,22 +83,32 @@ jobs:
         with:
           node-version: '20'
           cache: npm
+          # The lockfile is no longer at the root, and without this the cache
+          # step fails outright rather than merely missing.
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install JS dependencies
+        working-directory: frontend
         run: npm ci
 
       # The root Blade view @vite's each page component by name, so an unbuilt
       # page throws and the feature test reports "Not a valid Inertia
       # response" — a failure that looks like a routing bug and is not one.
+      #
+      # This runs in `frontend/` and writes into `backend/public/build`, which
+      # is where Laravel reads the manifest from — see frontend/vite.config.js.
       - name: Build assets
+        working-directory: frontend
         run: npm run build
 
       - name: Prepare environment
+        working-directory: backend
         run: |
           cp .env.example .env
           php artisan key:generate
 
       - name: Run tests
+        working-directory: backend
         env:
           DB_CONNECTION: ${{ matrix.database }}
           DB_DATABASE: ${{ matrix.db_database }}
@@ -116,6 +132,7 @@ jobs:
           coverage: none
 
       - name: Install PHP dependencies
+        working-directory: backend
         run: composer install --no-interaction --prefer-dist --no-progress
 
       - name: Set up Node
@@ -123,19 +140,24 @@ jobs:
         with:
           node-version: '20'
           cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install JS dependencies
+        working-directory: frontend
         run: npm ci
 
       # `--test` and `format:check` report rather than rewrite: CI should say
       # a file is unformatted, not quietly commit a fix nobody reviewed.
       - name: Check PHP formatting
+        working-directory: backend
         run: vendor/bin/pint --test
 
       - name: Check JS formatting
+        working-directory: frontend
         run: npm run format:check
 
       # Vite strips types without checking them, so nothing else in the
       # pipeline would notice a broken one. This is the only step that does.
       - name: Typecheck
+        working-directory: frontend
         run: npm run typecheck

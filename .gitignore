@@ -18,13 +18,17 @@
 /.vscode
 /.zed
 /auth.json
-/database/database.sqlite
-/node_modules
-/public/hot
-/public/storage
-/storage/*.key
-/storage/pail
-/vendor
+
+# Paths carry their folder since the backend/frontend split — the backend's
+# composer dependencies and the frontend's npm ones now live one level down,
+# and a bare `/vendor` or `/node_modules` here would match neither.
+/backend/database/database.sqlite
+/backend/public/hot
+/backend/public/storage
+/backend/storage/*.key
+/backend/storage/pail
+/backend/vendor
+/frontend/node_modules
 Homestead.json
 Homestead.yaml
 Thumbs.db
@@ -34,5 +38,5 @@ Thumbs.db
 # of these were sitting untracked in the working tree waiting to be committed
 # to a public repository. Ignored by name rather than trusted to be cleaned up.
 cookies.txt
-/storage/cookies.txt
-/storage/*response*.html
+/backend/storage/cookies.txt
+/backend/storage/*response*.html
