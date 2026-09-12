@@ -38,6 +38,46 @@ return Application::configure(basePath: dirname(__DIR__))
         // Both stacks: the API serves JSON to biometric devices and
         // integrations, and nosniff matters as much there as on a screen.
         $middleware->append(SecurityHeaders::class);
+
+        /*
+         * Whose `X-Forwarded-*` headers to believe.
+         *
+         * Unset, Laravel reads the *connecting* address — which behind a
+         * reverse proxy is the proxy, on every single request. This domain is
+         * Cloudflare-fronted and Hostforge serves from behind its own proxy,
+         * so four things in this codebase would quietly record or key off the
+         * wrong value:
+         *
+         *   - `RecordAuthenticationEvents` logs `$request->ip()` for every
+         *     sign-in and every failed one. CLAUDE.md says that trail exists
+         *     to show "what somebody guessing at addresses looks like" — and
+         *     one proxy IP on all of them shows nothing.
+         *   - `DataAccessLogger` logs the reader's IP for every 201-file
+         *     document opened. That is the RA 10173 accountability trail.
+         *   - `Auditable` logs it for every record change.
+         *   - `defineApiRateLimit()` falls back to `by('ip:'.$request->ip())`
+         *     for callers with no bearer token, which would drop the entire
+         *     internet into one shared 20/min bucket rather than one each.
+         *
+         * And `$request->secure()` stays false over a proxy-terminated TLS
+         * connection, so `SecurityHeaders` would never send HSTS in
+         * production and `url()` would generate `http://` links.
+         *
+         * Read from env and **empty by default**, which is the safe direction:
+         * trusting a header nobody is stripping lets a caller claim any IP
+         * they like, so this is only switched on where a proxy really does
+         * sit in front. Locally there is none, and Herd talks to PHP
+         * directly. Production sets `TRUSTED_PROXIES=*` — correct there
+         * because the origin is only reachable through the proxy, which
+         * overwrites the header rather than passing a client's own through.
+         */
+        $proxies = env('TRUSTED_PROXIES');
+
+        if (! empty($proxies)) {
+            $middleware->trustProxies(
+                at: $proxies === '*' ? '*' : explode(',', $proxies),
+            );
+        }
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
