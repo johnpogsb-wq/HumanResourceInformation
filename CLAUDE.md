@@ -2311,6 +2311,23 @@ behind `viewSensitive`). What follows is the layer underneath them.
 database password), `SESSION_SECURE_COOKIE` true, and `SESSION_ENCRYPT`
 considered — session payloads are plaintext in the `sessions` table today.
 
+The full sequence is `docs/DEPLOYMENT.md`, and `backend/.env.production.example`
+is the file to copy up rather than the local `.env`. Three things there are not
+guesses about what might go wrong, they are findings from auditing this
+codebase:
+
+- **`TRUSTED_PROXIES` must be set** behind Cloudflare or a host's load
+  balancer. Unset, `$request->ip()` is the proxy on every request — which
+  silently wrecks the `RecordAuthenticationEvents` sign-in trail, the
+  `DataAccessLogger` 201-file read trail, `Auditable`, and drops every
+  tokenless API caller into one shared 20/min bucket. `$request->secure()`
+  also stays false, so HSTS never sends.
+- **The document root is `backend/public`**, not `public/`. Pointed at the
+  repository root instead, `/backend/.env` is served as plaintext.
+- **`php artisan storage:link` has to be run on the server.** The symlink is
+  gitignored, and five `asset('storage/...')` call sites depend on it — the
+  folder split broke it locally exactly this way.
+
 ## Gotchas that have already cost time
 
 - **Settings are cached forever.** `Setting::all()` uses `rememberForever`, and

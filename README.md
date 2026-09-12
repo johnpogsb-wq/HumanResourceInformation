@@ -137,6 +137,7 @@ employee form.
 
 - **[Integration Guide](docs/INTEGRATION.md)** — REST API specification, tokens, and endpoints for external ISMERS modules (Core 1, Core 3, Fleet).
 - **[Security Architecture](docs/SECURITY.md)** — Comprehensive security documentation covering authentication, 2FA, session protection, HTTP headers, RBAC, audit logs, and RA 10173 compliance.
+- **[Deployment Guide](docs/DEPLOYMENT.md)** — step-by-step for Hostforge, in the order you actually do it, with a way to verify each step. Start with the document root: pointed at the repository instead of `backend/public`, the site serves `.env` to anyone who asks for it.
 
 ## Getting started
 

@@ -8,7 +8,13 @@
 # .env.old, or .env.2026-09-06 — the names somebody actually types before
 # editing a live file. A leaked key is not undone by deleting the file after.
 .env.*
+# The two exceptions are templates that carry no values — every secret in them
+# is the literal text [FILL IN]. The catch-all above stays deliberately broad
+# because it is there for .env.bak, .env.old, .env.2026-09-06 — the names
+# somebody types before editing a live file — so new exceptions get added one
+# at a time, by name, and never as a pattern.
 !.env.example
+!.env.production.example
 .phpactor.json
 .phpunit.result.cache
 /.fleet
