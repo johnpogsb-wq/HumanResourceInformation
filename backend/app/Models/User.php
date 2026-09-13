@@ -7,19 +7,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    /*
-     * TwoFactorAuthenticatable brings the secret, the recovery codes, and the
-     * `hasEnabledTwoFactorAuthentication()` the login flow checks. It does
-     * *not* hide either column — see `$hidden` below, which is where that has
-     * to be said, and which a test rather than a reading is what established.
-     */
-    use HasApiTokens, HasFactory, Notifiable, TwoFactorAuthenticatable;
+    use HasApiTokens, HasFactory, Notifiable;
 
     public const ROLE_ADMIN = 'admin';
 
@@ -43,6 +36,7 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
+        'username',
         'email',
         'password',
         'role',
@@ -58,35 +52,42 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
-
-        /*
-         * The second factor itself.
-         *
-         * Listed here rather than assumed: `TwoFactorAuthenticatable` brings
-         * the behaviour but not the hiding — the starter kits add these two,
-         * and this project has no starter kit. Without them the secret and the
-         * recovery codes serialise like any other column, and the Settings
-         * screen puts the signed-in user's account into an Inertia payload —
-         * so they would have travelled to the browser, into the page cache,
-         * and into browser history, on every visit.
-         *
-         * Caught by a test rather than by review, which is the only reason it
-         * is not still true.
-         */
-        'two_factor_secret',
-        'two_factor_recovery_codes',
-
-        /*
-         * The emailed factor's outstanding code.
-         *
-         * A hash rather than the code itself, so this is the same class of
-         * thing as `password` two lines up and belongs in the same list for
-         * the same reason: the Settings screen serialises the signed-in user's
-         * own account, and nothing about a live sign-in code needs to reach
-         * the browser, the page cache, or browser history.
-         */
-        'otp_code_hash',
     ];
+
+    /*
+     * Every account gets a username, however it was created.
+     *
+     * Logins are made in four places: the seeder, the employee form, Users &
+     * Access, and the factory the tests use. Deriving the name here rather
+     * than at each of them means none can create an account that cannot sign
+     * in. A username that was passed in explicitly is kept as given.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (User $user) {
+            if (blank($user->username)) {
+                $user->username = static::availableUsername((string) $user->email);
+            }
+        });
+    }
+
+    /**
+     * A free username derived from an email address: `hr@primepower.test`
+     * becomes `hr`, and if `hr` is taken, `hr2`.
+     */
+    public static function availableUsername(string $email): string
+    {
+        $base = preg_replace('/[^a-z0-9._-]/', '', strtolower(strstr($email, '@', true) ?: $email));
+        $base = $base !== '' ? substr($base, 0, 40) : 'user';
+
+        $candidate = $base;
+
+        for ($n = 2; static::where('username', $candidate)->exists(); $n++) {
+            $candidate = $base.$n;
+        }
+
+        return $candidate;
+    }
 
     /**
      * A temporary password for a login somebody else is provisioning — HR
@@ -169,9 +170,6 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_active' => 'boolean',
             'must_change_password' => 'boolean',
-            'otp_enabled' => 'boolean',
-            'otp_expires_at' => 'datetime',
-            'otp_sent_at' => 'datetime',
         ];
     }
 }

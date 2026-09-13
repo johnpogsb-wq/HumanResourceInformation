@@ -16,7 +16,7 @@ Performance Management.**
 | **Database** | PostgreSQL | — |
 | **Build Tool** | Vite | ^7.0 |
 | **API** | RESTful (`/api/v1`) | Laravel Sanctum ^4.0 (Token-Based) |
-| **Authentication (Web)** | Laravel Fortify | ^1.39 (Session/Cookie-Based + 2FA) |
+| **Authentication (Web)** | Laravel Fortify | ^1.39 (Session/Cookie-Based, username + password) |
 | **Authentication (API)** | Laravel Sanctum | ^4.0 (Token-Based) |
 | **Routing (JS)** | Ziggy | ^2.0 |
 | **Version Control** | Git / GitHub | — |
@@ -136,7 +136,7 @@ employee form.
 ## Documentation
 
 - **[Integration Guide](docs/INTEGRATION.md)** — REST API specification, tokens, and endpoints for external ISMERS modules (Core 1, Core 3, Fleet).
-- **[Security Architecture](docs/SECURITY.md)** — Comprehensive security documentation covering authentication, 2FA, session protection, HTTP headers, RBAC, audit logs, and RA 10173 compliance.
+- **[Security Architecture](docs/SECURITY.md)** — Comprehensive security documentation covering authentication, session protection, HTTP headers, RBAC, audit logs, and RA 10173 compliance.
 - **[Deployment Guide](docs/DEPLOYMENT.md)** — step-by-step for Hostforge, in the order you actually do it, with a way to verify each step. Start with the document root: pointed at the repository instead of `backend/public`, the site serves `.env` to anyone who asks for it.
 
 ## Getting started

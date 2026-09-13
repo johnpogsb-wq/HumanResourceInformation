@@ -28,6 +28,7 @@ class DatabaseSeeder extends Seeder
 
         $this->seedAdminUsers();
         $this->seedEmployees();
+        $this->seedSupervisorUser();
         $this->seedSelfServiceUser();
 
         // Needs employees: it creates the clients, then splits the workforce
@@ -112,15 +113,16 @@ class DatabaseSeeder extends Seeder
     private function seedAdminUsers(): void
     {
         $accounts = [
-            ['name' => 'System Administrator', 'email' => 'admin@primepower.test', 'role' => User::ROLE_ADMIN],
-            ['name' => 'Maria Santos', 'email' => 'hr@primepower.test', 'role' => User::ROLE_HR_STAFF],
+            ['name' => 'System Administrator', 'username' => 'admin', 'email' => 'admin@primepower.test', 'role' => User::ROLE_ADMIN],
+            ['name' => 'Maria Santos', 'username' => 'hr', 'email' => 'hr@primepower.test', 'role' => User::ROLE_HR_STAFF],
         ];
 
         foreach ($accounts as $account) {
             User::updateOrCreate(
-                ['email' => $account['email']],
+                ['username' => $account['username']],
                 [
                     'name' => $account['name'],
+                    'email' => $account['email'],
                     'role' => $account['role'],
                     'password' => $this->seededPassword($account['email']),
                     'is_active' => true,
@@ -128,6 +130,44 @@ class DatabaseSeeder extends Seeder
                     'must_change_password' => $this->passwordIsProvisional(),
                 ],
             );
+        }
+    }
+
+    /**
+     * A designated supervisor login for role-based testing and sign-in.
+     */
+    private function seedSupervisorUser(): void
+    {
+        $existing = User::where('username', 'supervisor')
+            ->orWhere('email', 'supervisor@primepower.test')
+            ->first();
+
+        if ($existing && Employee::where('user_id', $existing->id)->exists()) {
+            return;
+        }
+
+        $employee = Employee::whereHas('subordinates')
+            ->whereNull('user_id')
+            ->orderBy('id')
+            ->first() ?? Employee::whereHas('subordinates')->orderBy('id')->first();
+
+        $name = $employee ? $employee->full_name : 'Department Supervisor';
+
+        $user = User::updateOrCreate(
+            ['username' => 'supervisor'],
+            [
+                'name' => $name,
+                'email' => 'supervisor@primepower.test',
+                'role' => User::ROLE_SUPERVISOR,
+                'password' => $this->seededPassword('supervisor@primepower.test'),
+                'is_active' => true,
+                'email_verified_at' => now(),
+                'must_change_password' => $this->passwordIsProvisional(),
+            ],
+        );
+
+        if ($employee && ! $employee->user_id) {
+            $employee->update(['user_id' => $user->id]);
         }
     }
 
@@ -144,7 +184,9 @@ class DatabaseSeeder extends Seeder
      */
     private function seedSelfServiceUser(): void
     {
-        $existing = User::where('email', 'employee@primepower.test')->first();
+        $existing = User::where('username', 'employee')
+            ->orWhere('email', 'employee@primepower.test')
+            ->first();
 
         // Already linked. Re-running must not hand the same login a second
         // employee record — one user, one 201 file.
@@ -162,9 +204,10 @@ class DatabaseSeeder extends Seeder
         }
 
         $user = User::updateOrCreate(
-            ['email' => 'employee@primepower.test'],
+            ['username' => 'employee'],
             [
                 'name' => $employee->full_name,
+                'email' => 'employee@primepower.test',
                 'role' => User::ROLE_EMPLOYEE,
                 'password' => $this->seededPassword('employee@primepower.test'),
                 'is_active' => true,

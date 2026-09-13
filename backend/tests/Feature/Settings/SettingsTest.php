@@ -138,10 +138,12 @@ class SettingsTest extends TestCase
                 'role' => User::ROLE_HR_STAFF,
             ])
             ->assertRedirect()
-            // The temporary password is handed over once, in the flash message.
-            ->assertSessionHas('success', fn ($message) => str_contains($message, 'Temporary password'));
+            // Handed over once, in the flash message: the username they sign
+            // in with, and the temporary password to go with it.
+            ->assertSessionHas('success', fn ($message) => str_contains($message, 'Username: nina')
+                && str_contains($message, 'temporary password'));
 
-        $this->assertDatabaseHas('users', ['email' => 'nina@primepower.test', 'role' => 'hr_staff']);
+        $this->assertDatabaseHas('users', ['username' => 'nina', 'email' => 'nina@primepower.test', 'role' => 'hr_staff']);
     }
 
     public function test_creating_an_account_can_link_an_employee(): void

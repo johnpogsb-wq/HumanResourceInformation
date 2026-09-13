@@ -96,18 +96,23 @@ class RecordAuthenticationEvents
             self::EVENT_LOCKOUT,
             actorId: null,
             subjectId: null,
-            attempted: $this->attemptedEmail($event->request->only('email')),
+            attempted: $this->attemptedEmail($event->request->only(['email', 'username'])),
         );
     }
 
     /**
+     * What was typed into the sign-in box.
+     *
+     * The web form sends an `email`; read both email and username so a failed
+     * attempt is recorded against whatever was entered.
+     *
      * @param  array<string, mixed>  $credentials
      */
     private function attemptedEmail(array $credentials): ?string
     {
-        $email = $credentials['email'] ?? null;
+        $typed = $credentials['email'] ?? $credentials['username'] ?? null;
 
-        return is_string($email) ? mb_substr($email, 0, 255) : null;
+        return is_string($typed) ? mb_substr($typed, 0, 255) : null;
     }
 
     private function write(string $event, ?int $actorId, ?int $subjectId, ?string $attempted = null): void
@@ -122,7 +127,10 @@ class RecordAuthenticationEvents
             'old_values' => null,
             // Only ever the address that was typed — never the password, and
             // never the rest of the credential array.
-            'new_values' => $attempted === null ? null : ['email' => $attempted],
+            'new_values' => $attempted === null ? null : [
+                'email' => $attempted,
+                'username' => $attempted,
+            ],
             'ip_address' => $request?->ip(),
             'user_agent' => $request?->userAgent(),
         ]);

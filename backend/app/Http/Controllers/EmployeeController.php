@@ -193,7 +193,9 @@ class EmployeeController extends Controller
         $message = "Employee {$employee->employee_number} created from endorsement {$endorsement->reference}.";
 
         if ($this->employees->generatedPassword) {
-            $message .= " Temporary password: {$this->employees->generatedPassword}";
+            // The username too, since that is what the employee signs in with.
+            $username = $employee->user?->username;
+            $message .= " Login: {$username} / temporary password: {$this->employees->generatedPassword}";
         }
 
         return redirect()

@@ -7,7 +7,6 @@ use App\Listeners\RecordAuthenticationEvents;
 use App\Models\AuditLog;
 use App\Models\Setting;
 use App\Models\User;
-use App\Services\OtpService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -24,8 +23,6 @@ use Inertia\Response;
  */
 class SecurityController extends Controller
 {
-    public function __construct(private readonly OtpService $otp) {}
-
     public function index(Request $request): Response
     {
         Gate::authorize('managePersonal', Setting::class);
@@ -36,47 +33,13 @@ class SecurityController extends Controller
         return Inertia::render('Settings/Security', [
             'account' => [
                 'name' => $user->name,
+                'username' => $user->username,
                 'email' => $user->email,
                 'role' => $user->role,
                 'email_verified' => $user->email_verified_at !== null,
                 'created_at' => $user->created_at?->toDateString(),
 
-                /*
-                 * Two states, not one, and they are genuinely different.
-                 *
-                 * Fortify writes the secret the moment somebody asks to enable
-                 * 2FA and only sets `two_factor_confirmed_at` once they have
-                 * typed a code from their app. Somebody who closed the tab
-                 * halfway is *not* protected and must not be told they are —
-                 * that is the reading that ends with a person believing they
-                 * have a second factor they never finished setting up.
-                 */
-                'two_factor_started' => $user->two_factor_secret !== null,
-                'two_factor_enabled' => $user->two_factor_confirmed_at !== null,
-
-                /*
-                 * The emailed factor, which has one state rather than two.
-                 *
-                 * Nothing to confirm: the address is already on the account and
-                 * already verified, so there is no half-set-up condition to
-                 * report — unlike the authenticator, where a secret can exist
-                 * with no protection behind it.
-                 */
-                'otp_enabled' => (bool) $user->otp_enabled,
             ],
-
-            /*
-             * Whether mail can actually leave this installation.
-             *
-             * Read from config and sent to the screen because switching this
-             * factor on with the `log` mailer is the one way to lock yourself
-             * out of your own account: the code is written to
-             * `storage/logs/laravel.log` and never delivered. The card warns
-             * instead of refusing — a developer reading the log is a legitimate
-             * way to demonstrate the feature, and refusing would make it
-             * undemonstrable on a fresh clone.
-             */
-            'mailIsLogged' => config('mail.default') === 'log',
 
             'tokens' => $user->tokens()
                 ->latest('id')
@@ -107,58 +70,6 @@ class SecurityController extends Controller
             // page reads as a broken link rather than as a step to complete.
             'mustChangePassword' => (bool) $user->must_change_password,
         ]);
-    }
-
-    /**
-     * Switches the emailed second factor on or off.
-     *
-     * **The password is re-asked in both directions, and the off direction is
-     * the one that needs it.** Without that, the cheapest way past this factor
-     * is an unlocked machine and one click — the attacker never needs the
-     * inbox, they remove the requirement. That is the same argument
-     * `confirmPassword` settles for Fortify's authenticator, reached here with
-     * a `current_password` rule rather than the middleware, because one
-     * request that carries its own proof is simpler than a 423 handshake for a
-     * single checkbox.
-     */
-    public function updateOtp(Request $request): RedirectResponse
-    {
-        Gate::authorize('managePersonal', Setting::class);
-
-        $validated = $request->validate([
-            'enabled' => ['required', 'boolean'],
-            'current_password' => ['required', 'current_password'],
-        ], [
-            'current_password.current_password' => 'That is not your current password.',
-        ]);
-
-        $user = $request->user();
-        $enabled = (bool) $validated['enabled'];
-
-        $user->forceFill(['otp_enabled' => $enabled])->save();
-
-        /*
-         * Switching off forgets any outstanding code and releases this
-         * session, and both halves matter. A code left behind is a credential
-         * nobody expects to still work; a session left unmarked would be held
-         * by `RequireOtp` on the next request if the factor were switched back
-         * on, asking for a code to re-enter a screen the person is already on.
-         */
-        if (! $enabled) {
-            $this->otp->clear($user);
-            $request->session()->forget(OtpService::SESSION_KEY);
-        } else {
-            // Switched on from a session that has already proved the password
-            // moments ago, so this one is not held — the next sign-in is.
-            $request->session()->put(OtpService::SESSION_KEY, now()->toIso8601String());
-        }
-
-        return back()->with(
-            'success',
-            $enabled
-                ? 'Email codes are on. The next sign-in will ask for one.'
-                : 'Email codes are off.',
-        );
     }
 
     public function updatePassword(Request $request): RedirectResponse
@@ -327,7 +238,8 @@ class SecurityController extends Controller
                 'changed' => array_keys($entry->new_values ?? []),
                 // For a failed sign-in this is the whole point of the row: the
                 // account has no id to show when the address is not one of ours.
-                'attempted_email' => $entry->new_values['email'] ?? null,
+                // Rows written before sign-in moved to usernames hold `email`.
+                'attempted_login' => $entry->new_values['username'] ?? $entry->new_values['email'] ?? null,
                 'ip_address' => $entry->ip_address,
                 'created_at' => $entry->created_at?->toIso8601String(),
             ]);

@@ -503,7 +503,6 @@ Route::middleware(['auth', 'verified'])->prefix('settings')->name('settings.')->
     Route::get('security', [SecurityController::class, 'index'])->name('security');
     Route::put('security/profile', [SecurityController::class, 'updateProfile'])->name('security.profile');
     Route::put('security/password', [SecurityController::class, 'updatePassword'])->name('security.password');
-    Route::put('security/otp', [SecurityController::class, 'updateOtp'])->name('security.otp');
     Route::post('security/tokens/revoke-all', [SecurityController::class, 'revokeTokens'])->name('security.tokens.revokeAll');
     Route::delete('security/tokens/{token}', [SecurityController::class, 'revokeToken'])->name('security.tokens.revoke');
     Route::delete('security/account', [SecurityController::class, 'destroyAccount'])->name('security.account');

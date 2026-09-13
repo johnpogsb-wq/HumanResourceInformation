@@ -144,7 +144,7 @@ the panel, the three mail values, and the Gemini key. Everything else in that
 file is already correct for production — it is commented with *why*, including
 which values are dangerous if copied from your local `.env`.
 
-**Back up `APP_KEY` somewhere safe.** It encrypts the 2FA secrets *and* the
+**Back up `APP_KEY` somewhere safe.** It encrypts the
 government identifiers and bank accounts on every employee record. Lose it and
 that data is unrecoverable, not merely inaccessible.
 
@@ -289,8 +289,10 @@ added no migration — running it when there is nothing to run is harmless.
 - **The document scanner, without `GEMINI_API_KEY`.** It goes dark cleanly:
   the Scan button is not drawn and the endpoint 404s. Filing 201-file documents
   by hand works exactly as before.
-- **Password resets and the emailed OTP, without mail credentials.** Nothing
-  crashes; the mail simply never arrives. Keep `OTP_DEFAULT_ENABLED=false`
+- **Password resets, without mail credentials.** Nothing crashes; the reset
+  email simply never arrives, and an admin resets the password from Settings →
+  Users & Access instead. Signing in never needs mail — it is a username and a
+  password.
   until you have confirmed a real send *from the server*.
 - **`php artisan scanner:check`** is worth running once after deploying — it
   sends one real image through the configured driver and reports *switched off*

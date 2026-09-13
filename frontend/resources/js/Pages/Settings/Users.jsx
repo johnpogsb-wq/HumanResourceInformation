@@ -132,8 +132,14 @@ export default function Users({ users, roles, unlinkedEmployees }) {
                                                         </span>
                                                     )}
                                                 </p>
+                                                {/* The username first: it is what the person
+                                                    signs in with, and the thing an admin gets
+                                                    asked for. */}
                                                 <p className="truncate text-xs text-muted-foreground">
-                                                    {user.email}
+                                                    <span className="font-mono text-foreground">
+                                                        {user.username}
+                                                    </span>
+                                                    {user.email && <> · {user.email}</>}
                                                 </p>
                                             </div>
                                         </div>

@@ -57,6 +57,9 @@ class EmployeeController extends Controller
 
         return (new EmployeeResource($employee->load(['department', 'position'])))
             ->additional(array_filter([
+                // Only present when a login was created. The username is what
+                // the person signs in with, so it travels with the password.
+                'username' => $this->employees->generatedPassword ? $employee->user?->username : null,
                 'temporary_password' => $this->employees->generatedPassword,
             ]))
             ->response()

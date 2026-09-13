@@ -63,7 +63,7 @@ const CAPABILITIES = [
 ];
 
 const SECURITY = [
-    'Two-factor authentication, by authenticator app or emailed code',
+    'Role-based sign-in: every login sees only what its role allows',
     'Government identifiers and bank details encrypted in the database',
     'Every read of a 201 file recorded, not only every change',
     'Salary and personal data gated per role, in the query and the policy',

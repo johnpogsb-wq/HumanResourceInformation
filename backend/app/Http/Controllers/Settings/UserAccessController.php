@@ -32,6 +32,8 @@ class UserAccessController extends Controller
                 ->map(fn (User $user) => [
                     'id' => $user->id,
                     'name' => $user->name,
+                    // What the person signs in with, so the admin can tell them.
+                    'username' => $user->username,
                     'email' => $user->email,
                     'role' => $user->role,
                     'is_active' => (bool) $user->is_active,
@@ -92,7 +94,7 @@ class UserAccessController extends Controller
             Employee::whereKey($validated['employee_id'])->update(['user_id' => $user->id]);
         }
 
-        return back()->with('success', "Account created for {$user->email}. Temporary password: {$password}");
+        return back()->with('success', "Account created. Username: {$user->username} / temporary password: {$password}");
     }
 
     public function updateRole(Request $request, User $user): RedirectResponse
@@ -146,6 +148,6 @@ class UserAccessController extends Controller
         ]);
         $user->tokens()->delete();
 
-        return back()->with('success', "New password for {$user->email}: {$password}");
+        return back()->with('success', "New password for {$user->username}: {$password}");
     }
 }

@@ -18,6 +18,14 @@ use Illuminate\Support\Facades\Route;
 | it as `Authorization: Bearer <token>`.
 */
 
+Route::middleware('auth:sanctum')->get('/user', function (\Illuminate\Http\Request $request) {
+    return response()->json([
+        'data' => $request->user()->only(['id', 'name', 'email', 'role', 'is_active']),
+    ]);
+});
+
+Route::middleware('auth:sanctum')->get('/dashboard', \App\Http\Controllers\DashboardController::class);
+
 Route::prefix('v1')->group(function () {
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:6,1');
 

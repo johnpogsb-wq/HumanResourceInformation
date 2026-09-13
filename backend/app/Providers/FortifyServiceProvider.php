@@ -5,7 +5,9 @@ namespace App\Providers;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\UpdateUserPassword;
 use App\Listeners\RecordAuthenticationEvents;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\ServiceProvider;
 use Inertia\Inertia;
 use Laravel\Fortify\Fortify;
@@ -37,6 +39,35 @@ class FortifyServiceProvider extends ServiceProvider
     {
         Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
+
+        $this->app->singleton(\Laravel\Fortify\Contracts\LoginResponse::class, function () {
+            return new class implements \Laravel\Fortify\Contracts\LoginResponse {
+                public function toResponse($request)
+                {
+                    if ($request->wantsJson()) {
+                        return response()->json([
+                            'two_factor' => false,
+                            'user' => $request->user()?->only(['id', 'name', 'email', 'role']),
+                        ]);
+                    }
+
+                    return redirect()->intended(config('fortify.home', '/dashboard'));
+                }
+            };
+        });
+
+        $this->app->singleton(\Laravel\Fortify\Contracts\LogoutResponse::class, function () {
+            return new class implements \Laravel\Fortify\Contracts\LogoutResponse {
+                public function toResponse($request)
+                {
+                    if ($request->wantsJson()) {
+                        return response()->json(['message' => 'Logged out.']);
+                    }
+
+                    return redirect('/');
+                }
+            };
+        });
 
         $this->registerViews();
     }
@@ -71,16 +102,5 @@ class FortifyServiceProvider extends ServiceProvider
         // Fortify at the page they used to render.
         Fortify::confirmPasswordView(fn () => Inertia::render('Auth/ConfirmPassword'));
 
-        /*
-         * The second factor, asked for after the password and before the
-         * session is issued.
-         *
-         * One screen for both answers — a six-digit code from the authenticator
-         * app, or one of the recovery codes — because they are the same
-         * question ("prove you still hold the factor") reached by two routes,
-         * and somebody whose phone is flat is having a bad enough day without
-         * hunting for a second page.
-         */
-        Fortify::twoFactorChallengeView(fn () => Inertia::render('Auth/TwoFactorChallenge'));
     }
 }

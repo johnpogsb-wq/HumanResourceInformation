@@ -45,6 +45,15 @@ return [
     |
     */
 
+    /*
+     * People sign in with a username, not an email address. A company
+     * account should not depend on somebody's personal inbox, and the role
+     * already lives on the account — so `admin`, `hr` and `jdelacruz` are
+     * enough to say who is signing in and what they may open.
+     *
+     * `email` below is unchanged: the forgot-password flow still sends its
+     * link to the address on the account.
+     */
     'username' => 'email',
 
     'email' => 'email',
@@ -193,17 +202,11 @@ return [
     |   has to be tied to a 201 file and given a role. Fortify enables it by
     |   default, which reopened `/register` the moment it was installed and
     |   turned a deliberate 404 into a live signup page.
-    | - **two-factor is on; passkeys are off.** This system holds salary,
-    |   government identifiers and bank details, so an admin password on its
-    |   own was the whole of the front door — and a password is the credential
-    |   most likely to be reused, phished, or read off a chat message. Passkeys
-    |   stay off: they solve the same problem again for a smaller audience, and
-    |   leaving them on registers routes whose views do not exist.
-    |
-    |   `confirmPassword: true` on the feature is the part worth naming. It
-    |   makes enabling *or disabling* 2FA re-ask for the password, so somebody
-    |   who walks up to an unlocked machine cannot quietly turn the second
-    |   factor off — which would otherwise be the easiest way to defeat it.
+    | - **two-factor is off, and so are passkeys.** Both second factors were
+    |   removed from this system — the authenticator app and the emailed code
+    |   — so a password is the whole front door again. That is a known gap on
+    |   a system holding salary and government identifiers, and it is the
+    |   first thing to restore before this runs with real employee data.
     | - **emailVerification stays off**, matching the app's own routes: HR
     |   creates verified accounts, so there is nobody to verify.
     | - **updateProfileInformation is off.** Settings > Security owns that,
@@ -213,17 +216,6 @@ return [
     'features' => [
         Features::resetPasswords(),
         Features::updatePasswords(),
-
-        Features::twoFactorAuthentication([
-            /*
-             * The code is asked for once, then trusted for the rest of the
-             * session — not on every request. A second factor is proof of who
-             * signed in, and re-proving it mid-session is what makes people
-             * turn it off.
-             */
-            'confirm' => true,
-            'confirmPassword' => true,
-        ]),
     ],
 
 ];
