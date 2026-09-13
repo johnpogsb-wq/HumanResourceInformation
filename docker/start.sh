@@ -21,6 +21,10 @@ if [ "$RUN_MIGRATIONS" = "true" ]; then
     # container log once. Once any account exists this does nothing, so a
     # restart never resets anybody's password.
     php artisan hris:seed-if-empty
+
+    # Does nothing unless HRIS_ADMIN_PASSWORD is set in the panel. The way back
+    # in when nobody knows the admin password and there is no terminal.
+    php artisan hris:set-admin-password
 fi
 
 php artisan config:cache

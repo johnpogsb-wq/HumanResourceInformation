@@ -41,6 +41,19 @@ the others, each with a generated password that must be changed at first
 sign-in. A later restart finds the accounts and seeds nothing, so nobody's
 chosen password is reset.
 
+**Nobody knows the admin password (or the log was lost)?** There is no
+terminal and no emailed reset, so set it from the panel instead:
+
+1. Add `HRIS_ADMIN_PASSWORD` with a temporary password of at least 8
+   characters, and redeploy (or restart).
+2. Sign in as `admin@primepower.test` with it. You are asked to choose a new
+   password straight away.
+3. Remove `HRIS_ADMIN_PASSWORD` from the panel.
+
+Each value is applied only once, so leaving it set by mistake does not undo
+the password you chose — but remove it anyway. It also creates the admin login
+if the database has none.
+
 Faker is a production dependency for this reason: the seeder builds its demo
 employees through factories, and `composer install --no-dev` would otherwise
 leave it out and crash the first start.

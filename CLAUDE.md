@@ -2290,6 +2290,17 @@ container start** — storage link, then (with `RUN_MIGRATIONS=true`) migrate an
   dev-only the first-start seed threw, `set -e` stopped the script, and the
   container restarted forever. Found by migrating and seeding a scratch
   database under `APP_ENV=production` before any deploy saw it.
+- **`hris:set-admin-password` is the way back in without a terminal.** With no
+  emailed reset and no shell on the host, a lost admin password had no
+  recovery at all. `HRIS_ADMIN_PASSWORD` in the panel is applied by `start.sh`
+  to `admin@primepower.test` (created if missing), flagged
+  `must_change_password`, tokens revoked. **Applied once per value**: an HMAC
+  of the value under `APP_KEY` is stored in `settings` as
+  `security.admin_password_applied`, so a restart with the variable still set
+  cannot silently undo the password the admin then chose — and the stored
+  fingerprint is not the password. Read through
+  `config('auth.bootstrap_admin_password')`, never `env()`, because a cached
+  config makes `env()` return null.
 - **`start.sh` must stay LF.** `.gitattributes` enforces it, and the Dockerfile
   strips `\r` anyway: a CRLF script fails under Linux `sh` with an error that
   names neither the file nor the line ending.
