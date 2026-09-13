@@ -36,30 +36,6 @@ class AppServiceProvider extends ServiceProvider
         Event::subscribe(RecordAuthenticationEvents::class);
 
         $this->defineApiRateLimit();
-
-        if (windows_os() && class_exists(\Illuminate\Foundation\Console\ServeCommand::class)) {
-            \Illuminate\Foundation\Console\ServeCommand::$passthroughVariables = array_unique(array_merge(
-                \Illuminate\Foundation\Console\ServeCommand::$passthroughVariables,
-                [
-                    'SystemRoot',
-                    'SystemDrive',
-                    'WINDIR',
-                    'COMSPEC',
-                    'PATHEXT',
-                    'TEMP',
-                    'TMP',
-                    'USERPROFILE',
-                    'ALLUSERSPROFILE',
-                    'ProgramData',
-                    'LOCALAPPDATA',
-                    'APPDATA',
-                    'HOMEDRIVE',
-                    'HOMEPATH',
-                ],
-                array_keys($_ENV),
-                array_keys($_SERVER),
-            ));
-        }
     }
 
     /**

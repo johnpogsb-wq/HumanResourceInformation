@@ -162,19 +162,17 @@ export default function IdleTimeout() {
 
         document.addEventListener('visibilitychange', onVisible);
 
-        const stopNavigation = typeof router?.on === 'function'
-            ? router.on('finish', () => {
-                lastServerContact.current = now();
-                markActive();
-            })
-            : () => {};
+        const stopNavigation = router.on('finish', () => {
+            lastServerContact.current = now();
+            markActive();
+        });
 
         markActive();
 
         return () => {
             ACTIVITY_EVENTS.forEach((event) => window.removeEventListener(event, onActivity));
             document.removeEventListener('visibilitychange', onVisible);
-            if (typeof stopNavigation === 'function') stopNavigation();
+            stopNavigation();
         };
     }, [timeout, markActive]);
 

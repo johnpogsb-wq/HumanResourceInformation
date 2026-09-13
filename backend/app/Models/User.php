@@ -54,23 +54,6 @@ class User extends Authenticatable
         'remember_token',
     ];
 
-    /*
-     * Every account gets a username, however it was created.
-     *
-     * Logins are made in four places: the seeder, the employee form, Users &
-     * Access, and the factory the tests use. Deriving the name here rather
-     * than at each of them means none can create an account that cannot sign
-     * in. A username that was passed in explicitly is kept as given.
-     */
-    protected static function booted(): void
-    {
-        static::creating(function (User $user) {
-            if (blank($user->username)) {
-                $user->username = static::availableUsername((string) $user->email);
-            }
-        });
-    }
-
     /**
      * A free username derived from an email address: `hr@primepower.test`
      * becomes `hr`, and if `hr` is taken, `hr2`.
@@ -156,6 +139,23 @@ class User extends Authenticatable
     public function isSupervisor(): bool
     {
         return $this->hasRole(self::ROLE_SUPERVISOR);
+    }
+
+    /*
+     * Every account gets a username, however it was created.
+     *
+     * Logins are made in four places: the seeder, the employee form, Users &
+     * Access, and the factory the tests use. Deriving the name here rather
+     * than at each of them means none can create an account that cannot sign
+     * in. A username that was passed in explicitly is kept as given.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (User $user) {
+            if (blank($user->username)) {
+                $user->username = static::availableUsername((string) $user->email);
+            }
+        });
     }
 
     /**

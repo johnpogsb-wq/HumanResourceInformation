@@ -44,10 +44,9 @@ class RequirePasswordChange
             return $next($request);
         }
 
-        if ($request->header('X-Inertia')) {
-            return \Inertia\Inertia::location(route('settings.security'));
-        }
-
+        // Redirect rather than abort: a 403 would tell the user they are not
+        // allowed somewhere, which is not what is happening — they are allowed,
+        // one step early.
         return redirect()->route('settings.security');
     }
 }

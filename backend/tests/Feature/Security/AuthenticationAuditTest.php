@@ -22,7 +22,7 @@ class AuthenticationAuditTest extends TestCase
         $user = User::factory()->create(['password' => 'correct-horse-battery-1']);
 
         $this->post('/login', [
-            'email' => $user->email,
+            'username' => $user->username,
             'password' => 'correct-horse-battery-1',
         ])->assertRedirect();
 
@@ -47,7 +47,7 @@ class AuthenticationAuditTest extends TestCase
         $user = User::factory()->create(['password' => 'correct-horse-battery-1']);
 
         $this->post('/login', [
-            'email' => $user->email,
+            'username' => $user->username,
             'password' => 'correct-horse-battery-1',
         ])->assertRedirect();
 
@@ -79,7 +79,7 @@ class AuthenticationAuditTest extends TestCase
         $user = User::factory()->create(['password' => 'correct-horse-battery-1']);
 
         $this->post('/login', [
-            'email' => $user->email,
+            'username' => $user->username,
             'password' => 'wrong-password-entirely',
         ]);
 
@@ -88,7 +88,7 @@ class AuthenticationAuditTest extends TestCase
         $this->assertNotNull($entry);
         $this->assertNull($entry->user_id, 'Nobody was authenticated, so there is no actor.');
         $this->assertSame($user->id, (int) $entry->auditable_id);
-        $this->assertSame($user->email, $entry->new_values['email']);
+        $this->assertSame($user->username, $entry->new_values['username']);
     }
 
     /**
@@ -99,7 +99,7 @@ class AuthenticationAuditTest extends TestCase
     public function test_a_failed_login_against_an_unknown_address_is_still_recorded(): void
     {
         $this->post('/login', [
-            'email' => 'not-a-user@example.test',
+            'username' => 'not-a-user',
             'password' => 'whatever-they-tried',
         ]);
 
@@ -107,7 +107,7 @@ class AuthenticationAuditTest extends TestCase
 
         $this->assertNotNull($entry);
         $this->assertNull($entry->auditable_id);
-        $this->assertSame('not-a-user@example.test', $entry->new_values['email']);
+        $this->assertSame('not-a-user', $entry->new_values['username']);
     }
 
     public function test_the_attempted_password_is_never_recorded(): void
@@ -115,7 +115,7 @@ class AuthenticationAuditTest extends TestCase
         $user = User::factory()->create();
 
         $this->post('/login', [
-            'email' => $user->email,
+            'username' => $user->username,
             'password' => 'sup3r-s3cret-guess',
         ]);
 
@@ -132,7 +132,7 @@ class AuthenticationAuditTest extends TestCase
         // The limiter trips on the sixth attempt for one email/IP pair.
         foreach (range(1, 6) as $ignored) {
             $this->post('/login', [
-                'email' => $user->email,
+                'username' => $user->username,
                 'password' => 'wrong-password-entirely',
             ]);
         }
@@ -148,7 +148,7 @@ class AuthenticationAuditTest extends TestCase
         $user = User::factory()->create(['password' => 'correct-horse-battery-1']);
 
         $this->post('/login', [
-            'email' => $user->email,
+            'username' => $user->username,
             'password' => 'correct-horse-battery-1',
         ]);
 

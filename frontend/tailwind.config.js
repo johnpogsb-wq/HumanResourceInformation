@@ -17,9 +17,10 @@ export default {
      * error, which shows up as an unstyled page rather than a failed build.
      */
     content: [
-        './index.html',
-        './resources/js/**/*.{js,jsx}',
+        '../backend/vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php',
+        '../backend/storage/framework/views/*.php',
         '../backend/resources/views/**/*.blade.php',
+        './resources/js/**/*.jsx',
     ],
 
     theme: {

@@ -48,7 +48,7 @@ class DashboardController extends Controller
         private readonly PerformanceScorer $scorer,
     ) {}
 
-    public function __invoke(Request $request): mixed
+    public function __invoke(Request $request): Response
     {
         $scoped = $this->employees->scopedQuery($request->user());
         $today = Carbon::today();
@@ -63,7 +63,7 @@ class DashboardController extends Controller
          */
         $canViewCompanyFigures = $request->user()->isHrAdmin();
 
-        $data = [
+        return Inertia::render('Dashboard', [
             'can' => ['viewCompanyFigures' => $canViewCompanyFigures],
             'profile' => $this->profile($request->user(), $today),
             'statistics' => $this->statistics($scoped),
@@ -88,13 +88,7 @@ class DashboardController extends Controller
                     'position' => $employee->position?->title,
                     'date_hired' => $employee->date_hired?->toDateString(),
                 ]),
-        ];
-
-        if ($request->is('api/*') && ! $request->header('X-Inertia')) {
-            return response()->json($data);
-        }
-
-        return Inertia::render('Dashboard', $data);
+        ]);
     }
 
     /**

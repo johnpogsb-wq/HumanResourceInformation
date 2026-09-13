@@ -18,28 +18,73 @@ class UsernameLoginTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_a_user_signs_in_with_their_email(): void
+    public function test_a_user_signs_in_with_their_username(): void
     {
-        $user = User::factory()->create(['email' => 'mariasantos@example.com']);
+        $user = User::factory()->create(['username' => 'mariasantos']);
 
         $this->post('/login', [
-            'email' => 'mariasantos@example.com',
+            'username' => 'mariasantos',
             'password' => 'password',
         ])->assertRedirect(route('dashboard', absolute: false));
 
         $this->assertAuthenticatedAs($user);
     }
 
-    public function test_a_wrong_password_does_not_sign_in(): void
+    /**
+     * Typing the email into the username box does not sign anybody in. There
+     * is one way in, not two.
+     */
+    public function test_an_email_address_is_not_accepted_as_the_username(): void
     {
-        $user = User::factory()->create(['email' => 'mariasantos@example.com']);
+        $user = User::factory()->create(['username' => 'mariasantos']);
 
         $this->post('/login', [
-            'email' => 'mariasantos@example.com',
-            'password' => 'not-the-password',
-        ])->assertSessionHasErrors('email');
+            'username' => $user->email,
+            'password' => 'password',
+        ]);
 
         $this->assertGuest();
+    }
+
+    public function test_the_username_is_not_case_sensitive(): void
+    {
+        $user = User::factory()->create(['username' => 'mariasantos']);
+
+        $this->post('/login', [
+            'username' => 'MariaSantos',
+            'password' => 'password',
+        ]);
+
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_a_wrong_password_does_not_sign_in(): void
+    {
+        User::factory()->create(['username' => 'mariasantos']);
+
+        $this->post('/login', [
+            'username' => 'mariasantos',
+            'password' => 'not-the-password',
+        ])->assertSessionHasErrors('username');
+
+        $this->assertGuest();
+    }
+
+    /**
+     * Each role signs in the same way and lands on the same dashboard; what
+     * they can open afterwards is decided by the role on the account.
+     */
+    public function test_every_role_signs_in_with_a_username(): void
+    {
+        foreach (User::ROLES as $role) {
+            $user = User::factory()->create(['username' => "demo_{$role}", 'role' => $role]);
+
+            $this->post('/login', ['username' => "demo_{$role}", 'password' => 'password'])
+                ->assertRedirect(route('dashboard', absolute: false));
+
+            $this->assertAuthenticatedAs($user);
+            $this->post('/logout');
+        }
     }
 
     /**
@@ -95,51 +140,5 @@ class UsernameLoginTest extends TestCase
         $user = User::factory()->create();
 
         $this->actingAs($user)->get('/dashboard')->assertOk();
-    }
-
-    public function test_users_can_sign_in_via_role_accounts(): void
-    {
-        $admin = User::factory()->create(['email' => 'admin@primepower.test', 'role' => User::ROLE_ADMIN]);
-        $hr = User::factory()->create(['email' => 'hr@primepower.test', 'role' => User::ROLE_HR_STAFF]);
-        $supervisor = User::factory()->create(['email' => 'supervisor@primepower.test', 'role' => User::ROLE_SUPERVISOR]);
-        $employee = User::factory()->create(['email' => 'employee@primepower.test', 'role' => User::ROLE_EMPLOYEE]);
-
-        // Test admin sign in
-        $this->post('/login', ['email' => 'admin@primepower.test', 'password' => 'password'])
-            ->assertRedirect(route('dashboard', absolute: false));
-        $this->assertAuthenticatedAs($admin);
-        $this->assertTrue($admin->isAdmin());
-        $this->post('/logout');
-
-        // Test HR sign in
-        $this->post('/login', ['email' => 'hr@primepower.test', 'password' => 'password'])
-            ->assertRedirect(route('dashboard', absolute: false));
-        $this->assertAuthenticatedAs($hr);
-        $this->assertTrue($hr->isHrAdmin());
-        $this->post('/logout');
-
-        // Test supervisor sign in
-        $this->post('/login', ['email' => 'supervisor@primepower.test', 'password' => 'password'])
-            ->assertRedirect(route('dashboard', absolute: false));
-        $this->assertAuthenticatedAs($supervisor);
-        $this->assertTrue($supervisor->isSupervisor());
-        $this->post('/logout');
-
-        // Test employee sign in
-        $this->post('/login', ['email' => 'employee@primepower.test', 'password' => 'password'])
-            ->assertRedirect(route('dashboard', absolute: false));
-        $this->assertAuthenticatedAs($employee);
-        $this->assertFalse($employee->isHrAdmin());
-    }
-
-    public function test_login_screen_renders_cleanly_without_role_selector(): void
-    {
-        $response = $this->get('/login');
-        $response->assertOk();
-        $response->assertInertia(fn ($page) => $page
-            ->component('Auth/Login')
-            ->missing('roles')
-            ->where('canResetPassword', true)
-        );
     }
 }

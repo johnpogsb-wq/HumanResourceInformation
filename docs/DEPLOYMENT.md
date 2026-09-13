@@ -293,7 +293,6 @@ added no migration — running it when there is nothing to run is harmless.
   email simply never arrives, and an admin resets the password from Settings →
   Users & Access instead. Signing in never needs mail — it is a username and a
   password.
-  until you have confirmed a real send *from the server*.
 - **`php artisan scanner:check`** is worth running once after deploying — it
   sends one real image through the configured driver and reports *switched off*
   and *configured but broken* as the different things they are. `isEnabled()`

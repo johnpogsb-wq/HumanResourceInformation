@@ -1996,107 +1996,40 @@ to every signed-in user.
 The access rules themselves are Module 1's (`scopedQuery()` + policies, salary
 behind `viewSensitive`). What follows is the layer underneath them.
 
-- **There are two second factors, and the emailed one exists because the other
-  was never switched on.** Fortify's TOTP had been enabled for weeks with
-  **zero accounts enrolled** — which is the whole argument for adding a second
-  channel rather than tuning the first. TOTP asks somebody to install an app,
-  scan a QR code and keep recovery codes safe *before* it protects anything,
-  and a control nobody finishes setting up is a control that is off. An
-  emailed code asks for an inbox they already have open.
-  - **`RequireOtp` holds the session, not the account.** The flag is
-    `otp.verified_at` in the session, so a second machine asks again and
-    signing out forgets it — which is what somebody expects from a factor whose
-    job is to notice a login they did not make.
-  - **The first *held request* sends the code, not the login controller.** One
-    rule then covers every way into a session: the login form, a remembered
-    cookie being honoured, and a session that was authenticated before the
-    factor was switched on. Hooking the login event instead would have let the
-    last two walk straight past a screen that was never shown.
-  - **It sits after `RequirePasswordChange` in the middleware stack, and the
-    order is the argument.** A provisioned password is shared by construction,
-    so the code would otherwise be a second factor guarding a first one that
-    is already known to somebody else. Replacing the password comes first;
-    proving the inbox comes second.
-  - **The code is hashed, never stored.** A live six-digit code in plaintext
-    would make that column a better target than the password hash beside it:
-    a password hash cannot be replayed and a plaintext OTP can. `otp_code_hash`
-    is in `$hidden` for the same reason `two_factor_secret` is.
-  - **`max_attempts` is what makes six digits a factor rather than a
-    formality.** A million combinations is a lot for a person and nothing for
-    a script: with unlimited guesses inside the five-minute window the code is
-    decoration. Five wrong answers **burn the code, and never lock the
-    account** — locking would hand anybody who knows an email address a way to
-    keep its owner out, which is a denial of service dressed as a control.
-  - **A code works once**, cleared on success so it cannot be replayed out of
-    browser history, a second tab, or a proxy log. The session id is
-    regenerated on the way through, because the one before the factor cleared
-    may have been seen by whoever had the password.
-  - **The screen always offers a way to sign out**, and `logout` is on the
-    middleware's allow-list. An inbox nobody can reach — wrong address on the
-    account, mail unconfigured on the server — would otherwise be a permanent
-    lockout rather than an inconvenience. It is the same reasoning that puts
-    logout on `RequirePasswordChange`'s list.
-  - **With `MAIL_MAILER=log` the code goes to `storage/logs/laravel.log` and is
-    never delivered**, so the Settings card *warns before the switch is thrown*
-    rather than refusing. Reading the log is a legitimate way to demonstrate
-    the feature, and refusing would make it undemonstrable on a fresh clone —
-    but somebody who switches it on and signs out without knowing that is
-    locked to the code screen until they use the sign-out link.
-  - Off by default (`OTP_DEFAULT_ENABLED=false`). A default that holds every
-    login behind a code is only safe once mail is known to deliver.
-  - **An SMS channel was built here and taken back out, and the reason is not
-    the code.** It worked: a `SmsSender` with Semaphore and Twilio drivers on
-    one shape, the number read off `employees.mobile_number`, E.164 conversion
-    at the edge, and an email fallback for accounts that could not receive a
-    text. What killed it is that **every SMS gateway reachable from the
-    Philippines is prepaid** — so the channel carries a running cost and a day
-    it stops working, which for the *only* way into a system is the wrong
-    trade. Two facts settled it: this is coursework with no budget, and two of
-    the accounts on this system had no phone number at all, including the
-    administrator's.
-    - Email costs nothing, needs no account, and its address **is** the login,
-      which is what makes it the floor rather than one option among two. If SMS
-      returns it returns *beside* this, never instead of it, and the fallback
-      is what makes that safe.
-    - The reverted work is worth not rediscovering: the number belongs on the
-      employee record and must not be copied onto `users` (it would drift the
-      way `users.name` can, silently), a gateway with no credentials has to go
-      dark rather than fall through, and `send()` has to report failure without
-      discarding the code — a gateway that accepts a message and then times out
-      would otherwise leave somebody holding a code the database had forgotten.
-  - The API stack is outside it, exactly like `RequirePasswordChange`: a
-    Sanctum token is a machine credential on a biometric device with no inbox
-    and nobody at the other end to read one.
-- **Two-factor authentication is on, and `confirmPassword` is the half people
-  forget.** A password was the whole front door of a system holding salary,
-  government identifiers and bank details — and a password is the credential
-  most likely to be reused, phished, or read back off the chat message it was
-  handed over in. Fortify ships the whole feature; it was simply switched off.
-  - **`confirmPassword: true` makes *disabling* re-ask for the password too.**
-    Without it the cheapest way past a second factor is an unlocked machine and
-    one click: the attacker never needs the phone, they remove the requirement.
-    Guarded by a test in both directions.
-  - **Three states, not a toggle.** Fortify writes the secret the moment
-    somebody asks to enable 2FA and only sets `two_factor_confirmed_at` once
-    they have typed a code from their app. Somebody who closed the tab halfway
-    holds a secret and *no protection*, and the login flow correctly does not
-    challenge them — so the Settings card says "not on yet" rather than
-    reporting a factor that was never finished. Telling them otherwise is the
-    reading that ends with a person trusting a door that is open.
-  - **`two_factor_secret` and `two_factor_recovery_codes` are in `$hidden`,
-    and that was a real find.** `TwoFactorAuthenticatable` brings the behaviour
-    but not the hiding — the starter kits add those two entries and this
-    project has no starter kit. Without them the secret serialises like any
-    other column, and Settings > Security puts the signed-in user's account
-    into an Inertia payload, so it would have reached the browser, the page
-    cache and browser history on every visit. Caught by a test rather than by
-    review, which is the only reason it is not still true.
-  - The QR code and the recovery codes are **fetched when the panel is opened**
-    rather than shipped with the page, for the same reason: they are the secret
-    itself, and putting them in every Settings payload would put them in every
-    Settings page cache.
-  - **Losing `APP_KEY` locks every enrolled account out of its second factor** —
-    Fortify encrypts both columns. That key is the first thing to back up.
+- **Sign-in is a username and a password, and there is no second factor.**
+  Both second factors — Fortify's authenticator-app 2FA and the emailed
+  one-time code — were removed on request, along with their routes, pages,
+  middleware (`RequireOtp`), service, config and tests; migration
+  `2026_09_13_000001_replace_second_factors_with_username_login` drops their
+  columns and adds `users.username`. **This is a known gap** on a system that
+  holds salary, government identifiers and bank details, and the first
+  control to restore before real employee data goes in.
+  - **A company login should not hang off a personal inbox**, which is the
+    reason for the username. The role already lives on the account, so
+    `admin`, `hr` and `jdelacruz` say who is signing in and what they may open.
+  - **Every account gets a username however it was created.** Logins are made
+    by the seeder, the employee form, Users & Access and the test factory, so
+    `User::booted()` derives one on `creating` from the part of the email
+    before the `@` — `hr@primepower.test` becomes `hr`, and `hr2` if taken —
+    rather than each of the four remembering to. An explicit username is kept.
+  - **Fortify lowercases the typed username** (`lowercase_usernames`), so
+    `Admin` and `admin` are the same login. An email typed into the username
+    box does not sign anybody in: one way in, not two.
+  - **Every place that hands out a login states the username**, because that
+    is now what the person needs to be told — the employee form's flash, Users
+    & Access create and reset, and the API's `username` beside
+    `temporary_password`. Users & Access lists each account's username.
+  - **The audit trail records the typed username** in `new_values.username`
+    for failed sign-ins and lockouts; rows written before the change hold
+    `email`, and the Security screen reads either.
+  - The API's token login (`POST /api/v1/login`) still takes an email. It is a
+    documented contract other ISMERS systems already call, and changing it
+    would break them for no benefit to people signing in on the web.
+  - **An SPA conversion was attempted and backed out.** A commit briefly
+    replaced Inertia with `react-router-dom`, a custom `@inertiajs/react`
+    shim, CORS and a `frontend/dist` build, while 39 controllers still called
+    `Inertia::render()` — neither architecture working. It was restored to the
+    one-app setup; the attempt is kept on branch `backup/spa-attempt-2026-09-13`.
 - **Government identifiers and the bank account are encrypted at rest.** SSS,
   PhilHealth, Pag-IBIG, TIN, the bank account number, and the licence number
   are `encrypted` casts. `viewSensitive` already decides who may *see* them;
@@ -2478,8 +2411,9 @@ scan the planner would choose anyway, and nothing filters on the column —
 its primary key. Adding a foreign key means deciding which of those two cases
 it is.
 
-Seed accounts (password `password` **on a local machine only** — see below):
-`admin@primepower.test`, `hr@primepower.test`, and `employee@primepower.test` —
+Seed accounts (password `password` **on a local machine only** — see below)
+sign in by **username**: `admin`, `hr`, and `employee` (their emails are
+`admin@primepower.test`, `hr@primepower.test`, `employee@primepower.test`) —
 a rank-and-file login with a supervisor above it, so the self-service half (own
 payslip, own leave, own 201 file) and the approval routing can both be
 exercised. The supervisor accounts are the seeded department heads; their emails

@@ -45,11 +45,10 @@ The authentication subsystem is powered by **Laravel Fortify** and tightly confi
 * **Implementation:** `Features::registration()` is omitted in [`config/fortify.php`](file:///c:/Users/Gave/Herd/Core2/config/fortify.php#L191).
 * **Rationale:** Public sign-up routes (`/register`) are disabled. Every user account must be provisioned directly by HR through an authorized employee record and assigned a vetted role.
 
-### 2.2 Two-Factor Authentication (2FA / TOTP)
-* **Configuration:** Time-based One-Time Password (TOTP) is implemented via Fortify.
-* **Re-Authentication Guard (`confirmPassword: true`):**
-  Enabling or disabling 2FA forces a password re-entry. This prevents an unauthorized actor from turning off 2FA if an authorized administrator leaves their computer physically unlocked.
-* **Session Persistence:** Once confirmed during login, the 2FA status is trusted for the lifetime of that session, avoiding mid-session fatigue.
+### 2.2 Username Sign-In (no second factor)
+* **Configuration:** People sign in with a **username and password** (`'username' => 'username'` in `config/fortify.php`). A company login does not depend on anybody's personal inbox, and the account's role decides what it can open.
+* **Usernames are automatic:** every new account is given one from the part of its email before the `@` (`hr@primepower.test` → `hr`), with a number added if it is taken. Admins see each username on Settings → Users & Access.
+* **Second factors were removed.** The authenticator-app 2FA and the emailed sign-in code are both gone, so the password is the only barrier. This is a known gap for a system holding salary and government identifiers, and it is the first control to restore before running with real employee data.
 
 ### 2.3 Strict Password Complexity & Breach Verification
 Defined centrally in [`app/Providers/AppServiceProvider.php`](file:///c:/Users/Gave/Herd/Core2/app/Providers/AppServiceProvider.php#L91):
