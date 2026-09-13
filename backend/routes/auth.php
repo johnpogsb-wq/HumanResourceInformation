@@ -1,9 +1,6 @@
 <?php
 
-use App\Http\Controllers\Auth\EmailVerificationNotificationController;
-use App\Http\Controllers\Auth\EmailVerificationPromptController;
 use App\Http\Controllers\Auth\PasswordController;
-use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -12,23 +9,14 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | What is left after Fortify
 |--------------------------------------------------------------------------
-| Signing in, signing out, and the password-reset flow are Fortify's now —
-| its routes carry the same URIs and names, so nothing that links to
-| `route('login')` or posts to `/forgot-password` had to change. See
-| App\Providers\FortifyServiceProvider for the views and the rate limit.
+| Signing in and signing out are Fortify's. See
+| App\Providers\FortifyServiceProvider for the views.
 |
-| These four stay hand-written because Fortify either does not cover them or
-| covers them in a way this system has already decided against:
+| There is no forgot-password link and no email verification: login accounts
+| are a username and a role, with no email address behind them. A forgotten
+| password is reset by an administrator on Settings > Users & Access.
 |
-| - **Email verification** — Fortify's `emailVerification` feature is off.
-|   HR provisions accounts already verified, so there is nobody to verify;
-|   these routes exist for the one case that matters, an email *change* from
-|   Settings > Security, which re-triggers verification.
-| - **Password confirmation** — the "confirm your password to continue" gate
-|   in front of sensitive settings.
-| - **PUT /password** — Settings > Security owns changing your own password,
-|   because it guards `email_verified_at` on an email change, a rule
-|   Fortify's generic action does not know about.
+| PUT /password stays hand-written — changing your own password.
 |
 | Self-registration stays deliberately absent. This is an internal HRIS:
 | accounts are provisioned by HR from the employee record, which links the
@@ -39,16 +27,6 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::middleware('auth')->group(function () {
-    Route::get('verify-email', EmailVerificationPromptController::class)
-        ->name('verification.notice');
-
-    Route::get('verify-email/{id}/{hash}', VerifyEmailController::class)
-        ->middleware(['signed', 'throttle:6,1'])
-        ->name('verification.verify');
-
-    Route::post('email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
-        ->middleware('throttle:6,1')
-        ->name('verification.send');
 
     /*
      * Named `password.change`, not `password.update`.

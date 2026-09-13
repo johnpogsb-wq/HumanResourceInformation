@@ -36,7 +36,7 @@ class UsernameLoginTest extends TestCase
      */
     public function test_an_email_address_is_not_accepted_as_the_username(): void
     {
-        $user = User::factory()->create(['username' => 'mariasantos']);
+        $user = User::factory()->create(['username' => 'mariasantos', 'email' => 'maria@primepower.test']);
 
         $this->post('/login', [
             'username' => $user->email,
@@ -44,6 +44,16 @@ class UsernameLoginTest extends TestCase
         ]);
 
         $this->assertGuest();
+    }
+
+    /** The seeded role accounts sign in exactly as they are written. */
+    public function test_a_username_in_the_company_shape_signs_in(): void
+    {
+        $user = User::factory()->admin()->create(['username' => 'admin@primepower.test']);
+
+        $this->post('/login', ['username' => 'admin@primepower.test', 'password' => 'password']);
+
+        $this->assertAuthenticatedAs($user);
     }
 
     public function test_the_username_is_not_case_sensitive(): void
@@ -91,27 +101,34 @@ class UsernameLoginTest extends TestCase
      * Every account gets a username however it was created, so none of the
      * four creation paths can make a login that cannot sign in.
      */
-    public function test_a_new_account_is_given_a_username_from_its_email(): void
+    public function test_a_new_account_is_given_a_username_from_its_name(): void
     {
-        $user = User::factory()->create([
-            'username' => null,
-            'email' => 'hr@primepower.test',
-        ]);
+        $user = User::factory()->create(['username' => null, 'name' => 'Maria Santos']);
 
-        $this->assertSame('hr', $user->username);
+        $this->assertSame('mariasantos@primepower.test', $user->username);
     }
 
     public function test_a_taken_username_gets_a_number_rather_than_colliding(): void
     {
-        User::factory()->create(['username' => null, 'email' => 'hr@primepower.test']);
-        $second = User::factory()->create(['username' => null, 'email' => 'hr@another.test']);
+        User::factory()->create(['username' => 'jdelacruz@primepower.test']);
 
-        $this->assertSame('hr2', $second->username);
+        $this->assertSame('jdelacruz2@primepower.test', User::usernameFor('Juan', 'Dela Cruz'));
+    }
+
+    public function test_a_login_account_needs_no_email(): void
+    {
+        $user = User::factory()->create(['username' => 'noemail']);
+
+        $this->assertNull($user->email);
+
+        $this->post('/login', ['username' => 'noemail', 'password' => 'password']);
+
+        $this->assertAuthenticatedAs($user);
     }
 
     public function test_a_username_given_explicitly_is_kept(): void
     {
-        $user = User::factory()->create(['username' => 'boss', 'email' => 'someone@primepower.test']);
+        $user = User::factory()->create(['username' => 'boss', 'name' => 'Someone Else']);
 
         $this->assertSame('boss', $user->username);
     }
@@ -129,6 +146,30 @@ class UsernameLoginTest extends TestCase
         $this->actingAs($user)->put('/settings/security/otp')->assertNotFound();
         $this->actingAs($user)->post('/user/two-factor-authentication')->assertNotFound();
         $this->get('/two-factor-challenge')->assertNotFound();
+    }
+
+    /**
+     * Accounts have no email, so there is nothing to send a reset link or a
+     * verification link to. An administrator resets a forgotten password.
+     */
+    public function test_the_forgot_password_and_email_verification_routes_no_longer_exist(): void
+    {
+        $this->get('/forgot-password')->assertNotFound();
+        $this->post('/forgot-password', ['email' => 'someone@primepower.test'])->assertNotFound();
+        $this->get('/reset-password/some-token')->assertNotFound();
+        $this->post('/reset-password')->assertNotFound();
+
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get('/verify-email')->assertNotFound();
+        $this->actingAs($user)->post('/email/verification-notification')->assertNotFound();
+    }
+
+    public function test_the_login_page_offers_no_reset_link(): void
+    {
+        $this->get('/login')->assertInertia(fn ($page) => $page
+            ->component('Auth/Login')
+            ->missing('canResetPassword'));
     }
 
     /**

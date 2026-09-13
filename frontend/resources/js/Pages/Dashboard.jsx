@@ -742,7 +742,7 @@ const titleCase = (value) =>
  * the reader is not trusted with it.
  */
 function ProfileCard({ profile }) {
-    const { name, email, role, employee } = profile;
+    const { name, username, role, employee } = profile;
 
     /*
      * A login with no 201 file is a real case, not a defensive check: an
@@ -794,7 +794,7 @@ function ProfileCard({ profile }) {
                                     ? [employee.position, employee.department]
                                           .filter(Boolean)
                                           .join(' · ') || 'No position assigned'
-                                    : email}
+                                    : username}
                             </span>
                         </span>
                     </Link>

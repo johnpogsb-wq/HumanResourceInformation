@@ -11,26 +11,36 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    /** Exchange credentials for a Sanctum personal access token. */
+    /**
+     * Exchange credentials for a Sanctum personal access token.
+     *
+     * Takes a `username`, like the web sign-in. `email` is still accepted for
+     * the other ISMERS systems already calling this with one — an account that
+     * has no email simply cannot be reached that way.
+     */
     public function login(Request $request): JsonResponse
     {
         $credentials = $request->validate([
-            'email' => ['required', 'email'],
+            'username' => ['required_without:email', 'nullable', 'string'],
+            'email' => ['required_without:username', 'nullable', 'email'],
             'password' => ['required', 'string'],
             'device_name' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $user = User::where('email', $credentials['email'])->first();
+        $field = filled($credentials['username'] ?? null) ? 'username' : 'email';
+        $value = $field === 'username' ? strtolower($credentials['username']) : $credentials['email'];
+
+        $user = User::where($field, $value)->first();
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
             throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
+                $field => ['The provided credentials are incorrect.'],
             ]);
         }
 
         if (! $user->is_active) {
             throw ValidationException::withMessages([
-                'email' => ['This account has been deactivated.'],
+                $field => ['This account has been deactivated.'],
             ]);
         }
 
@@ -41,14 +51,14 @@ class AuthController extends Controller
 
         return response()->json([
             'token' => $token->plainTextToken,
-            'user' => $user->only(['id', 'name', 'email', 'role']),
+            'user' => $user->only(['id', 'name', 'username', 'email', 'role']),
         ]);
     }
 
     public function me(Request $request): JsonResponse
     {
         return response()->json([
-            'data' => $request->user()->only(['id', 'name', 'email', 'role', 'is_active']),
+            'data' => $request->user()->only(['id', 'name', 'username', 'email', 'role', 'is_active']),
         ]);
     }
 

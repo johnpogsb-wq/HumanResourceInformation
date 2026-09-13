@@ -30,10 +30,7 @@ class SelfRenameTest extends TestCase
         $admin = User::factory()->admin()->create(['name' => 'Old Name']);
 
         $this->actingAs($admin)
-            ->put('/settings/security/profile', [
-                'name' => 'New Name',
-                'email' => $admin->email,
-            ])
+            ->put('/settings/security/profile', ['name' => 'New Name'])
             ->assertSessionHasNoErrors();
 
         $this->assertSame('New Name', $admin->fresh()->name);
@@ -50,10 +47,7 @@ class SelfRenameTest extends TestCase
             $user = User::factory()->create(['role' => $role, 'name' => 'Real Name']);
 
             $this->actingAs($user)
-                ->put('/settings/security/profile', [
-                    'name' => 'Renamed Myself',
-                    'email' => $user->email,
-                ])
+                ->put('/settings/security/profile', ['name' => 'Renamed Myself'])
                 ->assertSessionHasNoErrors();
 
             $this->assertSame(
@@ -62,31 +56,6 @@ class SelfRenameTest extends TestCase
                 "a {$role} was able to rename themselves",
             );
         }
-    }
-
-    /**
-     * Dropped rather than refused: nothing wrong is stored either way, and
-     * refusing would fail an email change over a field the person cannot see.
-     */
-    public function test_they_can_still_change_their_email(): void
-    {
-        $user = User::factory()->create([
-            'role' => User::ROLE_HR_STAFF,
-            'name' => 'Real Name',
-            'email' => 'before@primepower.test',
-        ]);
-
-        $this->actingAs($user)
-            ->put('/settings/security/profile', ['email' => 'after@primepower.test'])
-            ->assertSessionHasNoErrors();
-
-        $fresh = $user->fresh();
-
-        $this->assertSame('after@primepower.test', $fresh->email);
-        $this->assertSame('Real Name', $fresh->name);
-
-        // A changed address is still unproven until it is verified again.
-        $this->assertNull($fresh->email_verified_at);
     }
 
     public function test_they_can_still_change_their_password(): void

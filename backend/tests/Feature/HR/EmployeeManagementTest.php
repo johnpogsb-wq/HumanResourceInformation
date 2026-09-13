@@ -144,23 +144,26 @@ class EmployeeManagementTest extends TestCase
             'email' => 'juan@primepower.test',
             'create_user_account' => true,
             'user_role' => 'employee',
-        ]));
+        ]))->assertSessionHas('success', fn ($message) => str_contains($message, 'Login: jdelacruz@primepower.test'));
 
+        // The username comes from the name. The employee's email is contact
+        // information on the 201 file, and is not copied onto the login.
         $this->assertDatabaseHas('users', [
-            'email' => 'juan@primepower.test',
+            'username' => 'jdelacruz@primepower.test',
+            'email' => null,
             'role' => 'employee',
         ]);
 
         $this->assertNotNull(Employee::first()->user_id);
     }
 
-    public function test_a_login_cannot_be_provisioned_without_an_email(): void
+    public function test_a_login_can_be_provisioned_without_an_email(): void
     {
         $this->actingAs($this->hr())
             ->post('/hr/employees', $this->payload(['create_user_account' => true]))
-            ->assertSessionHasErrors('email');
+            ->assertSessionHasNoErrors();
 
-        $this->assertDatabaseCount('employees', 0);
+        $this->assertDatabaseHas('users', ['username' => 'jdelacruz@primepower.test']);
     }
 
     public function test_required_fields_are_validated(): void

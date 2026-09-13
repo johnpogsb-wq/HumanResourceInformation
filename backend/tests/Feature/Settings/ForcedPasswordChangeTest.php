@@ -158,12 +158,12 @@ class ForcedPasswordChangeTest extends TestCase
 
         $this->actingAs($admin)->post('/settings/users', [
             'name' => 'New Person',
-            'email' => 'new.person@primepower.test',
+            'username' => 'new.person',
             'role' => User::ROLE_EMPLOYEE,
         ]);
 
         $this->assertTrue(
-            User::where('email', 'new.person@primepower.test')->first()->must_change_password,
+            User::where('username', 'new.person@primepower.test')->first()->must_change_password,
         );
     }
 
@@ -200,7 +200,7 @@ class ForcedPasswordChangeTest extends TestCase
             'user_role' => User::ROLE_EMPLOYEE,
         ]);
 
-        $created = User::where('email', 'provisioned@primepower.test')->first();
+        $created = User::where('username', 'jdelacruz@primepower.test')->first();
 
         $this->assertNotNull($created, 'No login was provisioned.');
         $this->assertTrue($created->must_change_password);

@@ -135,7 +135,7 @@ class DashboardController extends Controller
             // login. They are meant to agree and nothing reconciles them, so
             // the record wins where there is one.
             'name' => $employee?->full_name ?? $user->name,
-            'email' => $user->email,
+            'username' => $user->username,
             'role' => $user->role,
             'employee' => $employee === null ? null : [
                 'id' => $employee->id,

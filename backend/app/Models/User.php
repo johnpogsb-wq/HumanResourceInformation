@@ -22,6 +22,9 @@ class User extends Authenticatable
 
     public const ROLE_EMPLOYEE = 'employee';
 
+    /** Every username ends in this. It looks like an address; nothing is mailed to it. */
+    public const USERNAME_DOMAIN = 'primepower.test';
+
     public const ROLES = [
         self::ROLE_ADMIN,
         self::ROLE_HR_STAFF,
@@ -55,21 +58,40 @@ class User extends Authenticatable
     ];
 
     /**
-     * A free username derived from an email address: `hr@primepower.test`
-     * becomes `hr`, and if `hr` is taken, `hr2`.
+     * A free username for a person: Juan Dela Cruz becomes
+     * `jdelacruz@primepower.test`, and if that is taken,
+     * `jdelacruz2@primepower.test`.
      */
-    public static function availableUsername(string $email): string
+    public static function usernameFor(string $firstName, string $lastName): string
     {
-        $base = preg_replace('/[^a-z0-9._-]/', '', strtolower(strstr($email, '@', true) ?: $email));
-        $base = $base !== '' ? substr($base, 0, 40) : 'user';
+        return static::availableUsername(mb_substr(trim($firstName), 0, 1).$lastName);
+    }
 
-        $candidate = $base;
+    /**
+     * A free username from any starting text — a name, or the part of an
+     * address before the `@`. Lowercased, stripped to the characters a
+     * username may hold, given the company domain, and numbered when taken.
+     */
+    public static function availableUsername(string $seed): string
+    {
+        $base = preg_replace('/[^a-z0-9._-]/', '', strtolower(strstr($seed, '@', true) ?: $seed));
+        $base = $base !== '' ? substr($base, 0, 30) : 'user';
+
+        $candidate = static::withDomain($base);
 
         for ($n = 2; static::where('username', $candidate)->exists(); $n++) {
-            $candidate = $base.$n;
+            $candidate = static::withDomain($base.$n);
         }
 
         return $candidate;
+    }
+
+    /** `nina` becomes `nina@primepower.test`; a name already carrying a domain is kept. */
+    public static function withDomain(string $username): string
+    {
+        $username = strtolower(trim($username));
+
+        return str_contains($username, '@') ? $username : $username.'@'.self::USERNAME_DOMAIN;
     }
 
     /**
@@ -147,13 +169,14 @@ class User extends Authenticatable
      * Logins are made in four places: the seeder, the employee form, Users &
      * Access, and the factory the tests use. Deriving the name here rather
      * than at each of them means none can create an account that cannot sign
-     * in. A username that was passed in explicitly is kept as given.
+     * in. A username that was passed in explicitly is kept as given. Accounts
+     * carry no email any more, so the name is the fallback.
      */
     protected static function booted(): void
     {
         static::creating(function (User $user) {
             if (blank($user->username)) {
-                $user->username = static::availableUsername((string) $user->email);
+                $user->username = static::availableUsername((string) ($user->email ?: $user->name));
             }
         });
     }
@@ -166,7 +189,6 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
             'must_change_password' => 'boolean',

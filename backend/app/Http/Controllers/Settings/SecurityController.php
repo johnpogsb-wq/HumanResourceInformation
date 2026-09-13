@@ -34,11 +34,8 @@ class SecurityController extends Controller
             'account' => [
                 'name' => $user->name,
                 'username' => $user->username,
-                'email' => $user->email,
                 'role' => $user->role,
-                'email_verified' => $user->email_verified_at !== null,
                 'created_at' => $user->created_at?->toDateString(),
-
             ],
 
             'tokens' => $user->tokens()
@@ -122,37 +119,14 @@ class SecurityController extends Controller
          * nothing: no check in this system compares a login name to the 201
          * file it is meant to match.
          *
-         * A submitted name from someone not allowed one is dropped rather
-         * than refused: nothing wrong is stored either way, and refusing
-         * would fail an email change over a field the person cannot see.
+         * A submitted name from someone not allowed one is ignored rather
+         * than refused: nothing wrong is stored either way.
          */
-        $mayRename = Gate::allows('renameSelf', Setting::class);
-
-        $rules = [
-            'email' => [
-                'required', 'email', 'max:255',
-                'unique:users,email,'.$user->id,
-            ],
-        ];
-
-        if ($mayRename) {
-            $rules['name'] = ['required', 'string', 'max:255'];
+        if (Gate::allows('renameSelf', Setting::class)) {
+            $user->update($request->validate([
+                'name' => ['required', 'string', 'max:255'],
+            ]));
         }
-
-        $validated = $request->validate($rules);
-
-        $emailChanged = $validated['email'] !== $user->email;
-
-        $user->fill($validated);
-
-        // A changed address has to be proven again before it is trusted. Set
-        // outside the fillable payload — email_verified_at is guarded, so mass
-        // assignment would drop it silently.
-        if ($emailChanged) {
-            $user->email_verified_at = null;
-        }
-
-        $user->save();
 
         return back()->with('success', 'Profile updated.');
     }

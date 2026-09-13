@@ -388,7 +388,7 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                         {user?.name}
                                     </p>
                                     <p className="truncate text-[11px] text-sidebar-muted">
-                                        {user?.email}
+                                        {user?.username}
                                     </p>
                                 </div>
 

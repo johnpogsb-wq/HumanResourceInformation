@@ -764,7 +764,7 @@ export default function EmployeeForm({
                                 <Field
                                     label="System Role"
                                     error={errors.user_role}
-                                    hint="A temporary password is shown once after saving."
+                                    hint="The username and a temporary password are shown once after saving."
                                 >
                                     {({ id }) => (
                                         <Select

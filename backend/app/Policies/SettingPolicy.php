@@ -50,10 +50,8 @@ class SettingPolicy
      * pure system account has no 201 file to be held to, and locking it would
      * leave a wrong name with nowhere to be fixed.
      *
-     * Email is deliberately *not* covered. It is a credential rather than a
-     * display name — it is what you sign in with and where a reset is sent —
-     * and changing one already forces re-verification. Password sits beside
-     * it for the same reason.
+     * The password is deliberately *not* covered: it is a credential rather
+     * than a display name, and every signed-in user changes their own.
      */
     public function renameSelf(User $user): bool
     {

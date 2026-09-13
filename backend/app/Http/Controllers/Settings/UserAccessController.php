@@ -34,7 +34,6 @@ class UserAccessController extends Controller
                     'name' => $user->name,
                     // What the person signs in with, so the admin can tell them.
                     'username' => $user->username,
-                    'email' => $user->email,
                     'role' => $user->role,
                     'is_active' => (bool) $user->is_active,
                     'employee_number' => $user->employee?->employee_number,
@@ -53,13 +52,13 @@ class UserAccessController extends Controller
 
             // Employees who could be given a login but do not have one yet.
             'unlinkedEmployees' => Employee::whereNull('user_id')
-                ->whereNotNull('email')
                 ->orderBy('last_name')
-                ->get(['id', 'first_name', 'middle_name', 'last_name', 'suffix', 'email'])
+                ->get(['id', 'first_name', 'middle_name', 'last_name', 'suffix'])
                 ->map(fn (Employee $employee) => [
                     'id' => $employee->id,
                     'full_name' => $employee->full_name,
-                    'email' => $employee->email,
+                    // Suggested, not assigned: the admin may type another.
+                    'username' => User::usernameFor($employee->first_name, $employee->last_name),
                 ]),
         ]);
     }
@@ -68,11 +67,19 @@ class UserAccessController extends Controller
     {
         Gate::authorize('manageUsers', Setting::class);
 
+        // `nina` and `nina@primepower.test` are the same username.
+        if (filled($request->input('username'))) {
+            $request->merge(['username' => User::withDomain($request->input('username'))]);
+        }
+
         $validated = $request->validate([
             'employee_id' => ['nullable', 'exists:employees,id'],
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            // Optional: left blank, one is made from the name.
+            'username' => ['nullable', 'string', 'max:50', 'regex:/^[a-z0-9._-]{2,}@[a-z0-9.-]+\.[a-z]{2,}$/', 'unique:users,username'],
             'role' => ['required', Rule::in(User::ROLES)],
+        ], [
+            'username.regex' => 'Use a name like nina@primepower.test — lowercase letters, numbers, dots, dashes or underscores.',
         ]);
 
         // Handed to the administrator once; the account holder changes it after.
@@ -80,11 +87,10 @@ class UserAccessController extends Controller
 
         $user = User::create([
             'name' => $validated['name'],
-            'email' => $validated['email'],
+            'username' => $validated['username'] ?? null,
             'role' => $validated['role'],
             'password' => $password,
             'is_active' => true,
-            'email_verified_at' => now(),
             // See RequirePasswordChange: a password the administrator has read
             // is not the account holder's password yet.
             'must_change_password' => true,

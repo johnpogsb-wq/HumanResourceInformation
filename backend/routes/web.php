@@ -51,7 +51,7 @@ use Inertia\Inertia;
 
 Route::get('/', fn () => redirect()->route('dashboard'));
 
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware('auth')->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
     /*
@@ -462,7 +462,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 | Replaces the starter kit's profile page. Company-wide sections are
 | administrator-only; Appearance and Security belong to every signed-in user.
 */
-Route::middleware(['auth', 'verified'])->prefix('settings')->name('settings.')->group(function () {
+Route::middleware('auth')->prefix('settings')->name('settings.')->group(function () {
     /*
      * The menu, not a section.
      *

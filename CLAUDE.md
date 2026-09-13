@@ -1969,8 +1969,6 @@ to every signed-in user.
   Employee Information now (see below); `/settings/organization` redirects to
   `/hr/departments` so old links still land.
 - **Security** replaced the starter kit's `/profile`, which now redirects there.
-  `email_verified_at` is guarded, so clearing it on an email change has to
-  happen outside the mass-assignment payload.
 - **Only an admin renames themselves.** `SettingPolicy::renameSelf` gates the
   Name field on Settings > Security; HR staff, supervisors, and employees see
   their name stated rather than editable. `users.name` and the employee record
@@ -1980,14 +1978,12 @@ to every signed-in user.
   it rather than to detect it. An admin keeps the field because an admin need
   not be an employee at all: a pure system account has no 201 file to be held
   to, and locking it would leave a wrong name with nowhere to be fixed.
-  - **Email and password are deliberately outside this.** They are credentials
-    rather than a display name — what you sign in with, and where a reset is
-    sent — and the Security screen exists so every signed-in user manages their
-    own. Changing an address already forces re-verification.
-  - The rule is enforced in `updateProfile`, not just hidden: `name` is dropped
-    from the validation rules for anyone who may not set it, so a posted name
-    is **ignored rather than refused**. Refusing would fail an email change over
-    a field the person cannot see, and nothing wrong is stored either way.
+  - **The password is deliberately outside this.** It is a credential rather
+    than a display name, and the Security screen exists so every signed-in
+    user manages their own.
+  - The rule is enforced in `updateProfile`, not just hidden: a posted name
+    from anyone who may not set it is **ignored rather than refused**, and
+    nothing wrong is stored either way.
 - **Appearance** (theme, sidebar default) is per-device and lives in
   `localStorage`, not the database.
 
@@ -2006,12 +2002,35 @@ behind `viewSensitive`). What follows is the layer underneath them.
   control to restore before real employee data goes in.
   - **A company login should not hang off a personal inbox**, which is the
     reason for the username. The role already lives on the account, so
-    `admin`, `hr` and `jdelacruz` say who is signing in and what they may open.
-  - **Every account gets a username however it was created.** Logins are made
-    by the seeder, the employee form, Users & Access and the test factory, so
-    `User::booted()` derives one on `creating` from the part of the email
-    before the `@` — `hr@primepower.test` becomes `hr`, and `hr2` if taken —
-    rather than each of the four remembering to. An explicit username is kept.
+    `admin@primepower.test` and `hrstaff@primepower.test` say who is signing in
+    and what they may open.
+  - **A login account has no email, and nothing on the web side sends mail.**
+    The forgot-password link, the emailed reset flow (`Features::resetPasswords`,
+    `ResetUserPassword`, the `ForgotPassword`/`ResetPassword` pages) and email
+    verification (its three controllers, routes, page and the `verified`
+    middleware) were removed on request, and migration
+    `2026_09_13_000002_make_login_accounts_email_free` makes `users.email`
+    nullable and drops `email_verified_at` and `password_reset_tokens`. **A
+    forgotten password is reset by an admin on Users & Access**, which shows
+    the new temporary password once. Existing emails were kept rather than
+    wiped, because the API login still accepts one (below) and the data could
+    not be put back.
+  - **The employee's email is contact information, not a login.** The employee
+    form no longer needs one to create an account and no longer copies it onto
+    `users`; the 201 file's email field is untouched.
+  - **A username is shaped like a company address and is not one.** Every
+    username ends in `@primepower.test` (`User::USERNAME_DOMAIN`) — the seeded
+    role logins are `admin@`, `hrstaff@` and `employee@primepower.test` — and
+    nothing is ever mailed to it. Migration
+    `2026_09_13_000003_give_usernames_the_company_domain` gave existing
+    usernames the domain and renamed `hr` to `hrstaff`. Users & Access accepts
+    `nina` or `nina@primepower.test` and stores the second (`User::withDomain()`).
+  - **Every account gets a username however it was created.**
+    `User::usernameFor()` makes one from the name — Juan Dela Cruz becomes
+    `jdelacruz@primepower.test`, numbered if taken — which the employee form and the
+    seeder use; Users & Access takes one typed in, or makes it from the name
+    when left blank. `User::booted()` fills a blank one on `creating` so no
+    path can make a login that cannot sign in. An explicit username is kept.
   - **Fortify lowercases the typed username** (`lowercase_usernames`), so
     `Admin` and `admin` are the same login. An email typed into the username
     box does not sign anybody in: one way in, not two.
@@ -2022,9 +2041,9 @@ behind `viewSensitive`). What follows is the layer underneath them.
   - **The audit trail records the typed username** in `new_values.username`
     for failed sign-ins and lockouts; rows written before the change hold
     `email`, and the Security screen reads either.
-  - The API's token login (`POST /api/v1/login`) still takes an email. It is a
-    documented contract other ISMERS systems already call, and changing it
-    would break them for no benefit to people signing in on the web.
+  - The API's token login (`POST /api/v1/login`) takes a `username`, and still
+    accepts an `email` in its place for accounts that have one — a documented
+    contract other ISMERS systems already call.
   - **An SPA conversion was attempted and backed out.** A commit briefly
     replaced Inertia with `react-router-dom`, a custom `@inertiajs/react`
     shim, CORS and a `frontend/dist` build, while 39 controllers still called
@@ -2108,18 +2127,11 @@ behind `viewSensitive`). What follows is the layer underneath them.
   trapping someone in a session they cannot leave is worse than the risk being
   managed, and signing out reduces exposure rather than adding to it.
   - The flag is cleared by the act that removes the reason for it rather than
-    by a "done" button reachable without changing anything — and by **both**
-    acts that qualify: `SecurityController::updatePassword()` and
-    `ResetUserPassword`. Each also revokes the account's API tokens, since a
-    token issued while the shared password was live was issued to whoever held
-    it, and rotating one while leaving the other is half a rotation.
-  - **The reset path was missed at first, and the miss was a trap with no way
-    out.** Only the Settings form cleared the flag, so somebody who took the
-    other route to the same act — the emailed reset link — chose a password
-    nobody else had ever seen and was *still* held afterwards, on a screen
-    telling them to replace a password they had just replaced. Nothing inside
-    the reset flow could lift it. A reset is the user choosing their own
-    password, which is the entire condition the flag describes.
+    by a "done" button reachable without changing anything:
+    `SecurityController::updatePassword()`. It also revokes the account's API
+    tokens, since a token issued while the shared password was live was issued
+    to whoever held it, and rotating one while leaving the other is half a
+    rotation. There is no emailed reset link to be a second way out any more.
   - **The API stack is deliberately outside this.** A Sanctum token is an
     unattended credential on a biometric device with nobody at the other end to
     type a new password; holding it would take the timeclock down rather than
@@ -2412,12 +2424,13 @@ its primary key. Adding a foreign key means deciding which of those two cases
 it is.
 
 Seed accounts (password `password` **on a local machine only** — see below)
-sign in by **username**: `admin`, `hr`, and `employee` (their emails are
-`admin@primepower.test`, `hr@primepower.test`, `employee@primepower.test`) —
+sign in by **username**: `admin@primepower.test`, `hrstaff@primepower.test`, and
+`employee@primepower.test` —
 a rank-and-file login with a supervisor above it, so the self-service half (own
 payslip, own leave, own 201 file) and the approval routing can both be
-exercised. The supervisor accounts are the seeded department heads; their emails
-are Faker-generated, so read one out of the `users` table.
+exercised. The supervisor accounts are the seeded department heads, with
+usernames made from their Faker-generated names; read one out of the `users`
+table.
 
 **`password` is local-only, and the seeder enforces that rather than trusting
 it.** The fixed password is the whole point of a seed account on a development

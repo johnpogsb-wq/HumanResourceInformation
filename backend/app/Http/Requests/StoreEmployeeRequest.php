@@ -113,16 +113,6 @@ class StoreEmployeeRequest extends FormRequest
         ];
     }
 
-    public function withValidator($validator): void
-    {
-        $validator->after(function ($validator) {
-            // A login needs an address to sign in with.
-            if ($this->boolean('create_user_account') && blank($this->input('email'))) {
-                $validator->errors()->add('email', 'An email address is required to create a login account.');
-            }
-        });
-    }
-
     protected function prepareForValidation(): void
     {
         $this->merge([

@@ -2,10 +2,8 @@
 
 namespace App\Providers;
 
-use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\UpdateUserPassword;
 use App\Listeners\RecordAuthenticationEvents;
-use Illuminate\Http\Request;
 use Illuminate\Support\ServiceProvider;
 use Inertia\Inertia;
 use Laravel\Fortify\Fortify;
@@ -14,7 +12,7 @@ use Laravel\Fortify\Fortify;
  * Fortify supplies the authentication backend; this app supplies the screens.
  *
  * Fortify ships routes, validation, and the session handling for logging in
- * and resetting a password, but no views — which suits an Inertia app, because
+ * in, but no views — which suits an Inertia app, because
  * the pages already exist as React components and only need to be pointed at.
  *
  * Three things this system already decided had to survive the switch:
@@ -36,7 +34,6 @@ class FortifyServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
-        Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
 
         $this->registerViews();
     }
@@ -49,18 +46,10 @@ class FortifyServiceProvider extends ServiceProvider
      */
     private function registerViews(): void
     {
+        // No reset link: accounts carry no email to send one to. A forgotten
+        // password is reset by an administrator on Settings > Users & Access.
         Fortify::loginView(fn () => Inertia::render('Auth/Login', [
-            'canResetPassword' => true,
             'status' => session('status'),
-        ]));
-
-        Fortify::requestPasswordResetLinkView(fn () => Inertia::render('Auth/ForgotPassword', [
-            'status' => session('status'),
-        ]));
-
-        Fortify::resetPasswordView(fn (Request $request) => Inertia::render('Auth/ResetPassword', [
-            'email' => $request->input('email'),
-            'token' => $request->route('token'),
         ]));
 
         // Password confirmation is not an optional Fortify feature — it is

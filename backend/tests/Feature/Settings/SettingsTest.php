@@ -134,16 +134,39 @@ class SettingsTest extends TestCase
         $this->actingAs($this->admin())
             ->post('/settings/users', [
                 'name' => 'Nina Cruz',
-                'email' => 'nina@primepower.test',
+                'username' => 'nina',
                 'role' => User::ROLE_HR_STAFF,
             ])
             ->assertRedirect()
             // Handed over once, in the flash message: the username they sign
             // in with, and the temporary password to go with it.
-            ->assertSessionHas('success', fn ($message) => str_contains($message, 'Username: nina')
+            ->assertSessionHas('success', fn ($message) => str_contains($message, 'Username: nina@primepower.test')
                 && str_contains($message, 'temporary password'));
 
-        $this->assertDatabaseHas('users', ['username' => 'nina', 'email' => 'nina@primepower.test', 'role' => 'hr_staff']);
+        // Typed without the domain, stored with it.
+        $this->assertDatabaseHas('users', ['username' => 'nina@primepower.test', 'email' => null, 'role' => 'hr_staff']);
+    }
+
+    public function test_a_blank_username_is_made_from_the_name(): void
+    {
+        $this->actingAs($this->admin())
+            ->post('/settings/users', ['name' => 'Nina Cruz', 'role' => User::ROLE_EMPLOYEE])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('users', ['name' => 'Nina Cruz', 'username' => 'ninacruz@primepower.test']);
+    }
+
+    public function test_a_username_must_be_free_and_well_formed(): void
+    {
+        User::factory()->create(['username' => 'taken@primepower.test']);
+
+        $this->actingAs($this->admin())
+            ->post('/settings/users', ['name' => 'A', 'username' => 'taken', 'role' => User::ROLE_EMPLOYEE])
+            ->assertSessionHasErrors('username');
+
+        $this->actingAs($this->admin())
+            ->post('/settings/users', ['name' => 'A', 'username' => 'Has Spaces', 'role' => User::ROLE_EMPLOYEE])
+            ->assertSessionHasErrors('username');
     }
 
     public function test_creating_an_account_can_link_an_employee(): void
@@ -153,7 +176,6 @@ class SettingsTest extends TestCase
         $this->actingAs($this->admin())->post('/settings/users', [
             'employee_id' => $employee->id,
             'name' => 'Juan Dela Cruz',
-            'email' => 'juan@primepower.test',
             'role' => User::ROLE_EMPLOYEE,
         ]);
 

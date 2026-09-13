@@ -1,4 +1,4 @@
-import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { Head, useForm, usePage } from '@inertiajs/react';
 import { LogoMark } from '@/Components/layout/PrimePowerLogo';
 import { Button, Input, InputError, Label } from '@/Components/ui';
 
@@ -9,7 +9,7 @@ import { Button, Input, InputError, Label } from '@/Components/ui';
  * collapses to the form alone below `lg`, since the artwork is decoration and
  * a phone should not have to scroll past it to sign in.
  *
- * Deliberately absent, and all three for the same reason — this system does
+ * Deliberately absent, and all four for the same reason — this system does
  * not have the thing the control implies:
  *
  *  - **Social sign-in.** There is no Apple/Google/Meta provider configured,
@@ -20,8 +20,10 @@ import { Button, Input, InputError, Label } from '@/Components/ui';
  *    permissions.
  *  - **A sign-up link.** Self-registration is disabled by design; HR creates
  *    logins from the employee form.
+ *  - **A forgot-password link.** Accounts have no email to send a reset to;
+ *    an administrator resets a forgotten password from Users & Access.
  */
-export default function Login({ status, canResetPassword }) {
+export default function Login({ status }) {
     const brand = usePage().props.brand ?? {};
     const name = brand.name ?? 'PrimePower';
 
@@ -83,6 +85,7 @@ export default function Login({ status, canResetPassword }) {
                                 name="username"
                                 value={data.username}
                                 autoComplete="username"
+                                placeholder="name@primepower.test"
                                 autoCapitalize="none"
                                 spellCheck={false}
                                 autoFocus
@@ -93,26 +96,13 @@ export default function Login({ status, canResetPassword }) {
                         </div>
 
                         <div>
-                            <div className="flex items-baseline justify-between gap-3">
-                                <Label htmlFor="password" className="mb-0">
-                                    Password
-                                </Label>
-                                {canResetPassword && (
-                                    <Link
-                                        href={route('password.request')}
-                                        className="text-xs font-medium text-primary hover:underline"
-                                    >
-                                        Forgot your password?
-                                    </Link>
-                                )}
-                            </div>
+                            <Label htmlFor="password">Password</Label>
                             <Input
                                 id="password"
                                 type="password"
                                 name="password"
                                 value={data.password}
                                 autoComplete="current-password"
-                                className="mt-1.5"
                                 error={errors.password}
                                 onChange={(event) => setData('password', event.target.value)}
                             />
@@ -138,7 +128,7 @@ export default function Login({ status, canResetPassword }) {
                     </form>
 
                     <p className="mt-8 text-center text-xs text-muted-foreground">
-                        Accounts are issued by HR. Contact your HR administrator for access.
+                        Accounts are issued by HR. Can&apos;t sign in? Ask your administrator.
                     </p>
                 </div>
 

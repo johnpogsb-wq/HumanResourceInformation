@@ -26,9 +26,9 @@ export default function Users({ users, roles, unlinkedEmployees }) {
     const [createOpen, setCreateOpen] = useState(false);
     const [pending, setPending] = useState(null); // { user, action }
 
-    const form = useForm({ employee_id: '', name: '', email: '', role: 'employee' });
+    const form = useForm({ employee_id: '', name: '', username: '', role: 'employee' });
 
-    // Picking an employee fills the name and email from their 201 file.
+    // Picking an employee fills the name from their 201 file and suggests a username.
     const pickEmployee = (employeeId) => {
         const employee = unlinkedEmployees.find(
             (candidate) => String(candidate.id) === String(employeeId),
@@ -38,7 +38,7 @@ export default function Users({ users, roles, unlinkedEmployees }) {
             ...form.data,
             employee_id: employeeId,
             name: employee?.full_name ?? form.data.name,
-            email: employee?.email ?? form.data.email,
+            username: employee?.username ?? form.data.username,
         });
     };
 
@@ -135,11 +135,8 @@ export default function Users({ users, roles, unlinkedEmployees }) {
                                                 {/* The username first: it is what the person
                                                     signs in with, and the thing an admin gets
                                                     asked for. */}
-                                                <p className="truncate text-xs text-muted-foreground">
-                                                    <span className="font-mono text-foreground">
-                                                        {user.username}
-                                                    </span>
-                                                    {user.email && <> · {user.email}</>}
+                                                <p className="truncate font-mono text-xs text-muted-foreground">
+                                                    {user.username}
                                                 </p>
                                             </div>
                                         </div>
@@ -227,7 +224,7 @@ export default function Users({ users, roles, unlinkedEmployees }) {
                 <form onSubmit={submit} className="space-y-4">
                     <Field
                         label="Link to Employee"
-                        hint="Optional — fills the name and email from their 201 file."
+                        hint="Optional — fills the name from their 201 file."
                         error={form.errors.employee_id}
                     >
                         {({ id }) => (
@@ -238,7 +235,7 @@ export default function Users({ users, roles, unlinkedEmployees }) {
                                 placeholder="No linked employee"
                                 options={unlinkedEmployees.map((employee) => ({
                                     value: employee.id,
-                                    label: `${employee.full_name} — ${employee.email}`,
+                                    label: employee.full_name,
                                 }))}
                             />
                         )}
@@ -258,16 +255,24 @@ export default function Users({ users, roles, unlinkedEmployees }) {
                             )}
                         </Field>
 
-                        <Field label="Email" required error={form.errors.email}>
+                        <Field
+                            label="Username"
+                            hint="e.g. nina@primepower.test — leave blank to make one from the name."
+                            error={form.errors.username}
+                        >
                             {({ id }) => (
                                 <Input
                                     id={id}
-                                    type="email"
-                                    value={form.data.email}
+                                    value={form.data.username}
+                                    autoCapitalize="none"
+                                    spellCheck={false}
                                     onChange={(event) =>
-                                        form.setData('email', event.target.value)
+                                        form.setData(
+                                            'username',
+                                            event.target.value.toLowerCase(),
+                                        )
                                     }
-                                    error={form.errors.email}
+                                    error={form.errors.username}
                                 />
                             )}
                         </Field>
@@ -332,8 +337,8 @@ export default function Users({ users, roles, unlinkedEmployees }) {
                     {pending?.action === 'reset' ? (
                         <>
                             A new password is generated for{' '}
-                            <span className="font-medium text-foreground">
-                                {pending?.user.email}
+                            <span className="font-mono font-medium text-foreground">
+                                {pending?.user.username}
                             </span>{' '}
                             and shown once. Their existing API tokens are revoked.
                         </>

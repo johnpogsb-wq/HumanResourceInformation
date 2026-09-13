@@ -100,10 +100,7 @@ class EmployeeService
 
             // Keep the linked login's contact details aligned.
             if ($employee->user) {
-                $employee->user->update([
-                    'name' => $employee->full_name,
-                    'email' => $employee->email ?? $employee->user->email,
-                ]);
+                $employee->user->update(['name' => $employee->full_name]);
             }
 
             return $employee->refresh();
@@ -182,7 +179,7 @@ class EmployeeService
 
         return User::create([
             'name' => trim("{$data['first_name']} {$data['last_name']}"),
-            'email' => $data['email'],
+            'username' => User::usernameFor($data['first_name'], $data['last_name']),
             'password' => $this->generatedPassword,
             'role' => $role,
             'is_active' => true,

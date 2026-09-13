@@ -47,7 +47,8 @@ The authentication subsystem is powered by **Laravel Fortify** and tightly confi
 
 ### 2.2 Username Sign-In (no second factor)
 * **Configuration:** People sign in with a **username and password** (`'username' => 'username'` in `config/fortify.php`). A company login does not depend on anybody's personal inbox, and the account's role decides what it can open.
-* **Usernames are automatic:** every new account is given one from the part of its email before the `@` (`hr@primepower.test` → `hr`), with a number added if it is taken. Admins see each username on Settings → Users & Access.
+* **Usernames look like company addresses but are not email:** the role logins are `admin@primepower.test`, `hrstaff@primepower.test` and `employee@primepower.test`, and others come from the name — Juan Dela Cruz becomes `jdelacruz@primepower.test`, with a number added if it is taken; an admin may type another on Settings → Users & Access, where every username is listed.
+* **Accounts have no email.** There is no forgot-password link, no emailed reset and no email verification. An admin resets a forgotten password on Settings → Users & Access, and the person must replace that temporary password at their next sign-in.
 * **Second factors were removed.** The authenticator-app 2FA and the emailed sign-in code are both gone, so the password is the only barrier. This is a known gap for a system holding salary and government identifiers, and it is the first control to restore before running with real employee data.
 
 ### 2.3 Strict Password Complexity & Breach Verification

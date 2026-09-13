@@ -207,14 +207,13 @@ return [
     |   — so a password is the whole front door again. That is a known gap on
     |   a system holding salary and government identifiers, and it is the
     |   first thing to restore before this runs with real employee data.
-    | - **emailVerification stays off**, matching the app's own routes: HR
-    |   creates verified accounts, so there is nobody to verify.
-    | - **updateProfileInformation is off.** Settings > Security owns that,
-    |   and it guards `email_verified_at` on an email change — a rule
-    |   Fortify's generic action does not know about.
+    | - **resetPasswords and emailVerification are off.** Login accounts are
+    |   a username and a role with no email behind them, so there is nowhere
+    |   to send a link. An administrator resets a forgotten password on
+    |   Settings > Users & Access.
+    | - **updateProfileInformation is off.** Settings > Security owns that.
     */
     'features' => [
-        Features::resetPasswords(),
         Features::updatePasswords(),
     ],
 

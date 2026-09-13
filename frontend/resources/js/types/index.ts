@@ -26,7 +26,7 @@ export type EmploymentStatus =
 export interface User {
     id: number;
     name: string;
-    email: string;
+    username: string;
     role: Role;
     is_active: boolean;
 }

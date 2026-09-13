@@ -249,7 +249,7 @@ class DashboardTest extends TestCase
                 ->where('profile.employee', null)
                 // It still names who is signed in, from the account itself.
                 ->where('profile.name', 'System Account')
-                ->where('profile.email', $admin->email),
+                ->where('profile.username', $admin->username),
             );
     }
 

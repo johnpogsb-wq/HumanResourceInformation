@@ -289,10 +289,10 @@ added no migration — running it when there is nothing to run is harmless.
 - **The document scanner, without `GEMINI_API_KEY`.** It goes dark cleanly:
   the Scan button is not drawn and the endpoint 404s. Filing 201-file documents
   by hand works exactly as before.
-- **Password resets, without mail credentials.** Nothing crashes; the reset
-  email simply never arrives, and an admin resets the password from Settings →
-  Users & Access instead. Signing in never needs mail — it is a username and a
-  password.
+- **A "forgot password" link.** There is none: login accounts are a username
+  and a role with no email behind them. An admin resets a forgotten password
+  from Settings → Users & Access, which shows the new temporary password once.
+  Signing in never needs mail.
 - **`php artisan scanner:check`** is worth running once after deploying — it
   sends one real image through the configured driver and reports *switched off*
   and *configured but broken* as the different things they are. `isEnabled()`

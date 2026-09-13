@@ -2,12 +2,10 @@ import { Link, usePage } from '@inertiajs/react';
 import { LogoMark } from '@/Components/layout/PrimePowerLogo';
 
 /**
- * Shell for the guest pages that are not Login — password reset, email
- * verification, password confirmation.
+ * Shell for the auth pages that are not Login — today, password confirmation.
  *
- * Login draws its own split layout, but these share the same surface tokens
- * and the same mark, so following "Forgot your password?" does not land the
- * visitor somewhere that looks like a different product.
+ * Login draws its own split layout, but this shares the same surface tokens
+ * and the same mark, so it does not look like a different product.
  */
 export default function GuestLayout({ children }) {
     const brand = usePage().props.brand ?? {};

@@ -134,7 +134,7 @@ export default function AuthenticatedLayout({ header, children }) {
                                 {user.name}
                             </div>
                             <div className="text-sm font-medium text-gray-500">
-                                {user.email}
+                                {user.username}
                             </div>
                         </div>
 
