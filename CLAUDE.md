@@ -2273,6 +2273,27 @@ codebase:
   gitignored, and five `asset('storage/...')` call sites depend on it — the
   folder split broke it locally exactly this way.
 
+**Hostforge builds the root `Dockerfile`, and `docker/start.sh` runs at
+container start** — storage link, then (with `RUN_MIGRATIONS=true`) migrate and
+`php artisan hris:seed-if-empty`, then config/route/view caching and
+`artisan serve` on port 8000 with `/up` as the health check.
+
+- **A first deploy would otherwise have no accounts at all.** A container host
+  has no terminal to run `db:seed` from, and `start.sh` only migrated — so the
+  database came up empty and nobody could sign in. `hris:seed-if-empty` seeds
+  only when `users` has no rows: re-seeding on every restart would re-issue
+  every seeded password outside `local`, locking people out of the ones they
+  chose. The generated passwords go to the container log once.
+- **`fakerphp/faker` is in `require`, not `require-dev`, and that is not a
+  mistake.** The image installs with `--no-dev`, and `DatabaseSeeder` builds
+  its demo employees through factories that call `fake()` — so with Faker
+  dev-only the first-start seed threw, `set -e` stopped the script, and the
+  container restarted forever. Found by migrating and seeding a scratch
+  database under `APP_ENV=production` before any deploy saw it.
+- **`start.sh` must stay LF.** `.gitattributes` enforces it, and the Dockerfile
+  strips `\r` anyway: a CRLF script fails under Linux `sh` with an error that
+  names neither the file nor the line ending.
+
 ## Gotchas that have already cost time
 
 - **Settings are cached forever.** `Setting::all()` uses `rememberForever`, and

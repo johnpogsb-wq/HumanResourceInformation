@@ -15,6 +15,12 @@ php artisan storage:link --force >/dev/null 2>&1 || true
 # still start and show a real error, not crash-loop on a failed migration.
 if [ "$RUN_MIGRATIONS" = "true" ]; then
     php artisan migrate --force
+
+    # First deploy only: a brand-new database has no accounts, and there is no
+    # terminal here to run db:seed. The generated passwords are printed to the
+    # container log once. Once any account exists this does nothing, so a
+    # restart never resets anybody's password.
+    php artisan hris:seed-if-empty
 fi
 
 php artisan config:cache
