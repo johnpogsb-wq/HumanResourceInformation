@@ -4,7 +4,12 @@ namespace App\Providers;
 
 use App\Actions\Fortify\UpdateUserPassword;
 use App\Listeners\RecordAuthenticationEvents;
+use App\Models\User;
+use Illuminate\Auth\Events\Failed;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Laravel\Fortify\Fortify;
 
@@ -35,7 +40,39 @@ class FortifyServiceProvider extends ServiceProvider
     {
         Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
 
+        $this->refuseDeactivatedAccounts();
         $this->registerViews();
+    }
+
+    /**
+     * A deactivated account cannot sign in on the web.
+     *
+     * Fortify's default check is only username and password, so switching an
+     * account off in Users & Access, or an employee resigning, used to change
+     * nothing at the login screen. The API login already refused them.
+     *
+     * The "deactivated" message is shown only once the password has matched,
+     * so it tells nobody guessing whether an account exists.
+     */
+    private function refuseDeactivatedAccounts(): void
+    {
+        Fortify::authenticateUsing(function (Request $request) {
+            $user = User::where('username', $request->input(Fortify::username()))->first();
+
+            if (! $user || ! Hash::check((string) $request->input('password'), $user->password)) {
+                return null;
+            }
+
+            if (! $user->is_active) {
+                event(new Failed('web', $user, $request->only(Fortify::username())));
+
+                throw ValidationException::withMessages([
+                    Fortify::username() => 'This account has been deactivated. Contact HR if you think this is a mistake.',
+                ]);
+            }
+
+            return $user;
+        });
     }
 
     /**

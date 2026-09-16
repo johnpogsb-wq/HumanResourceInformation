@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
@@ -45,6 +46,8 @@ class User extends Authenticatable
         'role',
         'is_active',
         'must_change_password',
+        'privacy_notice_version',
+        'privacy_acknowledged_at',
     ];
 
     /**
@@ -142,6 +145,13 @@ class User extends Authenticatable
         return $this->hasOne(Employee::class);
     }
 
+    /** Whether this person has read the privacy notice as it currently reads. */
+    public function hasAcknowledgedPrivacyNotice(): bool
+    {
+        return $this->privacy_acknowledged_at !== null
+            && $this->privacy_notice_version === config('privacy.notice_version');
+    }
+
     public function hasRole(string ...$roles): bool
     {
         return in_array($this->role, $roles, true);
@@ -179,6 +189,24 @@ class User extends Authenticatable
                 $user->username = static::availableUsername((string) ($user->email ?: $user->name));
             }
         });
+
+        /*
+         * Switching an account off ends every way it is signed in, not only
+         * the next sign-in: API tokens are deleted and, with database
+         * sessions, every open browser session is dropped. Without this a
+         * deactivated account kept working until it chose to sign out.
+         */
+        static::updated(function (User $user) {
+            if (! $user->wasChanged('is_active') || $user->is_active) {
+                return;
+            }
+
+            $user->tokens()->delete();
+
+            if (config('session.driver') === 'database') {
+                DB::table(config('session.table', 'sessions'))->where('user_id', $user->id)->delete();
+            }
+        });
     }
 
     /**
@@ -192,6 +220,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_active' => 'boolean',
             'must_change_password' => 'boolean',
+            'privacy_acknowledged_at' => 'datetime',
         ];
     }
 }

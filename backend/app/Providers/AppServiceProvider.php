@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Laravel\Sanctum\Sanctum;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -36,6 +37,13 @@ class AppServiceProvider extends ServiceProvider
         Event::subscribe(RecordAuthenticationEvents::class);
 
         $this->defineApiRateLimit();
+
+        // A deactivated account's token stops working even if it somehow
+        // survived deactivation — deleting tokens is the first line, this is
+        // the second.
+        Sanctum::authenticateAccessTokensUsing(
+            fn ($token, bool $isValid) => $isValid && (bool) $token->tokenable?->is_active,
+        );
     }
 
     /**

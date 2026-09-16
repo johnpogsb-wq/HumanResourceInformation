@@ -2,6 +2,7 @@
 
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\AuditLogSigner;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 
@@ -73,3 +74,25 @@ Artisan::command('hris:set-admin-password', function () {
 
     $this->warn('Admin password set for admin@primepower.test from HRIS_ADMIN_PASSWORD. Sign in, change it, then remove the variable.');
 })->purpose('Set the admin password from HRIS_ADMIN_PASSWORD (once per value)');
+
+/*
+ * Checks every audit row against its signature. Run it before handing the
+ * log to an auditor, or on a schedule; the same check is a button on
+ * Settings > Security.
+ */
+Artisan::command('audit:verify', function (AuditLogSigner $signer) {
+    $result = $signer->verify();
+
+    $this->line("Checked {$result['checked']} audit row(s): {$result['valid']} valid, "
+        .count($result['altered'])." altered, {$result['unsigned']} unsigned, {$result['gaps']} missing id(s).");
+
+    if ($result['altered'] !== []) {
+        $this->error('Altered rows (ids): '.implode(', ', $result['altered']));
+
+        return 1;
+    }
+
+    $this->info('No altered audit rows.');
+
+    return 0;
+})->purpose('Verify the audit log has not been altered');

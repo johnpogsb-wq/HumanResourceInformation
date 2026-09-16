@@ -82,11 +82,19 @@ class RecordAuthenticationEvents
         // and null when the address is unknown. Both are worth keeping, and
         // they are different findings: one is a user who mistyped, the other
         // is someone guessing at addresses.
+        $attempted = $this->attemptedLogin($event->credentials);
+
+        // Fortify's custom sign-in check (the one that refuses deactivated
+        // accounts) fires this event without the user even when the account
+        // exists, so the account is looked up from what was typed instead.
+        $subjectId = $event->user?->getAuthIdentifier()
+            ?? ($attempted === null ? null : User::where('username', $attempted)->value('id'));
+
         $this->write(
             self::EVENT_FAILED,
             actorId: null,
-            subjectId: $event->user?->getAuthIdentifier(),
-            attempted: $this->attemptedLogin($event->credentials),
+            subjectId: $subjectId,
+            attempted: $attempted,
         );
     }
 

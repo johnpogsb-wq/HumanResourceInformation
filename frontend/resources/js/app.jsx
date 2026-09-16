@@ -42,7 +42,6 @@ createInertiaApp({
             </ThemeProvider>,
         );
     },
-    progress: {
-        color: '#007DCC',
-    },
+    // No top loading bar between pages, at the owner's request.
+    progress: false,
 });

@@ -1,8 +1,8 @@
 # PrimePower Manpower — HRIS (Core Transaction 2)
 
 Fleet & Transportation HRIS. **All five modules are built**: Employee
-Information, Timekeeping & Attendance, Leave & Absence, Payroll & Compensation,
-and Performance Management.
+Information, Time & Attendance (rebuilt — see its section), Leave & Absence,
+Payroll & Compensation, and Performance Management.
 
 ## PrimePower is a manpower agency, not a single employer
 
@@ -356,7 +356,7 @@ root — the root has no `composer.json` and no `package.json` since the split.
 
 `npm.cmd run check` is still the single gate over both stacks: its `test` and
 `lint:php` steps `cd ../backend` themselves, so it covers formatting,
-typecheck, the import check, Pint, and all 1028 tests from one command.
+typecheck, the import check, Pint, and the whole test suite from one command.
 
 **On this machine, `npm` is blocked by the PowerShell execution policy — use
 `npm.cmd`.** Assets are pre-built, so the site works without `npm run dev`.
@@ -1094,12 +1094,16 @@ and becomes an employee only when somebody here approves it — so the act of
 putting a person on the payroll has a decision, a decider, and a date attached
 to it.
 
-- **`/hr/employees/create` is unreachable without an endorsement**, and that is
-  the point. It was left open at first and the rule was immediately cosmetic:
-  the queue was one way in among two, and the second kept no record of who
-  accepted anybody or why. A bare visit now redirects to the inbox rather than
-  403ing — the person *is* allowed to create employees, they are just in the
-  wrong place to start.
+- **`/hr/employees/create` has a direct door again — and it has to say why.**
+  It was once open with no record, then closed so every hire came through an
+  endorsement; the owner asked for an **Add Employee** button back. A bare visit
+  now opens the form as a *direct add*: `store()` without `endorsement_id`
+  requires `direct_hire_reason` (10–500 characters) and writes a `direct_hire`
+  audit row with the reason beside the created employee. That keeps the thing
+  the endorsement existed to record — someone decided, who, and why — without
+  pretending every hire comes from recruitment (rehires, transfers, urgent
+  replacements do not). An `endorsement_id` that no longer exists still goes
+  back to the inbox and creates nobody.
 - **Bulk import stays open, because it is a different act.** Digitising a
   workforce that already works here is not hiring: there is no endorsement for
   somebody on their sixth year. `/hr/employees/import` and the batch document
@@ -1180,9 +1184,8 @@ to it.
 
 Two ways in on the Employees list, plus the paper form on the create screen —
 the same act at different scale rather than three separate features. They sit
-beside each other for that reason; there is no "Add Employee" among them any
-more, because a *new hire* comes from Core 1 (above) and these are for a
-workforce that already exists.
+beside each other for that reason. **Add Employee** sits with them as the
+direct door for a single new hire (above); **New Hires** stays the usual way in.
 
 - **Bulk import (`/hr/employees/import`)** — `EmployeeImporter`. The columns
   are the columns `DataExportController` writes: export, correct the
@@ -1546,204 +1549,91 @@ document is a config edit.
 - A complete file is not a finding. Listing every compliant employee would
   bury the ones that aren't.
 
-## Timekeeping (Module 2)
+## Time & Attendance (Module 2)
 
-`AttendanceCalculator` is deliberately database-free: Payroll multiplies its
-output by money, so every rule is unit tested in isolation. It derives status,
-hours worked, late, undertime, overtime, and night differential from the punches
-plus the assigned `Shift`.
+**Rebuilt from scratch** after the first version was deleted on the owner's
+request (every old file is recoverable from commit `4a9a355`; a `pg_dump` taken
+before the drop is in `storage/app/backups/`). Seven screens under one
+`Timekeeping` sidebar entry, all under `/hr/timekeeping`, in
+`Http/Controllers/Timekeeping/`: **Daily Time Records**, **Shifts & Rest
+Days**, **Holiday Calendar**, **Overtime Requests**, **Time Corrections**,
+**Cutoff Closing** and **Client Timesheets**. Tables come from
+`2026_09_16_000001_create_time_and_attendance_tables`. Old links
+(`/hr/timekeeping/period`, `/reports`, …) redirect to the records with a reason.
 
-- The grace period **forgives** lateness entirely; past it, lateness counts from
-  the scheduled start (not from the grace cutoff).
-- A shift whose `end_time <= start_time` wraps midnight; the calculator pushes
-  its end — and any time-out earlier than the start — to the next day.
-- Night differential is 22:00–06:00, summed over non-overlapping per-day windows
-  so a multi-night shift can't double count.
-- Overtime is stored raw. Whether it is *paid* depends on an approved
-  `OvertimeRequest` — that gate belongs to Payroll.
-- `TimekeepingService::record()` upserts one row per employee/date.
+- **`AttendanceCalculator` is database-free and unit tested**, because payroll
+  multiplies its output by money. Grace forgives lateness entirely; past it,
+  lateness counts from the shift start. A shift or a time-out at or before the
+  start ends the next day. Night differential is 22:00–06:00 per night, never
+  double counted. The break comes off only after five hours (the Labor Code's
+  meal period), so a four-hour rest-day job is four hours. No time-in is
+  absent / rest day / holiday by the calendar; a time-in with no time-out is
+  `incomplete` and computes nothing.
+- **`WorkCalendar` is the one answer to "was this a working day, for whom"**,
+  shared by the DTR, `LeaveService::workingDays()` and payroll so the three
+  cannot disagree about a Tuesday. It resolves the `employee_shifts` row in
+  force on the date (history, not a column — moving somebody to nights in
+  October leaves September computed against days), and somebody with no
+  schedule rests Saturday and Sunday. Memoised per request.
+- **`TimekeepingService::record()` is the only door into `attendance_logs`** —
+  HR's entry, the biometric CSV import, an approved correction and the seeder
+  all go through it, so every day is computed the same way and refused the same
+  way once its cutoff is closed. Looked up with `whereDate`, never
+  `updateOrCreate` (see Gotchas). An absence an approved leave covers is stored
+  `on_leave`.
+- **Only HR writes a day** (`AttendanceLogPolicy::manage`). Everybody else —
+  HR's own days included — files a **Time Correction**; approving rewrites the
+  day through `record()` in one transaction, and a blank punch on the request
+  keeps the punch already recorded. The approver sees the record as it stands
+  now, read live.
+- **Overtime and corrections: file your own, somebody else decides.** `create`
+  needs an employee record with no HR exemption; `decide` is HR or the
+  requester's own supervisor and never the requester. A rejection needs
+  remarks. Only **approved** overtime hours are paid; the raw minutes past the
+  shift are shown beside the request so the approver can compare.
+- **Cutoff Closing freezes a payroll period's days.** Periods come from
+  Payroll, so the cutoff and the run cannot cover different days.
+  `TimekeepingService::assertOpen()` refuses records, imports, holiday edits,
+  filing and decisions dated inside a closed period. **Closing is refused while
+  anything is undecided** — an incomplete punch, pending overtime or a pending
+  correction — because after closing nothing could decide it. HR closes; only an
+  admin reopens, with a reason stored on the row.
+- **Client Timesheets are the agency's half of the week.** The client is who
+  saw the work done, so each client's deployed staff get a sheet per period:
+  prepared (a **snapshot** of `TimekeepingService::summaries()` into
+  `client_timesheet_lines`), marked sent, then confirmed or disputed with the
+  representative's name and remarks. A confirmed sheet cannot be prepared again
+  — what the client signed is not silently regenerated; a disputed one can,
+  after the records are fixed. Printed from the browser like payslips.
+- **Holidays are read by three modules**: the DTR names the day, leave does not
+  charge for it, payroll pays the premium. Regular sorts before special, so a
+  date carrying both pays the higher. Only fixed-date holidays are seeded (this
+  year and next); movable ones are added when proclaimed.
 
-Eight sidebar entries under one `children` dropdown — **Records** (the cutoff
-summary, below), **Period DTR** (the cutoff sheet, below), **Overtime** (file /
-approve / reject), **DTR Corrections** (below), **Shifts & Schedules**,
-**Holidays**, **Exceptions**, and **History** — plus one screen with no entry
-of its own: an employee's own calendar, reached by clicking their row on
-Records. Only HR writes a time record directly; approvers are HR or the
-employee's own supervisor, never the requester.
+**What payroll takes from it** — `PayrollService::gatherInputs()` reads
+`TimekeepingService::summaryFor()`: days worked, hours, lateness, undertime,
+night differential, **unexcused** absences (not those an approved leave covers —
+a paid leave is inside the salary, an unpaid one is deducted once, as leave)
+and approved overtime hours. `holidayPremium()` pays +100% of the hourly rate
+for hours worked on a regular holiday and +30% on a special day, capped at a
+normal day (past that is overtime, paid only if approved). Work on a rest day
+earns nothing extra unless overtime is filed — a stated limit.
 
-**Records (`/hr/timekeeping`) is one row per employee, not one per day.** It
-was "Daily Records": a paginated list of individual days with dropdowns for
-employee, department, and status. That answered "what happened on this day for
-this person", which is a question you have to already know the answer to before
-you can ask it. What HR opens the screen with is "who came in this month, and
-for how many days", so the table counts per person over a cutoff, and each row
-**opens** to the days behind it.
+**`PayrollReadinessChecker`** now checks the DTR before the money:
+`incomplete_punches` and `disputed_timesheets` are **blockers**;
+`pending_corrections`, `pending_overtime`, `missing_records` (nobody recorded a
+day for someone on the payroll), `unconfirmed_timesheets` and `cutoff_open` are
+warnings. The unpaid-suspension warning goes silent for a suspension once every
+one of its days is on the DTR as absent, on leave, rest day or holiday. None of
+them hard-stops a run.
 
-- **The three dropdowns went with the change.** What replaced them is two date
-  inputs and three presets — **Whole month**, **1–15**, **16–end** — because a
-  cutoff here is a range, and a fourth control naming the same range would be a
-  second answer to what "this cutoff" means.
-- **Reports was folded in and now redirects here.** It rendered the same
-  per-employee figures for the same range with no way to reach the days behind
-  them. `/hr/timekeeping/reports` carries its range across rather than 404ing;
-  the CSV export survived as `/hr/timekeeping/export` with its
-  `DataAccessLogger` row. **That export used to resolve its own range** from a
-  `period` name, so the button on a screen showing 1–15 handed back the whole
-  month with neither side saying so — it reads `from` and `to` now.
-- **Somebody with no attendance at all is still a row, at zero.**
-  `attendanceByEmployee()` paginates *employees* and aggregates their logs,
-  where `employeeSummaries()` groups the logs themselves and cannot show a
-  person who has none. On a screen answering "who came in", the person who did
-  not is the answer.
-- **The tiles no longer link, and that is not a regression.** Days Present and
-  Absences are now the totals of two columns of the table directly beneath
-  them, and every row opens to the days behind it.
-- `TimekeepingService::PRESENT_STATUSES` states what "came in" means once —
-  three statuses, because a day somebody was late for is still a day they were
-  there. Four places count it, and a copy that fell out of step would put two
-  figures for the same fortnight on one screen.
+**The bell** counts overtime and corrections the viewer may decide (HR:
+everyone's; supervisor: direct reports'; never their own), as
+`NotificationFeed::awaitingDecision()`.
 
-**The employee screen (`/hr/timekeeping/employee/{employee}`) is a calendar
-first and a table second.** A fortnight as a list of dates makes the reader
-count the weekends out of it themselves; laid out Monday to Sunday, three
-missed Mondays is the thing you see rather than something you work out.
-
-- **Weeks run Monday to Sunday whatever day the cutoff starts on**, so every
-  row has seven cells. Days outside the cutoff are **greyed, not dropped** — a
-  week missing its first two days stops being a week.
-- **A day inside the cutoff with no record is left blank, never drawn absent.**
-  Nothing recorded is not the same claim as "did not come in".
-- **Each week carries its own total**, which no other screen answers: daily
-  totals are on the row and range totals are on the tiles, and neither says
-  whether somebody worked a 60-hour week. Summed over the days inside the
-  cutoff only, so it matches what the payslip will pay.
-- Gated on `EmployeePolicy::view`, and `daysFor()` reads through
-  `scopedQuery()` as well, so the id in the URL decides nothing on its own.
-
-A shift still referenced by a schedule or a time record is **deactivated**
-instead of deleted, so attendance history keeps its shift.
-
-**Holidays** is small but load-bearing, and it is shared across three modules:
-`LeaveService::workingDays()` skips holidays when costing a request,
-`AttendanceCalculator` marks the day's status from them, and `PayrollCalculator`
-pays the Labor Code premium (regular ×2.0, special non-working ×1.3). A year
-with nothing recorded is therefore not an empty screen — it silently charges
-employees leave credits for days they should not be charged for, so the screen
-warns when the *next* year has no holidays yet. A holiday with attendance
-already recorded against it cannot be deleted, only edited: removing it would
-leave those records classified against a rule that no longer exists. Validating
-the (date, name) key needs `whereDate`, not `Rule::unique` — see the
-date-cast-column gotcha below.
-
-**Period DTR (`/hr/timekeeping/period`) is where a cutoff is encoded.** A
-manpower agency's clients send a fortnight of attendance for everybody they
-were deployed, and encoding that one modal at a time is 600 openings for forty
-people. So the whole cutoff is one grid — employees down, days across — and one
-save.
-
-- **The cutoff comes from `payroll_periods`, not a range of its own**, so the
-  DTR and the run that pays from it cannot cover different days. Where no
-  period exists the calendar half-month stands in and the screen says so:
-  refusing to open would invert the order of the work.
-- **Statuses, not punches** — a real limit, stated as one. Safe for pay because
-  `PayrollCalculator` takes basic pay from the monthly salary and deducts
-  absences separately; `hours_worked` only rides along for display.
-- **A day already carrying punches is locked, never overwritten**, and the
-  count left alone is *stated* on the save.
-- **Only cells that actually changed are written.** `AttendanceLog` is
-  `Auditable`, so writing the grid unconditionally would leave 600 audit rows
-  behind every time somebody pressed Save.
-- **Rest days and holidays are proposed, never applied** — the same bargain
-  `DocumentScanner` makes with a filled form.
-- **`record()` is still the only door into `attendance_logs`.** It took an
-  optional `$context` so a caller filling a cutoff hands over the shift, rest
-  day, and holiday it already loaded; the rule for *which* schedule governs a
-  date moved into `scheduleFor()`, which `resolveShift()` and the sheet both
-  call.
-
-**Leave is cross-checked against attendance, and that fixed a pay bug.**
-`LeaveService::approvedLeaveDates()` is the join between Modules 2 and 3 — one
-query, keyed `employeeId|Y-m-d` — and it is what tells an absence from an AWOL.
-Before it, each module held half the answer.
-
-- **Approved unpaid leave was deducted twice.** The day counted as an absence
-  *and* again as unpaid leave, so a week of authorised leave without pay cost
-  two weeks of salary.
-- **Approved paid leave was deducted at all.** A VL day is already inside the
-  basic salary, so taking it off again docked somebody for leave they were
-  entitled to.
-- Both were invisible from the payslip, which shows the two as separate lines
-  that each looked individually correct.
-
-`PayrollService::unexcusedAbsentDays()` now counts only absences with nothing
-filed behind them, and whether a day is covered is *asked of LeaveService*
-rather than re-derived — so payroll, the exception scanner and the DTR screen
-cannot reach different conclusions about the same Tuesday.
-
-**DTR Corrections (`/hr/timekeeping/adjustments`) is the exception-handling
-step.** HR can already write a time record directly; employees cannot and never
-should be able to, because a DTR somebody can rewrite is not a record of
-anything. They say what the day should have said and why, and a supervisor or
-HR decides before it touches the log.
-
-- **Approving *applies* the correction through `TimekeepingService::record()`**,
-  so the day is recomputed by the same calculator payroll depends on. Both
-  halves in one transaction: an approval whose apply failed would leave a
-  request marked approved and a record that never changed — the worst of the
-  three states, because it looks handled.
-- **A blank punch leaves the existing one alone.** A request to add a missing
-  time-out says nothing about the time-in.
-- **What the day currently says is read live, not snapshotted at filing**, so
-  an approver decides against the record as it stands. A day nobody keyed comes
-  back null — the difference between "correct this" and "create this".
-- Policy mirrors overtime's: everybody files their own, HR has no exemption and
-  needs none, and the approver may never be the requester. One open request per
-  day.
-
-**Overtime is filed by the person who worked it, and by nobody else.**
-`OvertimeRequestPolicy::create` requires an employee record rather than
-exempting `isHrAdmin()`. It used to work the other way, which made HR both the
-claimant and an approver of the same claim — worse than on leave, because
-`PayrollService::approvedOvertimeHours()` reads approved requests straight onto
-a payslip. `update` is the owner's too: a request states what somebody claims
-they worked, and HR that disagrees has `decide()`.
-
-**Imports are recorded durably.** `DataAccessLogger::imported()` writes the
-batch — file, counts, and the rows refused — because the importer's per-row
-report is flashed to the session and gone on the next page load. The rows that
-did not land are exactly the ones somebody comes looking for a month later.
-
-**Exceptions** is the automated DTR checker: `AttendanceExceptionScanner` is a
-database-free, config-driven rule engine (same pattern as
-`AttendanceCalculator`) that flags two kinds of anomaly over the filtered
-range — record-level (a missing time-out, a day's lateness or overtime past a
-threshold) and pattern-level (an employee trending toward chronic lateness or
-absence, even when no single day crosses a threshold). Thresholds live in
-`config/timekeeping.php`, not code, so tightening a rule is a config edit. A
-missing time-out is never flagged for *today* — only for a day already in the
-past, per `stale_open_punch_days`.
-
-It also runs the leave cross-check, which produces two findings pointing in
-opposite directions:
-
-- **`awol`** — absent with nothing filed. Critical: it is a disciplinary matter
-  and an unpaid day, and nobody chasing it on the day will remember it at
-  cutoff.
-- **`unrecorded_leave`** — absent on a day an approved leave *does* cover, so
-  the DTR row is stale because the leave was approved after the day was keyed.
-  A warning rather than an error: payroll already ignores it, so the money is
-  right and only the record reads wrong.
-
-The range comes from the logs themselves rather than a new parameter, so every
-existing caller keeps working.
-
-**History** is the audit trail for DTR edits — who changed a record, when, and
-what changed — reusing the same `viewAuditLog` gate as Settings > Security
-rather than a new permission, so it's HR/admin only. It filters by event type
-(`created`/`updated`/`deleted`) only: `employee_id` lives inside the audit's
-JSON diff, not a real column, so filtering on it after `paginate()` would
-silently corrupt the pagination totals.
-
+Not rebuilt from the old module, on purpose for now: the Exceptions scanner,
+the edit History screen (the audit log still records every change), the
+per-employee calendar, the dashboard attendance tiles and `/api/v1/attendance`.
 ## Leave (Module 3)
 
 **The employee files; HR or an admin decides.** One step, and nobody signs off
@@ -1778,12 +1668,19 @@ on their own leave — HR included.
 - Unpaid types (`is_paid = false`) never touch the ledger.
 - Attachments live on the private disk and download through
   `hr.leave.attachment` after a policy check, same as 201-file documents.
-- **The topbar bell only lights for HR now.** It counts every request awaiting
-  a decision. Supervisors used to be counted for their own reports' pending
-  requests, which was right while endorsing was a step they took; with the
-  decision HR's alone, a badge they cannot act on only teaches them to ignore
-  the bell. Shared lazily from `HandleInertiaRequests`, so guests never run the
-  query.
+- **The topbar bell is a dropdown** (`NotificationBell.jsx`), and its badge
+  counts only what is waiting on *this* person to decide:
+  `NotificationFeed::count()` — pending leave (HR, never their own), overtime
+  and DTR corrections (HR, or a supervisor for direct reports), and Core 1
+  hires (whoever may open the inbox). Shared lazily as `notificationCount`.
+  The list itself is `GET /notifications`, fetched **when the bell opens**
+  rather than on every page, and adds what is informational rather than
+  actionable — expiring documents in the viewer's scope and decisions on their
+  own leave from the last 14 days. Nothing is stored as a notification, so
+  there is no read state to go stale: an entry disappears when the thing it
+  points at is dealt with. Supervisors are not counted for leave, because the
+  decision is HR's alone and a badge they cannot act on teaches them to ignore
+  the bell.
 
 **Credits accrue, they are not handed out.** The screen used to grant every
 active employee a full year's entitlement on 1 January — wrong in the direction
@@ -2049,6 +1946,86 @@ behind `viewSensitive`). What follows is the layer underneath them.
     shim, CORS and a `frontend/dist` build, while 39 controllers still called
     `Inertia::render()` — neither architecture working. It was restored to the
     one-app setup; the attempt is kept on branch `backup/spa-attempt-2026-09-13`.
+- **Employee Information's security controls are listed one by one in
+  `docs/SECURITY.md` §11**, against the nine the owner asked for, with MFA
+  recorded as deliberately deferred. `EmployeeInformationSecurityTest` covers
+  the four added for it:
+  - **A deactivated account kept working, and that was a real hole.** Fortify
+    only checked username and password, nothing checked `is_active` on a web
+    request, and only archiving ever switched a login off — so a resigned
+    employee could still sign in and read 201 files. Now: Fortify
+    `authenticateUsing` refuses the account (the "deactivated" wording only
+    after the password matches, so it tells a guesser nothing);
+    `EnsureAccountIsActive` signs an open session out on its next request;
+    `User::booted()` deletes tokens and database sessions the moment
+    `is_active` goes false; Sanctum's `authenticateAccessTokensUsing` refuses a
+    surviving token; and `Employee::booted()` switches the login off whenever
+    status becomes `inactive` or employment status `resigned`/`terminated`,
+    from any path. It only ever switches *off* — turning a login on is a
+    decision (Users & Access, or archive restore).
+  - **`authenticateUsing` fires `Failed` with no user**, which silently stopped
+    the audit log naming the account on a wrong password.
+    `RecordAuthenticationEvents::recordFailed` now looks the account up from
+    the typed username when the event carries none.
+  - **Maskable numbers reach the web as `••••••` plus the last four**
+    (`Employee::MASKABLE`, `EmployeeResource::masked()`), on the record page
+    and the list payload. The full value crosses only through
+    `POST /hr/employees/{employee}/reveal` — one field, logged as `accessed`
+    with the field named, `no-store`, `throttle:30,1` — and hides again after
+    30 seconds on screen. The gate is the one that drew the masked value:
+    `viewSensitive`, except the licence number, which supervisors already saw
+    and so asks `view`. The **edit form and the API stay unmasked** (both need
+    real values); opening the edit form and reading a record over the API are
+    logged as reads. A person opening their own record is not logged — it
+    would bury the reads that are findings.
+  - **The privacy notice holds every web session until read**
+    (`RequirePrivacyAcknowledgement`), keyed on `config('privacy.notice_version')`
+    so a changed notice is shown again. It steps aside while
+    `must_change_password` is set, or the two holds would redirect into each
+    other. The acknowledgement is stored on the user and as a
+    `privacy_acknowledged` audit row. The scanner's processor is named in the
+    notice only when the scanner is enabled — that disclosure is the RA 10173
+    obligation the scanner section above says is unavoidable. **`UserFactory`
+    defaults to acknowledged**, or every feature test would be redirected;
+    `withoutPrivacyAcknowledgement()` is the state for testing the hold.
+  - **`SESSION_ENCRYPT` defaults to true** in `config/session.php`: session
+    rows carry flash messages, and two of those are temporary passwords.
+  - **`scripts/check-imports.mjs` reads JSX prose too.** "encrypted (AES-256)"
+    in the notice text failed the check as a call to an undefined
+    `encrypted()`; reword prose rather than weakening the checker.
+- **Leave, Payroll, Performance and cross-cutting controls are `docs/SECURITY.md`
+  §12–15**, each marked in place / new / deliberately not done with the reason.
+  `ModuleSecurityTest` covers what was added:
+  - **Nobody adjusts their own leave credits**, the balance-screen twin of
+    nobody deciding their own leave. A balance cannot be set below
+    `credits_used`, and `LeaveService::creditShortfall()` re-checks credits at
+    *approval* — filing already checked, but a balance can shrink in between.
+  - **`markPaid` excludes `processed_by`.** `approve` already did; confirming
+    disbursement did not, so the processor could confirm their own run was
+    paid. Compute, approve, confirm are now three different hands.
+  - **`PayrollAnomalyScanner` checks the computed money** on the run screen
+    (draft and for-approval), beside `PayrollReadinessChecker`, which checks the
+    DTR *before* computing: shared bank accounts (compared in PHP — encrypted),
+    pay after leaving, pay before hire, net ≠ gross − deductions, zero net, and
+    a >50% swing against the last reportable payslip. Warns, never blocks.
+  - **Payslip and Compliance screen payloads are masked**; the compliance CSV
+    and the Finance register API keep full numbers because the recipients need
+    them. Salary figures are **not** column-encrypted on purpose: every payroll
+    report sums them in SQL.
+  - **Peer and subordinate reviewers are anonymous** to everybody but HR and the
+    writer (`PerformanceController::reviewerName()`); `PerformanceReviewRating`
+    is now `Auditable`.
+  - **Audit rows are signed** (`AuditLogSigner`, HMAC-SHA256, key derived from
+    `APP_KEY`), in the model's `created` hook so the id is inside the signature;
+    `audit:verify` and Settings → Security *Verify integrity* re-check them.
+    Canonicalised with sorted JSON keys and whole-second timestamps — verified
+    against the real Postgres data (1,896 rows) not just SQLite. Rotating
+    `APP_KEY` breaks every signature, as it already breaks encrypted columns.
+  - **Users & Access is also the access review**: last sign-in (from `login`
+    audit rows), active accounts unused 90 days, and *Record review* writing an
+    `access_reviewed` row; "Review due" after 90 days.
+  - **A PHPUnit test helper must not be named `run()`** — `TestCase::run()` is
+    final and the whole file fatals before a single test reports.
 - **Government identifiers and the bank account are encrypted at rest.** SSS,
   PhilHealth, Pag-IBIG, TIN, the bank account number, and the licence number
   are `encrypted` casts. `viewSensitive` already decides who may *see* them;
@@ -2480,7 +2457,7 @@ empty on a fresh install — which looks broken rather than pending.
 
 ## Known gaps
 
-All five modules are functional. Still outstanding: separation pay for
+Time & Attendance is removed pending a redesign (see its section). Still outstanding: separation pay for
 authorised causes (deliberately left to HR, see Payroll above); peer and
 subordinate reviews are supported by the schema and scoring but have no
 assignment UI (only self and supervisor are created at rollout); email
