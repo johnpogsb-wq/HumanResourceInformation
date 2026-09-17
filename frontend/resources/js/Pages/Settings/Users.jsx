@@ -1,13 +1,24 @@
 import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import {
+    ArrowRight,
+    CheckCircle2,
     ClipboardCheck,
+    Clock,
+    FileText,
+    Inbox,
     KeyRound,
-    Pencil,
+    Mail,
+    MessageSquare,
     Plus,
+    ShieldAlert,
     ShieldCheck,
     TriangleAlert,
+    User,
+    UserCheck,
+    Users as UsersIcon,
     UserX,
+    XCircle,
 } from 'lucide-react';
 import SettingsLayout from '@/Layouts/SettingsLayout';
 import {
@@ -31,16 +42,21 @@ import {
 import { formatDate, initials } from '@/lib/utils';
 
 export default function Users({
-    users,
-    roles,
-    unlinkedEmployees,
+    users = [],
+    roles = [],
+    unlinkedEmployees = [],
     accessReview = null,
     staleAfterDays = 90,
     otp = { enabled: true, ttl_minutes: 2 },
+    is_super_admin = false,
+    change_requests = [],
 }) {
     const [createOpen, setCreateOpen] = useState(false);
-    const [editing, setEditing] = useState(null);
     const [pending, setPending] = useState(null); // { user, action }
+    const [activeTab, setActiveTab] = useState('accounts'); // 'accounts' | 'requests'
+    const [requestFilter, setRequestFilter] = useState('pending'); // 'all', 'pending', 'approved', 'rejected'
+    const [approvingRequest, setApprovingRequest] = useState(null);
+    const [rejectingRequest, setRejectingRequest] = useState(null);
 
     const form = useForm({
         employee_id: '',
@@ -49,7 +65,9 @@ export default function Users({
         otp_email: '',
         role: 'employee',
     });
-    const profile = useForm({ name: '', username: '', otp_email: '' });
+
+    const approveForm = useForm({ admin_notes: '' });
+    const rejectForm = useForm({ admin_notes: '' });
 
     // Picking an employee fills the name from their 201 file, suggests a username, and copies their email.
     const pickEmployee = (employeeId) => {
@@ -78,28 +96,9 @@ export default function Users({
         });
     };
 
-    const openEdit = (user) => {
-        profile.clearErrors();
-        profile.setData({
-            name: user.name,
-            username: user.username ?? '',
-            otp_email: user.otp_email ?? '',
-        });
-        setEditing(user);
-    };
-
     const sendTestCode = (user) => {
         setPending(null);
         router.post(`/settings/users/${user.id}/otp-test`, {}, { preserveScroll: true });
-    };
-
-    const saveProfile = (event) => {
-        event.preventDefault();
-
-        profile.put(`/settings/users/${editing.id}/profile`, {
-            preserveScroll: true,
-            onSuccess: () => setEditing(null),
-        });
     };
 
     const confirm = () => {
@@ -111,416 +110,685 @@ export default function Users({
         router.post(url, {}, { preserveScroll: true, onFinish: () => setPending(null) });
     };
 
+    const submitApprove = (e) => {
+        e.preventDefault();
+        if (!approvingRequest) return;
+
+        approveForm.post(`/settings/users/requests/${approvingRequest.id}/approve`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setApprovingRequest(null);
+                approveForm.reset();
+            },
+        });
+    };
+
+    const submitReject = (e) => {
+        e.preventDefault();
+        if (!rejectingRequest) return;
+
+        rejectForm.post(`/settings/users/requests/${rejectingRequest.id}/reject`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setRejectingRequest(null);
+                rejectForm.reset();
+            },
+        });
+    };
+
+    const pendingRequestsCount = change_requests.filter((r) => r.status === 'pending').length;
+
+    const filteredRequests = change_requests.filter((r) => {
+        if (requestFilter === 'pending') return r.status === 'pending';
+        if (requestFilter === 'approved') return r.status === 'approved';
+        if (requestFilter === 'rejected') return r.status === 'rejected';
+        return true;
+    });
+
     return (
         <SettingsLayout title="Users & Access">
-            <Card>
-                <CardHeader title="Roles" />
-                <CardBody className="grid gap-3 sm:grid-cols-2">
-                    {roles.map((role) => (
-                        <div key={role.value} className="rounded-lg border border-border p-3">
-                            <div className="mb-1 flex items-center gap-2">
-                                <ShieldCheck
-                                    className="h-4 w-4 text-primary"
-                                    aria-hidden="true"
-                                />
-                                <p className="text-sm font-medium text-foreground">
-                                    {role.label}
-                                </p>
-                            </div>
-                            <p className="text-xs text-muted-foreground">{role.description}</p>
-                        </div>
-                    ))}
-                </CardBody>
-            </Card>
-
-            {accessReview && (
-                <Card>
-                    <CardHeader
-                        title="Access Review"
-                        action={
-                            <Button
-                                variant="outline"
-                                onClick={() =>
-                                    router.post(
-                                        route('settings.users.review'),
-                                        {},
-                                        { preserveScroll: true },
-                                    )
-                                }
-                            >
-                                <ClipboardCheck className="h-4 w-4" />
-                                Record review
-                            </Button>
-                        }
-                    />
-                    <CardBody className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-                        <span className="text-muted-foreground">
-                            {accessReview.at ? (
-                                <>
-                                    Last reviewed{' '}
-                                    <span className="font-medium text-foreground">
-                                        {formatDate(accessReview.at)}
-                                    </span>{' '}
-                                    by {accessReview.by ?? 'unknown'}
-                                </>
-                            ) : (
-                                'Never reviewed'
-                            )}
+            {/* Super Admin Tab Switcher */}
+            {is_super_admin && (
+                <div className="flex border-b border-border mb-6">
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('accounts')}
+                        className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                            activeTab === 'accounts'
+                                ? 'border-primary text-primary'
+                                : 'border-transparent text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        <UsersIcon className="h-4 w-4" />
+                        <span>User Accounts</span>
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                            {users.length}
                         </span>
-                        {accessReview.due && <Badge variant="warning">Review due</Badge>}
-                        <span className="text-muted-foreground">
-                            {
-                                users.filter((user) => user.is_privileged && user.is_active)
-                                    .length
-                            }{' '}
-                            with full access · {users.filter((user) => user.is_stale).length}{' '}
-                            unused for {staleAfterDays}+ days
-                        </span>
-                    </CardBody>
-                </Card>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('requests')}
+                        className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                            activeTab === 'requests'
+                                ? 'border-primary text-primary'
+                                : 'border-transparent text-muted-foreground hover:text-foreground'
+                        }`}
+                    >
+                        <Inbox className="h-4 w-4" />
+                        <span>Staff Change Requests</span>
+                        {pendingRequestsCount > 0 ? (
+                            <span className="flex items-center justify-center rounded-full bg-warning/90 px-2 py-0.5 text-xs font-semibold text-warning-foreground animate-pulse">
+                                {pendingRequestsCount} pending
+                            </span>
+                        ) : (
+                            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                                {change_requests.length}
+                            </span>
+                        )}
+                    </button>
+                </div>
             )}
 
-            <Card>
-                <CardHeader
-                    title="Accounts"
-                    action={
-                        <Button
-                            onClick={() => {
-                                form.reset();
-                                form.clearErrors();
-                                setCreateOpen(true);
-                            }}
-                        >
-                            <Plus className="h-4 w-4" />
-                            New Account
-                        </Button>
-                    }
-                />
-
-                <Table>
-                    <THead>
-                        <TR>
-                            <TH>User</TH>
-                            <TH>Role</TH>
-                            <TH>201 File</TH>
-                            <TH>Sign-in code goes to</TH>
-                            <TH className="text-right">Tokens</TH>
-                            <TH>Last Sign-in</TH>
-                            <TH>Status</TH>
-                            <TH className="text-right">Actions</TH>
-                        </TR>
-                    </THead>
-
-                    <TBody>
-                        {users.length === 0 ? (
-                            <TableEmpty colSpan={8} title="No accounts" />
-                        ) : (
-                            users.map((user) => (
-                                <TR key={user.id}>
-                                    <TD>
-                                        <div className="flex items-center gap-2.5">
-                                            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
-                                                {initials(user.name)}
-                                            </span>
-                                            <div className="min-w-0">
-                                                <p className="truncate text-sm font-medium text-foreground">
-                                                    {user.name}
-                                                    {user.is_self && (
-                                                        <span className="ml-1 text-xs text-primary">
-                                                            (you)
-                                                        </span>
-                                                    )}
-                                                </p>
-                                                {/* The username first: it is what the person
-                                                    signs in with, and the thing an admin gets
-                                                    asked for. */}
-                                                <p className="truncate font-mono text-xs text-muted-foreground">
-                                                    {user.username}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </TD>
-
-                                    <TD>
-                                        <Select
-                                            value={user.role}
-                                            aria-label={`Role for ${user.name}`}
-                                            className="w-40"
-                                            onChange={(event) =>
-                                                router.put(
-                                                    `/settings/users/${user.id}/role`,
-                                                    { role: event.target.value },
-                                                    { preserveScroll: true },
-                                                )
-                                            }
-                                            options={roles.map((role) => ({
-                                                value: role.value,
-                                                label: role.label,
-                                            }))}
+            {/* TAB 1: ACCOUNTS VIEW */}
+            {(!is_super_admin || activeTab === 'accounts') && (
+                <>
+                    <Card>
+                        <CardHeader title="Roles" />
+                        <CardBody className="grid gap-3 sm:grid-cols-2">
+                            {roles.map((role) => (
+                                <div key={role.value} className="rounded-lg border border-border p-3">
+                                    <div className="mb-1 flex items-center gap-2">
+                                        <ShieldCheck
+                                            className="h-4 w-4 text-primary"
+                                            aria-hidden="true"
                                         />
-                                    </TD>
+                                        <p className="text-sm font-medium text-foreground">
+                                            {role.label}
+                                        </p>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">{role.description}</p>
+                                </div>
+                            ))}
+                        </CardBody>
+                    </Card>
 
-                                    <TD className="text-sm text-muted-foreground">
-                                        {user.employee_number ?? (
-                                            <span className="text-muted-foreground/60">
-                                                Not linked
-                                            </span>
-                                        )}
-                                    </TD>
-
-                                    {/* The personal inbox sign-in codes go to.
-                                        In full, not masked: the administrator is
-                                        the one who has to spot a typo in it, and
-                                        a masked address is one nobody can check. */}
-                                    <TD className="min-w-0 text-sm">
-                                        {user.otp_email ? (
-                                            <div className="min-w-0">
-                                                <p className="truncate text-foreground">
-                                                    {user.otp_email}
-                                                </p>
-                                                <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                                                    <Badge
-                                                        variant={
-                                                            user.otp_verified
-                                                                ? 'success'
-                                                                : 'warning'
-                                                        }
-                                                    >
-                                                        {user.otp_verified
-                                                            ? 'Code verified'
-                                                            : 'Not proved yet'}
-                                                    </Badge>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => sendTestCode(user)}
-                                                        className="rounded px-1 py-0.5 text-xs font-medium text-primary hover:bg-primary/10"
-                                                    >
-                                                        Send test code
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <Badge variant="muted">Password only</Badge>
-                                        )}
-                                    </TD>
-
-                                    <TD className="text-right text-sm tabular-nums text-muted-foreground">
-                                        {user.tokens || '—'}
-                                    </TD>
-
-                                    <TD className="whitespace-nowrap text-sm text-muted-foreground">
-                                        {user.last_sign_in_at
-                                            ? formatDate(user.last_sign_in_at)
-                                            : 'Never'}
-                                        {user.is_stale && (
-                                            <Badge variant="warning" className="ml-2">
-                                                Unused
-                                            </Badge>
-                                        )}
-                                    </TD>
-
-                                    <TD>
-                                        <Badge
-                                            status={user.is_active ? 'active' : 'inactive'}
-                                        />
-                                    </TD>
-
-                                    <TD>
-                                        <div className="flex items-center justify-end gap-1">
-                                            <Button
-                                                size="sm"
-                                                variant="ghost"
-                                                onClick={() => openEdit(user)}
-                                            >
-                                                <Pencil className="h-4 w-4" />
-                                                Edit
-                                            </Button>
-
-                                            <Button
-                                                size="sm"
-                                                variant="ghost"
-                                                onClick={() =>
-                                                    setPending({ user, action: 'reset' })
-                                                }
-                                            >
-                                                <KeyRound className="h-4 w-4" />
-                                                Reset
-                                            </Button>
-
-                                            {!user.is_self && (
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    onClick={() =>
-                                                        setPending({ user, action: 'toggle' })
-                                                    }
-                                                >
-                                                    <UserX className="h-4 w-4" />
-                                                    {user.is_active ? 'Deactivate' : 'Activate'}
-                                                </Button>
-                                            )}
-                                        </div>
-                                    </TD>
-                                </TR>
-                            ))
-                        )}
-                    </TBody>
-                </Table>
-            </Card>
-
-            {/* Editing an account's profile.
-
-                Renaming is allowed here and refused on the person's own
-                Security screen, and that is deliberate: `renameSelf` holds
-                every non-admin to the name on their employee record because
-                nothing reconciles `users.name` with the 201 file, and this
-                screen belongs to the administrator who *does* hold that
-                ability. Where the account is linked, the employee's name is
-                offered as a button rather than silently enforced. */}
-            <Modal
-                show={editing !== null}
-                onClose={() => setEditing(null)}
-                title="Edit profile"
-            >
-                {editing && (
-                    <form onSubmit={saveProfile} className="space-y-4">
-                        <Field label="Name" required error={profile.errors.name}>
-                            {({ id }) => (
-                                <Input
-                                    id={id}
-                                    value={profile.data.name}
-                                    onChange={(event) =>
-                                        profile.setData('name', event.target.value)
-                                    }
-                                    required
-                                />
-                            )}
-                        </Field>
-
-                        {editing.employee_name &&
-                            editing.employee_name !== profile.data.name && (
-                                <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-foreground">
-                                    <TriangleAlert
-                                        className="h-4 w-4 shrink-0 text-warning"
-                                        aria-hidden="true"
-                                    />
-                                    <span className="min-w-0 flex-1">
-                                        Their 201 file reads{' '}
-                                        <strong className="font-medium">
-                                            {editing.employee_name}
-                                        </strong>
-                                        . Nothing reconciles the two.
-                                    </span>
+                    {accessReview && (
+                        <Card>
+                            <CardHeader
+                                title="Access Review"
+                                action={
                                     <Button
-                                        type="button"
-                                        size="sm"
                                         variant="outline"
                                         onClick={() =>
-                                            profile.setData('name', editing.employee_name)
+                                            router.post(
+                                                route('settings.users.review'),
+                                                {},
+                                                { preserveScroll: true },
+                                            )
                                         }
                                     >
-                                        Use it
+                                        <ClipboardCheck className="h-4 w-4" />
+                                        Record review today
                                     </Button>
+                                }
+                            />
+                            <CardBody className="space-y-3 text-sm">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Badge
+                                        variant={accessReview.due ? 'warning' : 'success'}
+                                    >
+                                        {accessReview.due
+                                            ? 'Review due'
+                                            : 'Quarterly review current'}
+                                    </Badge>
+                                    <span className="text-muted-foreground">
+                                        {accessReview.at
+                                            ? `Last signed off by ${accessReview.by ?? 'an administrator'} on ${formatDate(accessReview.at)}.`
+                                            : 'Access has not been reviewed yet.'}
+                                    </span>
                                 </div>
-                            )}
+                                <p className="text-xs text-muted-foreground">
+                                    ISO 27001 requires user access rights to be reviewed at planned
+                                    intervals. Recording a review writes an immutable audit entry
+                                    with account counts at that moment.
+                                </p>
+                            </CardBody>
+                        </Card>
+                    )}
 
-                        <Field
-                            label="Username"
-                            required
-                            error={profile.errors.username}
-                            hint="Typed without the domain, it is stored with it — nina becomes nina@primepower.com."
-                        >
-                            {({ id }) => (
-                                <Input
-                                    id={id}
-                                    value={profile.data.username}
-                                    autoCapitalize="none"
-                                    spellCheck={false}
-                                    onChange={(event) =>
-                                        profile.setData('username', event.target.value)
-                                    }
-                                    required
-                                />
-                            )}
-                        </Field>
-
-                        <Field
-                            label="Personal email for sign-in codes"
-                            error={profile.errors.otp_email}
-                            hint={
-                                otp.enabled
-                                    ? `Connecting an address switches the code on for this account: after the password, a ${otp.ttl_minutes}-minute code is sent here. Leave it blank and the account signs in with a password alone.`
-                                    : 'Sign-in codes are switched off system-wide (OTP_ENABLED=false), so an address here is stored and not used yet.'
-                            }
-                        >
-                            {({ id }) => (
-                                <Input
-                                    id={id}
-                                    type="email"
-                                    value={profile.data.otp_email}
-                                    autoCapitalize="none"
-                                    spellCheck={false}
-                                    placeholder="name@gmail.com"
-                                    onChange={(event) =>
-                                        profile.setData('otp_email', event.target.value)
-                                    }
-                                />
-                            )}
-                        </Field>
-
-                        {/* The company username is *suggested* from the inbox,
-                            never derived: johnpogs.b@gmail.com could reasonably
-                            be johnpogs, john, or jbenavidez at work, and which
-                            one a person is called is not in their email. */}
-                        {profile.data.otp_email.includes('@') &&
-                            profile.data.otp_email.split('@')[0] !== '' && (
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        profile.setData(
-                                            'username',
-                                            profile.data.otp_email
-                                                .split('@')[0]
-                                                .toLowerCase()
-                                                .split(/[.+_\d]/)[0],
-                                        )
-                                    }
-                                    className="text-xs font-medium text-primary hover:underline"
+                    <Card>
+                        <CardHeader
+                            title="Accounts"
+                            badge={<Badge variant="muted">{users.length}</Badge>}
+                            action={
+                                <Button
+                                    variant="primary"
+                                    onClick={() => setCreateOpen(true)}
                                 >
-                                    Use “
-                                    {
-                                        profile.data.otp_email
-                                            .split('@')[0]
-                                            .toLowerCase()
-                                            .split(/[.+_\d]/)[0]
-                                    }
-                                    ” as the username
-                                </button>
-                            )}
+                                    <Plus className="h-4 w-4" />
+                                    New account
+                                </Button>
+                            }
+                        />
 
-                        <p className="text-xs text-muted-foreground">
-                            Changing the username changes what this person signs in with — tell
-                            them, because nothing here is emailed. The role, the password and
-                            whether the account is active are set from the row itself.
-                        </p>
+                        <Table>
+                            <THead>
+                                <TR>
+                                    <TH>User</TH>
+                                    <TH>Role</TH>
+                                    <TH>Employee #</TH>
+                                    <TH>Personal Email (OTP MFA)</TH>
+                                    <TH className="text-right">API tokens</TH>
+                                    <TH>Last sign-in</TH>
+                                    <TH>Status</TH>
+                                    <TH className="text-right">Actions</TH>
+                                </TR>
+                            </THead>
+                            <TBody>
+                                {users.length === 0 ? (
+                                    <TableEmpty
+                                        colSpan={8}
+                                        title="No accounts found"
+                                        description="Create an account to grant someone login access."
+                                    />
+                                ) : (
+                                    users.map((user) => (
+                                        <TR key={user.id}>
+                                            <TD>
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                                                        {initials(user.name)}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="truncate font-medium text-foreground">
+                                                            {user.name}
+                                                        </p>
+                                                        <p className="truncate font-mono text-xs text-muted-foreground">
+                                                            {user.username}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </TD>
+
+                                            <TD>
+                                                <Select
+                                                    value={user.role}
+                                                    disabled={user.is_self}
+                                                    onChange={(event) =>
+                                                        router.put(
+                                                            `/settings/users/${user.id}/role`,
+                                                            { role: event.target.value },
+                                                            { preserveScroll: true },
+                                                        )
+                                                    }
+                                                    options={roles.map((role) => ({
+                                                        value: role.value,
+                                                        label: role.label,
+                                                    }))}
+                                                />
+                                            </TD>
+
+                                            <TD className="text-sm text-muted-foreground">
+                                                {user.employee_number ?? (
+                                                    <span className="text-muted-foreground/60">
+                                                        Not linked
+                                                    </span>
+                                                )}
+                                            </TD>
+
+                                            <TD className="min-w-0 text-sm">
+                                                {user.otp_email ? (
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-foreground">
+                                                            {user.otp_email}
+                                                        </p>
+                                                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                                            <Badge
+                                                                variant={
+                                                                    user.otp_verified
+                                                                        ? 'success'
+                                                                        : 'warning'
+                                                                }
+                                                            >
+                                                                {user.otp_verified
+                                                                    ? 'Code verified'
+                                                                    : 'Not proved yet'}
+                                                            </Badge>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => sendTestCode(user)}
+                                                                className="rounded px-1 py-0.5 text-xs font-medium text-primary hover:bg-primary/10"
+                                                            >
+                                                                Send test code
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <Badge variant="muted">Password only</Badge>
+                                                )}
+                                            </TD>
+
+                                            <TD className="text-right text-sm tabular-nums text-muted-foreground">
+                                                {user.tokens || '—'}
+                                            </TD>
+
+                                            <TD className="whitespace-nowrap text-sm text-muted-foreground">
+                                                {user.last_sign_in_at
+                                                    ? formatDate(user.last_sign_in_at)
+                                                    : 'Never'}
+                                                {user.is_stale && (
+                                                    <Badge variant="warning" className="ml-2">
+                                                        Unused
+                                                    </Badge>
+                                                )}
+                                            </TD>
+
+                                            <TD>
+                                                <Badge
+                                                    status={user.is_active ? 'active' : 'inactive'}
+                                                />
+                                            </TD>
+
+                                            <TD>
+                                                <div className="flex items-center justify-end gap-1">
+                                                    {/* Direct edit button removed: credential modifications require staff request & Super Admin approval */}
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() =>
+                                                            setPending({ user, action: 'reset' })
+                                                        }
+                                                    >
+                                                        <KeyRound className="h-4 w-4" />
+                                                        Reset
+                                                    </Button>
+
+                                                    {!user.is_self && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() =>
+                                                                setPending({ user, action: 'toggle' })
+                                                            }
+                                                        >
+                                                            <UserX className="h-4 w-4" />
+                                                            {user.is_active ? 'Deactivate' : 'Activate'}
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </TD>
+                                        </TR>
+                                    ))
+                                )}
+                            </TBody>
+                        </Table>
+                    </Card>
+                </>
+            )}
+
+            {/* TAB 2: CHANGE REQUESTS DASHBOARD (SUPER ADMIN ONLY) */}
+            {is_super_admin && activeTab === 'requests' && (
+                <div className="space-y-6">
+                    <Card>
+                        <CardHeader
+                            title="Staff Account Change Requests"
+                            description="Review and decide requests from staff to change their company username or personal MFA email. Approving applies changes immediately."
+                            badge={
+                                <div className="flex items-center gap-1.5">
+                                    <Badge variant={pendingRequestsCount > 0 ? 'warning' : 'muted'}>
+                                        {pendingRequestsCount} Pending
+                                    </Badge>
+                                </div>
+                            }
+                        />
+                        <CardBody className="border-b border-border pb-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs font-medium text-muted-foreground mr-1">
+                                    Filter:
+                                </span>
+                                {[
+                                    { key: 'pending', label: 'Pending Review', count: pendingRequestsCount },
+                                    { key: 'all', label: 'All Requests', count: change_requests.length },
+                                    {
+                                        key: 'approved',
+                                        label: 'Approved',
+                                        count: change_requests.filter((r) => r.status === 'approved').length,
+                                    },
+                                    {
+                                        key: 'rejected',
+                                        label: 'Rejected',
+                                        count: change_requests.filter((r) => r.status === 'rejected').length,
+                                    },
+                                ].map((tab) => (
+                                    <button
+                                        key={tab.key}
+                                        type="button"
+                                        onClick={() => setRequestFilter(tab.key)}
+                                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                                            requestFilter === tab.key
+                                                ? 'bg-primary text-primary-foreground'
+                                                : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                        }`}
+                                    >
+                                        {tab.label} ({tab.count})
+                                    </button>
+                                ))}
+                            </div>
+                        </CardBody>
+
+                        <Table>
+                            <THead>
+                                <TR>
+                                    <TH>Staff Member</TH>
+                                    <TH>Requested Changes</TH>
+                                    <TH className="w-1/3">Staff Notes / Reason</TH>
+                                    <TH>Date Submitted</TH>
+                                    <TH>Status</TH>
+                                    <TH className="text-right">Decision / Action</TH>
+                                </TR>
+                            </THead>
+                            <TBody>
+                                {filteredRequests.length === 0 ? (
+                                    <TableEmpty
+                                        colSpan={6}
+                                        title="No change requests found"
+                                        description={
+                                            requestFilter === 'pending'
+                                                ? 'There are no pending credential change requests awaiting review.'
+                                                : 'No requests match the selected filter.'
+                                        }
+                                    />
+                                ) : (
+                                    filteredRequests.map((req) => (
+                                        <TR key={req.id}>
+                                            <TD>
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                                                        {initials(req.staff_name)}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-medium text-foreground">
+                                                            {req.staff_name}
+                                                        </p>
+                                                        <p className="font-mono text-xs text-muted-foreground">
+                                                            ID #{req.user_id}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </TD>
+
+                                            <TD>
+                                                <div className="space-y-1.5 text-xs">
+                                                    {req.requested_username && (
+                                                        <div className="rounded bg-muted/50 p-1.5">
+                                                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                                                                Username
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 font-mono">
+                                                                <span className="text-muted-foreground line-through">
+                                                                    {req.current_username}
+                                                                </span>
+                                                                <ArrowRight className="h-3 w-3 text-primary shrink-0" />
+                                                                <span className="font-medium text-foreground">
+                                                                    {req.requested_username}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {req.requested_email && (
+                                                        <div className="rounded bg-muted/50 p-1.5">
+                                                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                                                                Personal MFA Email
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 font-mono">
+                                                                <span className="text-muted-foreground line-through">
+                                                                    {req.current_email || 'None'}
+                                                                </span>
+                                                                <ArrowRight className="h-3 w-3 text-emerald-600 shrink-0" />
+                                                                <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                                                                    {req.requested_email}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </TD>
+
+                                            <TD>
+                                                <div className="rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs text-foreground">
+                                                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground mb-1">
+                                                        <MessageSquare className="h-3 w-3" />
+                                                        Staff Explanation:
+                                                    </div>
+                                                    <p className="whitespace-pre-wrap italic">
+                                                        "{req.staff_notes}"
+                                                    </p>
+                                                </div>
+                                                {req.admin_notes && (
+                                                    <div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 p-2 text-xs">
+                                                        <span className="font-medium text-foreground">
+                                                            Super Admin Note:
+                                                        </span>{' '}
+                                                        <span className="text-muted-foreground">
+                                                            {req.admin_notes}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </TD>
+
+                                            <TD className="whitespace-nowrap text-xs text-muted-foreground">
+                                                {formatDate(req.created_at)}
+                                            </TD>
+
+                                            <TD>
+                                                {req.status === 'pending' && (
+                                                    <Badge variant="warning">Pending Review</Badge>
+                                                )}
+                                                {req.status === 'approved' && (
+                                                    <div className="space-y-0.5">
+                                                        <Badge variant="success">Approved</Badge>
+                                                        {req.decided_by && (
+                                                            <p className="text-[10px] text-muted-foreground">
+                                                                by {req.decided_by}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {req.status === 'rejected' && (
+                                                    <div className="space-y-0.5">
+                                                        <Badge variant="destructive">Rejected</Badge>
+                                                        {req.decided_by && (
+                                                            <p className="text-[10px] text-muted-foreground">
+                                                                by {req.decided_by}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </TD>
+
+                                            <TD>
+                                                {req.status === 'pending' ? (
+                                                    <div className="flex items-center justify-end gap-1.5">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="primary"
+                                                            onClick={() => {
+                                                                approveForm.setData({ admin_notes: '' });
+                                                                approveForm.clearErrors();
+                                                                setApprovingRequest(req);
+                                                            }}
+                                                        >
+                                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                                            Approve
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                                            onClick={() => {
+                                                                rejectForm.setData({ admin_notes: '' });
+                                                                rejectForm.clearErrors();
+                                                                setRejectingRequest(req);
+                                                            }}
+                                                        >
+                                                            <XCircle className="h-3.5 w-3.5" />
+                                                            Reject
+                                                        </Button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-right text-xs text-muted-foreground">
+                                                        Processed on {formatDate(req.decided_at)}
+                                                    </div>
+                                                )}
+                                            </TD>
+                                        </TR>
+                                    ))
+                                )}
+                            </TBody>
+                        </Table>
+                    </Card>
+                </div>
+            )}
+
+            {/* Modal: Approve Request */}
+            <Modal
+                show={approvingRequest !== null}
+                onClose={() => setApprovingRequest(null)}
+                title="Approve Account Change Request"
+                maxWidth="md"
+            >
+                {approvingRequest && (
+                    <form onSubmit={submitApprove} className="space-y-4">
+                        <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm space-y-2">
+                            <p className="font-medium text-foreground">
+                                You are approving credential changes for{' '}
+                                <strong className="text-primary">{approvingRequest.staff_name}</strong>:
+                            </p>
+                            <ul className="list-disc pl-5 text-xs text-muted-foreground space-y-1">
+                                {approvingRequest.requested_username && (
+                                    <li>
+                                        Username will change from{' '}
+                                        <code className="font-semibold text-foreground">
+                                            {approvingRequest.current_username}
+                                        </code>{' '}
+                                        to{' '}
+                                        <code className="font-semibold text-primary">
+                                            {approvingRequest.requested_username}
+                                        </code>
+                                    </li>
+                                )}
+                                {approvingRequest.requested_email && (
+                                    <li>
+                                        MFA/OTP Email will change from{' '}
+                                        <code className="font-semibold text-foreground">
+                                            {approvingRequest.current_email || 'None'}
+                                        </code>{' '}
+                                        to{' '}
+                                        <code className="font-semibold text-emerald-600">
+                                            {approvingRequest.requested_email}
+                                        </code>
+                                    </li>
+                                )}
+                            </ul>
+                            <p className="text-xs text-muted-foreground pt-1">
+                                Staff reason: "{approvingRequest.staff_notes}"
+                            </p>
+                        </div>
+
+                        <Field
+                            label="Super Admin Notes / Feedback (Optional)"
+                            hint="These notes will be visible to the staff member in their request history."
+                            error={approveForm.errors.admin_notes}
+                        >
+                            {({ id }) => (
+                                <Input
+                                    id={id}
+                                    value={approveForm.data.admin_notes}
+                                    placeholder="e.g. Approved. Please use your new email for MFA verification on your next sign-in."
+                                    onChange={(e) =>
+                                        approveForm.setData('admin_notes', e.target.value)
+                                    }
+                                />
+                            )}
+                        </Field>
 
                         <div className="flex justify-end gap-2 pt-2">
                             <Button
                                 type="button"
                                 variant="outline"
-                                onClick={() => setEditing(null)}
+                                onClick={() => setApprovingRequest(null)}
                             >
                                 Cancel
                             </Button>
-                            <Button type="submit" loading={profile.processing}>
-                                Save profile
+                            <Button type="submit" loading={approveForm.processing}>
+                                Approve & Apply Changes
                             </Button>
                         </div>
                     </form>
                 )}
             </Modal>
 
-            {/* New account */}
+            {/* Modal: Reject Request */}
+            <Modal
+                show={rejectingRequest !== null}
+                onClose={() => setRejectingRequest(null)}
+                title="Reject Account Change Request"
+                maxWidth="md"
+            >
+                {rejectingRequest && (
+                    <form onSubmit={submitReject} className="space-y-4">
+                        <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm space-y-1">
+                            <p className="font-medium text-destructive">
+                                Reject request from {rejectingRequest.staff_name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                Staff reason was: "{rejectingRequest.staff_notes}"
+                            </p>
+                        </div>
+
+                        <Field
+                            label="Rejection Reason / Notes"
+                            required
+                            hint="Please explain to the staff member why their request was rejected."
+                            error={rejectForm.errors.admin_notes}
+                        >
+                            {({ id }) => (
+                                <textarea
+                                    id={id}
+                                    rows={3}
+                                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                                    value={rejectForm.data.admin_notes}
+                                    placeholder="e.g. Please provide a verified personal Gmail address under your official name."
+                                    onChange={(e) =>
+                                        rejectForm.setData('admin_notes', e.target.value)
+                                    }
+                                    required
+                                />
+                            )}
+                        </Field>
+
+                        <div className="flex justify-end gap-2 pt-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setRejectingRequest(null)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                variant="destructive"
+                                loading={rejectForm.processing}
+                            >
+                                Confirm Rejection
+                            </Button>
+                        </div>
+                    </form>
+                )}
+            </Modal>
+
+            {/* New account modal */}
             <Modal
                 show={createOpen}
                 onClose={() => {
@@ -666,7 +934,7 @@ export default function Users({
                 </form>
             </Modal>
 
-            {/* Confirm */}
+            {/* Action Confirmation (Reset Password / Toggle Active) */}
             <Modal
                 show={Boolean(pending)}
                 onClose={() => setPending(null)}

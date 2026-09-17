@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Listeners\RecordAuthenticationEvents;
+use App\Models\AccountChangeRequest;
 use App\Models\AuditLog;
 use App\Models\Employee;
 use App\Models\Setting;
@@ -40,10 +41,34 @@ class UserAccessController extends Controller
     {
         Gate::authorize('manageUsers', Setting::class);
 
+        $isSuperAdmin = $request->user()->isSuperAdmin();
         $lastSignIns = $this->lastSignIns();
         $staleBefore = now()->subDays(self::STALE_AFTER_DAYS);
 
+        $changeRequests = $isSuperAdmin
+            ? AccountChangeRequest::with(['user:id,name,username,otp_email', 'decider:id,name'])
+                ->latest()
+                ->get()
+                ->map(fn (AccountChangeRequest $r) => [
+                    'id' => $r->id,
+                    'user_id' => $r->user_id,
+                    'staff_name' => $r->user?->name ?? 'Unknown Staff',
+                    'current_username' => $r->current_username,
+                    'requested_username' => $r->requested_username,
+                    'current_email' => $r->current_email,
+                    'requested_email' => $r->requested_email,
+                    'staff_notes' => $r->staff_notes,
+                    'status' => $r->status,
+                    'decided_by' => $r->decider?->name,
+                    'decided_at' => $r->decided_at?->toIso8601String(),
+                    'admin_notes' => $r->admin_notes,
+                    'created_at' => $r->created_at?->toIso8601String(),
+                ])
+            : [];
+
         return Inertia::render('Settings/Users', [
+            'is_super_admin' => $isSuperAdmin,
+            'change_requests' => $changeRequests,
             'users' => User::with('employee:id,user_id,employee_number,first_name,middle_name,last_name,suffix')
                 ->orderBy('name')
                 ->get()
@@ -82,12 +107,13 @@ class UserAccessController extends Controller
                     'created_at' => $user->created_at?->toDateString(),
                 ]),
 
-            'roles' => [
+            'roles' => array_values(array_filter([
+                $isSuperAdmin ? ['value' => User::ROLE_SUPER_ADMIN, 'label' => 'Super Administrator', 'description' => 'Highest authority: approve credential changes, manage system accounts and security.'] : null,
                 ['value' => User::ROLE_ADMIN, 'label' => 'Administrator', 'description' => 'Full access, including payroll approval and settings.'],
                 ['value' => User::ROLE_HR_STAFF, 'label' => 'HR Staff', 'description' => 'Runs every module; cannot approve payroll or change settings.'],
                 ['value' => User::ROLE_SUPERVISOR, 'label' => 'Supervisor', 'description' => 'Own record plus direct reports; endorses leave and overtime.'],
                 ['value' => User::ROLE_EMPLOYEE, 'label' => 'Employee', 'description' => 'Own record, payslips, and filings only.'],
-            ],
+            ])),
 
             /*
              * Whether the factor is switched on at all, so the screen can say
@@ -239,7 +265,7 @@ class UserAccessController extends Controller
      */
     public function updateProfile(Request $request, User $user): RedirectResponse
     {
-        Gate::authorize('manageUsers', Setting::class);
+        Gate::authorize('manageAccountRequests', Setting::class);
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:120'],
@@ -400,6 +426,121 @@ class UserAccessController extends Controller
         }
 
         return back()->with('success', $message);
+    }
+
+    /**
+     * Super Admin approves a staff change request, applying username and/or email changes.
+     */
+    public function approveChangeRequest(Request $request, AccountChangeRequest $accountChangeRequest): RedirectResponse
+    {
+        Gate::authorize('manageAccountRequests', Setting::class);
+
+        if ($accountChangeRequest->status !== AccountChangeRequest::STATUS_PENDING) {
+            return back()->with('error', 'This request has already been processed.');
+        }
+
+        $validated = $request->validate([
+            'admin_notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $user = $accountChangeRequest->user;
+        if (! $user) {
+            return back()->with('error', 'The associated user account could not be found.');
+        }
+
+        $oldValues = [
+            'username' => $user->username,
+            'otp_email' => $user->otp_email,
+        ];
+        $newValues = [];
+
+        if (filled($accountChangeRequest->requested_username)) {
+            $username = User::withDomain($accountChangeRequest->requested_username);
+            if (User::where('username', $username)->where('id', '!=', $user->id)->exists()) {
+                return back()->with('error', "The requested username '{$username}' is already taken by another account.");
+            }
+            $user->username = $username;
+            $newValues['username'] = $username;
+        }
+
+        if (filled($accountChangeRequest->requested_email)) {
+            $email = strtolower(trim($accountChangeRequest->requested_email));
+            $user->otp_email = $email;
+            $user->otp_email_verified_at = null;
+            $user->otp_code_hash = null;
+            $user->otp_expires_at = null;
+            $newValues['otp_email'] = $email;
+        }
+
+        $user->save();
+
+        $accountChangeRequest->update([
+            'status' => AccountChangeRequest::STATUS_APPROVED,
+            'decided_by' => $request->user()->id,
+            'decided_at' => now(),
+            'admin_notes' => $validated['admin_notes'] ?? null,
+        ]);
+
+        AuditLog::create([
+            'user_id' => $request->user()->id,
+            'auditable_type' => User::class,
+            'auditable_id' => $user->id,
+            'event' => 'account_change_approved',
+            'old_values' => $oldValues,
+            'new_values' => array_merge($newValues, [
+                'request_id' => $accountChangeRequest->id,
+                'staff_notes' => $accountChangeRequest->staff_notes,
+                'admin_notes' => $validated['admin_notes'] ?? null,
+            ]),
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        return back()->with('success', "Account change request for {$user->name} has been approved and applied.");
+    }
+
+    /**
+     * Super Admin rejects a staff change request with required feedback notes.
+     */
+    public function rejectChangeRequest(Request $request, AccountChangeRequest $accountChangeRequest): RedirectResponse
+    {
+        Gate::authorize('manageAccountRequests', Setting::class);
+
+        if ($accountChangeRequest->status !== AccountChangeRequest::STATUS_PENDING) {
+            return back()->with('error', 'This request has already been processed.');
+        }
+
+        $validated = $request->validate([
+            'admin_notes' => ['required', 'string', 'min:3', 'max:500'],
+        ], [
+            'admin_notes.required' => 'Please provide a reason or note explaining why this request was rejected.',
+            'admin_notes.min' => 'Rejection note must be at least 3 characters.',
+        ]);
+
+        $accountChangeRequest->update([
+            'status' => AccountChangeRequest::STATUS_REJECTED,
+            'decided_by' => $request->user()->id,
+            'decided_at' => now(),
+            'admin_notes' => $validated['admin_notes'],
+        ]);
+
+        AuditLog::create([
+            'user_id' => $request->user()->id,
+            'auditable_type' => User::class,
+            'auditable_id' => $accountChangeRequest->user_id,
+            'event' => 'account_change_rejected',
+            'old_values' => null,
+            'new_values' => [
+                'request_id' => $accountChangeRequest->id,
+                'staff_notes' => $accountChangeRequest->staff_notes,
+                'reason' => $validated['admin_notes'],
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        $userName = $accountChangeRequest->user?->name ?? 'Staff';
+        return back()->with('success', "Account change request for {$userName} has been rejected.");
     }
 
 

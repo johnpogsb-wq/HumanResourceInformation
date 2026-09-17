@@ -113,7 +113,7 @@ class DatabaseSeeder extends Seeder
     private function seedAdminUsers(): void
     {
         $accounts = [
-            ['name' => 'System Administrator', 'username' => 'admin@primepower.com', 'role' => User::ROLE_ADMIN],
+            ['name' => 'System Administrator', 'username' => 'admin@primepower.com', 'role' => User::ROLE_SUPER_ADMIN],
             ['name' => 'Maria Santos', 'username' => 'hrstaff@primepower.com', 'role' => User::ROLE_HR_STAFF],
         ];
 
@@ -128,7 +128,7 @@ class DatabaseSeeder extends Seeder
                 'must_change_password' => $this->passwordIsProvisional(),
             ];
 
-            if ($account['role'] === User::ROLE_ADMIN && filled($adminOtpEmail)) {
+            if (in_array($account['role'], [User::ROLE_SUPER_ADMIN, User::ROLE_ADMIN], true) && filled($adminOtpEmail)) {
                 $data['otp_email'] = strtolower(trim((string) $adminOtpEmail));
             }
 

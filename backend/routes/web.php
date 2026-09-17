@@ -495,6 +495,8 @@ Route::middleware('auth')->prefix('settings')->name('settings.')->group(function
     Route::put('users/{user}/role', [UserAccessController::class, 'updateRole'])->name('users.role');
     Route::post('users/{user}/toggle', [UserAccessController::class, 'toggleActive'])->name('users.toggle');
     Route::post('users/{user}/reset-password', [UserAccessController::class, 'resetPassword'])->name('users.reset');
+    Route::post('users/requests/{accountChangeRequest}/approve', [UserAccessController::class, 'approveChangeRequest'])->name('users.requests.approve');
+    Route::post('users/requests/{accountChangeRequest}/reject', [UserAccessController::class, 'rejectChangeRequest'])->name('users.requests.reject');
     /*
      * A real code to the connected inbox, now — the only way to find a typo
      * in the address or a broken mailer before somebody cannot sign in.
@@ -504,6 +506,7 @@ Route::middleware('auth')->prefix('settings')->name('settings.')->group(function
         ->name('users.otpTest');
 
     Route::get('security', [SecurityController::class, 'index'])->name('security');
+    Route::post('security/change-request', [SecurityController::class, 'storeChangeRequest'])->name('security.changeRequest');
     Route::put('security/profile', [SecurityController::class, 'updateProfile'])->name('security.profile');
     Route::put('security/password', [SecurityController::class, 'updatePassword'])->name('security.password');
     Route::put('security/otp', [SecurityController::class, 'updateOtpEmail'])->name('security.otp');

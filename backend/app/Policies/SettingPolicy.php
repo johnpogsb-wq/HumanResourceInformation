@@ -77,4 +77,13 @@ class SettingPolicy
     {
         return $user->isHrAdmin();
     }
+
+    /**
+     * Reviewing, approving, and rejecting account change requests from staff.
+     * Restricted strictly to Super Administrator.
+     */
+    public function manageAccountRequests(User $user): bool
+    {
+        return $user->isSuperAdmin();
+    }
 }

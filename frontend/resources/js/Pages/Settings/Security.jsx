@@ -1,6 +1,23 @@
 import { Link, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
-import { History, KeyRound, Mail, Send, ShieldCheck, ShieldOff, TriangleAlert } from 'lucide-react';
+import {
+    ArrowRight,
+    CheckCircle2,
+    Clock,
+    FileText,
+    History,
+    KeyRound,
+    Mail,
+    MessageSquare,
+    Plus,
+    Send,
+    ShieldAlert,
+    ShieldCheck,
+    ShieldOff,
+    TriangleAlert,
+    User,
+    XCircle,
+} from 'lucide-react';
 import SettingsLayout from '@/Layouts/SettingsLayout';
 import {
     Badge,
@@ -29,13 +46,24 @@ export default function Security({
     mustChangePassword = false,
     privacy = null,
     otp = {},
+    is_super_admin = false,
+    changeRequests = [],
 }) {
     const isOtpActive = Boolean(otp?.otp_enabled && otp?.otp_email);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [disableModalOpen, setDisableModalOpen] = useState(false);
     const [enableModalOpen, setEnableModalOpen] = useState(false);
     const [changeEmailModalOpen, setChangeEmailModalOpen] = useState(false);
+    const [requestModalOpen, setRequestModalOpen] = useState(false);
     const [sendingTest, setSendingTest] = useState(false);
+
+    const requestForm = useForm({
+        requested_username: '',
+        requested_email: '',
+        staff_notes: '',
+    });
+
+    const hasPendingRequest = changeRequests.some((r) => r.status === 'pending');
 
     const passwordForm = useForm({
         current_password: '',
@@ -108,6 +136,17 @@ export default function Security({
         router.post('/settings/security/otp/test', {}, {
             preserveScroll: true,
             onFinish: () => setSendingTest(false),
+        });
+    };
+
+    const handleRequestChange = (e) => {
+        e.preventDefault();
+        requestForm.post(route('settings.security.changeRequest'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                setRequestModalOpen(false);
+                requestForm.reset();
+            },
         });
     };
 
@@ -354,6 +393,152 @@ export default function Security({
                                     Enable 2FA
                                 </Button>
                             </div>
+                        </div>
+                    )}
+                </CardBody>
+            </Card>
+
+            {/* Staff Account Credential Change Requests */}
+            <Card>
+                <CardHeader
+                    title="Account Credential Change Requests"
+                    description="Request changes to your company username or personal MFA email. Every request requires an explanation note and must be approved by the Super Administrator."
+                    action={
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            disabled={hasPendingRequest}
+                            onClick={() => {
+                                requestForm.setData({
+                                    requested_username: '',
+                                    requested_email: '',
+                                    staff_notes: '',
+                                });
+                                requestForm.clearErrors();
+                                setRequestModalOpen(true);
+                            }}
+                        >
+                            <Plus className="h-4 w-4" />
+                            Request Change
+                        </Button>
+                    }
+                />
+                <CardBody className="space-y-4">
+                    {hasPendingRequest && (
+                        <div className="flex items-start gap-2.5 rounded-lg border border-warning/30 bg-warning/10 p-3.5 text-sm text-foreground">
+                            <Clock className="h-4 w-4 text-warning shrink-0 mt-0.5" />
+                            <div>
+                                <p className="font-medium text-warning-foreground">
+                                    You have an active request pending review.
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    Your request has been forwarded to the Super Administrator. Once reviewed and decided, you will see their response below.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {changeRequests.length === 0 ? (
+                        <div className="rounded-lg border border-dashed border-border py-8 text-center">
+                            <FileText className="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" />
+                            <p className="text-sm font-medium text-foreground">No change requests</p>
+                            <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
+                                If you need to change your sign-in username or your MFA email address, submit a request above.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {changeRequests.map((req) => (
+                                <div
+                                    key={req.id}
+                                    className="rounded-lg border border-border p-4 space-y-3"
+                                >
+                                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2.5">
+                                        <div className="flex items-center gap-2">
+                                            {req.status === 'pending' && (
+                                                <Badge variant="warning">
+                                                    <Clock className="h-3 w-3 mr-1" />
+                                                    Pending Super Admin Review
+                                                </Badge>
+                                            )}
+                                            {req.status === 'approved' && (
+                                                <Badge variant="success">
+                                                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                                                    Approved
+                                                </Badge>
+                                            )}
+                                            {req.status === 'rejected' && (
+                                                <Badge variant="destructive">
+                                                    <XCircle className="h-3 w-3 mr-1" />
+                                                    Rejected
+                                                </Badge>
+                                            )}
+                                            <span className="text-xs text-muted-foreground">
+                                                Submitted {formatDate(req.created_at)}
+                                            </span>
+                                        </div>
+
+                                        {req.decided_at && (
+                                            <span className="text-xs text-muted-foreground">
+                                                Decided {formatDate(req.decided_at)}
+                                                {req.decided_by && ` by ${req.decided_by}`}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="grid gap-2 sm:grid-cols-2 text-xs">
+                                        {req.requested_username && (
+                                            <div className="rounded bg-muted/40 p-2">
+                                                <div className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider mb-1">
+                                                    Username Change
+                                                </div>
+                                                <div className="flex items-center gap-1.5 font-mono">
+                                                    <span className="text-muted-foreground line-through">
+                                                        {req.current_username}
+                                                    </span>
+                                                    <ArrowRight className="h-3 w-3 text-primary shrink-0" />
+                                                    <span className="font-semibold text-foreground">
+                                                        {req.requested_username}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {req.requested_email && (
+                                            <div className="rounded bg-muted/40 p-2">
+                                                <div className="text-[10px] uppercase font-semibold text-muted-foreground tracking-wider mb-1">
+                                                    Personal MFA Email Change
+                                                </div>
+                                                <div className="flex items-center gap-1.5 font-mono">
+                                                    <span className="text-muted-foreground line-through">
+                                                        {req.current_email || 'None'}
+                                                    </span>
+                                                    <ArrowRight className="h-3 w-3 text-emerald-600 shrink-0" />
+                                                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                                        {req.requested_email}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="rounded-lg bg-muted/20 p-2.5 text-xs text-foreground">
+                                        <span className="font-medium text-muted-foreground">Your explanation: </span>
+                                        <span className="italic">"{req.staff_notes}"</span>
+                                    </div>
+
+                                    {req.admin_notes && (
+                                        <div className={`rounded-lg p-2.5 text-xs border ${
+                                            req.status === 'approved'
+                                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-950 dark:text-emerald-200'
+                                                : 'bg-destructive/10 border-destructive/20 text-destructive-foreground'
+                                        }`}>
+                                            <span className="font-semibold">Super Admin Feedback: </span>
+                                            <span>{req.admin_notes}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
                         </div>
                     )}
                 </CardBody>
@@ -790,6 +975,107 @@ export default function Security({
                             loading={changeEmailForm.processing}
                         >
                             Update Email
+                        </Button>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* Modal: Request Account Change */}
+            <Modal
+                show={requestModalOpen}
+                onClose={() => {
+                    setRequestModalOpen(false);
+                    requestForm.reset();
+                    requestForm.clearErrors();
+                }}
+                title="Request Account Credential Change"
+                description="Submit a request to change your company username or personal MFA email. The Super Administrator will review your notes before approving."
+                maxWidth="md"
+            >
+                <form onSubmit={handleRequestChange} className="space-y-4">
+                    <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2 text-xs">
+                        <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Current Company Username:</span>
+                            <span className="font-mono font-semibold text-foreground">{account.username}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Current Personal MFA Email:</span>
+                            <span className="font-mono font-semibold text-foreground">{otp.otp_email || 'None configured'}</span>
+                        </div>
+                    </div>
+
+                    <Field
+                        label="New Company Username (Optional)"
+                        hint="Leave blank if you do not wish to change your username."
+                        error={requestForm.errors.requested_username}
+                    >
+                        {({ id }) => (
+                            <Input
+                                id={id}
+                                value={requestForm.data.requested_username}
+                                placeholder="e.g. new.username (without domain)"
+                                autoCapitalize="none"
+                                spellCheck={false}
+                                onChange={(e) => requestForm.setData('requested_username', e.target.value)}
+                            />
+                        )}
+                    </Field>
+
+                    <Field
+                        label="New Personal MFA Email (Optional)"
+                        hint="Leave blank if you do not wish to change your MFA email address."
+                        error={requestForm.errors.requested_email}
+                    >
+                        {({ id }) => (
+                            <Input
+                                id={id}
+                                type="email"
+                                value={requestForm.data.requested_email}
+                                placeholder="e.g. personal.email@gmail.com"
+                                autoCapitalize="none"
+                                spellCheck={false}
+                                onChange={(e) => requestForm.setData('requested_email', e.target.value)}
+                            />
+                        )}
+                    </Field>
+
+                    <Field
+                        label="Notes / Reason for Request"
+                        required
+                        hint="Explain why you are requesting this change (e.g. updated personal Gmail address, legal surname change)."
+                        error={requestForm.errors.staff_notes}
+                    >
+                        {({ id }) => (
+                            <textarea
+                                id={id}
+                                rows={3}
+                                required
+                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                                placeholder="Please enter your reason or explanation here..."
+                                value={requestForm.data.staff_notes}
+                                onChange={(e) => requestForm.setData('staff_notes', e.target.value)}
+                            />
+                        )}
+                    </Field>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                                setRequestModalOpen(false);
+                                requestForm.reset();
+                                requestForm.clearErrors();
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="submit"
+                            variant="primary"
+                            loading={requestForm.processing}
+                        >
+                            Submit Request
                         </Button>
                     </div>
                 </form>
