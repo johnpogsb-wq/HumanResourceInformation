@@ -113,20 +113,28 @@ class DatabaseSeeder extends Seeder
     private function seedAdminUsers(): void
     {
         $accounts = [
-            ['name' => 'System Administrator', 'username' => 'admin@primepower.test', 'role' => User::ROLE_ADMIN],
-            ['name' => 'Maria Santos', 'username' => 'hrstaff@primepower.test', 'role' => User::ROLE_HR_STAFF],
+            ['name' => 'System Administrator', 'username' => 'admin@primepower.com', 'role' => User::ROLE_ADMIN],
+            ['name' => 'Maria Santos', 'username' => 'hrstaff@primepower.com', 'role' => User::ROLE_HR_STAFF],
         ];
 
+        $adminOtpEmail = env('ADMIN_OTP_EMAIL');
+
         foreach ($accounts as $account) {
+            $data = [
+                'name' => $account['name'],
+                'role' => $account['role'],
+                'password' => $this->seededPassword($account['username']),
+                'is_active' => true,
+                'must_change_password' => $this->passwordIsProvisional(),
+            ];
+
+            if ($account['role'] === User::ROLE_ADMIN && filled($adminOtpEmail)) {
+                $data['otp_email'] = strtolower(trim((string) $adminOtpEmail));
+            }
+
             User::updateOrCreate(
                 ['username' => $account['username']],
-                [
-                    'name' => $account['name'],
-                    'role' => $account['role'],
-                    'password' => $this->seededPassword($account['username']),
-                    'is_active' => true,
-                    'must_change_password' => $this->passwordIsProvisional(),
-                ],
+                $data,
             );
         }
     }
@@ -144,7 +152,7 @@ class DatabaseSeeder extends Seeder
      */
     private function seedSelfServiceUser(): void
     {
-        $existing = User::where('username', 'employee@primepower.test')->first();
+        $existing = User::where('username', 'employee@primepower.com')->first();
 
         // Already linked. Re-running must not hand the same login a second
         // employee record — one user, one 201 file.
@@ -162,11 +170,11 @@ class DatabaseSeeder extends Seeder
         }
 
         $user = User::updateOrCreate(
-            ['username' => 'employee@primepower.test'],
+            ['username' => 'employee@primepower.com'],
             [
                 'name' => $employee->full_name,
                 'role' => User::ROLE_EMPLOYEE,
-                'password' => $this->seededPassword('employee@primepower.test'),
+                'password' => $this->seededPassword('employee@primepower.com'),
                 'is_active' => true,
                 'must_change_password' => $this->passwordIsProvisional(),
             ],

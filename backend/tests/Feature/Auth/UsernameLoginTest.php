@@ -30,28 +30,58 @@ class UsernameLoginTest extends TestCase
         $this->assertAuthenticatedAs($user);
     }
 
-    /**
-     * Typing the email into the username box does not sign anybody in. There
-     * is one way in, not two.
-     */
-    public function test_an_email_address_is_not_accepted_as_the_username(): void
+    public function test_a_user_signs_in_with_their_registered_gmail(): void
     {
-        $user = User::factory()->create(['username' => 'mariasantos', 'email' => 'maria@primepower.test']);
+        $user = User::factory()->create([
+            'username' => 'mariasantos@primepower.com',
+            'otp_email' => 'maria@gmail.com',
+        ]);
 
         $this->post('/login', [
-            'username' => $user->email,
+            'username' => 'maria@gmail.com',
             'password' => 'password',
         ]);
 
-        $this->assertGuest();
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_a_user_signs_in_with_username_without_domain(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'gbenavidez@primepower.com',
+            'password' => '4B%gJE8f%Z_TcZ+j',
+        ]);
+
+        $this->post('/login', [
+            'username' => 'gbenavidez',
+            'password' => '4B%gJE8f%Z_TcZ+j',
+        ]);
+
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_a_user_signs_in_with_gmail_and_complex_temporary_password(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'gbenavidez@primepower.com',
+            'otp_email' => 'gavebenavidez@gmail.com',
+            'password' => '4B%gJE8f%Z_TcZ+j',
+        ]);
+
+        $this->post('/login', [
+            'username' => 'gavebenavidez@gmail.com',
+            'password' => '4B%gJE8f%Z_TcZ+j',
+        ]);
+
+        $this->assertAuthenticatedAs($user);
     }
 
     /** The seeded role accounts sign in exactly as they are written. */
     public function test_a_username_in_the_company_shape_signs_in(): void
     {
-        $user = User::factory()->admin()->create(['username' => 'admin@primepower.test']);
+        $user = User::factory()->admin()->create(['username' => 'admin@primepower.com']);
 
-        $this->post('/login', ['username' => 'admin@primepower.test', 'password' => 'password']);
+        $this->post('/login', ['username' => 'admin@primepower.com', 'password' => 'password']);
 
         $this->assertAuthenticatedAs($user);
     }
@@ -105,14 +135,14 @@ class UsernameLoginTest extends TestCase
     {
         $user = User::factory()->create(['username' => null, 'name' => 'Maria Santos']);
 
-        $this->assertSame('mariasantos@primepower.test', $user->username);
+        $this->assertSame('mariasantos@primepower.com', $user->username);
     }
 
     public function test_a_taken_username_gets_a_number_rather_than_colliding(): void
     {
-        User::factory()->create(['username' => 'jdelacruz@primepower.test']);
+        User::factory()->create(['username' => 'jdelacruz@primepower.com']);
 
-        $this->assertSame('jdelacruz2@primepower.test', User::usernameFor('Juan', 'Dela Cruz'));
+        $this->assertSame('jdelacruz2@primepower.com', User::usernameFor('Juan', 'Dela Cruz'));
     }
 
     public function test_a_login_account_needs_no_email(): void
@@ -134,18 +164,25 @@ class UsernameLoginTest extends TestCase
     }
 
     /**
-     * Removed, not hidden. A route that still answered would be a second
-     * factor half-present — the screen gone but the door still open.
+     * Fortify's authenticator-app factor is still gone, and so is the old
+     * per-account switch on Settings → Security.
+     *
+     * `/otp` answers again — the emailed code came back on request — but it is
+     * *enrolment* that decides whether anybody is held there: the address a
+     * code goes to is connected by an administrator on Users & Access, so an
+     * account without one walks past the screen rather than being asked to set
+     * a factor up for itself. That is the half of the old design that has not
+     * returned, and the half this test guards.
      */
-    public function test_the_otp_and_two_factor_routes_no_longer_exist(): void
+    public function test_the_authenticator_app_factor_is_still_gone(): void
     {
         $user = User::factory()->create();
 
-        $this->actingAs($user)->get('/otp')->assertNotFound();
-        $this->actingAs($user)->post('/otp')->assertNotFound();
-        $this->actingAs($user)->put('/settings/security/otp')->assertNotFound();
         $this->actingAs($user)->post('/user/two-factor-authentication')->assertNotFound();
         $this->get('/two-factor-challenge')->assertNotFound();
+
+        // And an account with no connected inbox is not held by the new one.
+        $this->actingAs($user)->get('/otp')->assertRedirect(route('dashboard'));
     }
 
     /**
@@ -155,7 +192,7 @@ class UsernameLoginTest extends TestCase
     public function test_the_forgot_password_and_email_verification_routes_no_longer_exist(): void
     {
         $this->get('/forgot-password')->assertNotFound();
-        $this->post('/forgot-password', ['email' => 'someone@primepower.test'])->assertNotFound();
+        $this->post('/forgot-password', ['email' => 'someone@primepower.com'])->assertNotFound();
         $this->get('/reset-password/some-token')->assertNotFound();
         $this->post('/reset-password')->assertNotFound();
 

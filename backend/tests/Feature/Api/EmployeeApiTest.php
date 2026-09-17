@@ -26,10 +26,10 @@ class EmployeeApiTest extends TestCase
     /** Other ISMERS systems already call this with an email. */
     public function test_an_email_is_still_accepted_where_the_account_has_one(): void
     {
-        $user = User::factory()->hrStaff()->create(['email' => 'integration@primepower.test']);
+        $user = User::factory()->hrStaff()->create(['email' => 'integration@primepower.com']);
 
         $this->postJson('/api/v1/login', [
-            'email' => 'integration@primepower.test',
+            'email' => 'integration@primepower.com',
             'password' => 'password',
         ])->assertOk()->assertJsonPath('user.id', $user->id);
     }

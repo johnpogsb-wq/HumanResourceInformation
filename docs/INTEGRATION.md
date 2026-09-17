@@ -30,11 +30,11 @@ Each consuming team gets its own token. Ask Core 2's admin to issue one from
 POST /api/v1/login
 Content-Type: application/json
 
-{ "username": "integration.core3@primepower.test", "password": "…" }
+{ "username": "integration.core3@primepower.com", "password": "…" }
 ```
 
 ```json
-{ "token": "12|abc…", "user": { "id": 4, "username": "integration.core3@primepower.test", "role": "hr_staff" } }
+{ "token": "12|abc…", "user": { "id": 4, "username": "integration.core3@primepower.com", "role": "hr_staff" } }
 ```
 
 Login accounts are identified by **username**. `email` is still accepted in

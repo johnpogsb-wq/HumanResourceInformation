@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureAccountIsActive;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RequireOtp;
 use App\Http\Middleware\RequirePasswordChange;
 use App\Http\Middleware\RequirePrivacyAcknowledgement;
 use App\Http\Middleware\SecurityHeaders;
@@ -25,6 +26,12 @@ return Application::configure(basePath: dirname(__DIR__))
             // Before the two holds below: a deactivated account is signed out,
             // not asked to change its password or read the privacy notice.
             EnsureAccountIsActive::class,
+            /*
+             * Before both holds below: a session that has not answered its
+             * sign-in code should not be able to change the account's password
+             * or accept the privacy notice on its behalf.
+             */
+            RequireOtp::class,
             // After HandleInertiaRequests, so the redirect it issues is still
             // an Inertia response rather than a full page load.
             RequirePasswordChange::class,
@@ -76,5 +83,23 @@ return Application::configure(basePath: dirname(__DIR__))
         }
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->respond(function (\Symfony\Component\HttpFoundation\Response $response, \Throwable $e, \Illuminate\Http\Request $request) {
+            if ($e instanceof \Illuminate\Auth\AuthenticationException) {
+                if ($request->header('X-Inertia')) {
+                    return \Inertia\Inertia::location(route('login'));
+                }
+
+                return redirect()->guest(route('login'), 303);
+            }
+
+            if ($e instanceof \Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException && $request->is('login')) {
+                if ($request->header('X-Inertia')) {
+                    return \Inertia\Inertia::location(route('login'));
+                }
+
+                return redirect()->route('login', [], 303);
+            }
+
+            return $response;
+        });
     })->create();
