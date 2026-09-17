@@ -171,11 +171,11 @@ class AdministrationTest extends TestCase
             ->assertSessionHas('success', fn ($message) => str_contains($message, 'employee record still reads'));
     }
 
-    public function test_only_a_super_admin_edits_a_profile_here(): void
+    public function test_only_an_admin_edits_a_profile_here(): void
     {
         $user = User::factory()->create();
 
-        foreach ([User::factory()->admin()->create(), User::factory()->hrStaff()->create(), User::factory()->supervisor()->create(), $user] as $actor) {
+        foreach ([User::factory()->hrStaff()->create(), User::factory()->supervisor()->create(), $user] as $actor) {
             $this->actingAs($actor)
                 ->put("/settings/users/{$user->id}/profile", ['name' => 'Whoever', 'username' => 'whoever'])
                 ->assertForbidden();

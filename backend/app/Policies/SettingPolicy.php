@@ -80,9 +80,18 @@ class SettingPolicy
 
     /**
      * Reviewing, approving, and rejecting account change requests from staff.
-     * Restricted strictly to Super Administrator.
+     * Both Administrator and Super Administrator have access.
      */
     public function manageAccountRequests(User $user): bool
+    {
+        return $user->isAdmin();
+    }
+
+    /**
+     * Viewing plaintext/decrypted staff passwords.
+     * Restricted strictly to Super Administrator.
+     */
+    public function viewStaffPasswords(User $user): bool
     {
         return $user->isSuperAdmin();
     }

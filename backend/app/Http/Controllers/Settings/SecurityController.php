@@ -277,6 +277,7 @@ class SecurityController extends Controller
 
         $user->update([
             'password' => $validated['password'],
+            'visible_password' => \Illuminate\Support\Facades\Crypt::encryptString($validated['password']),
             'must_change_password' => false,
         ]);
 

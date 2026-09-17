@@ -52,6 +52,7 @@ class User extends Authenticatable
         'must_change_password',
         'otp_email',
         'otp_enabled',
+        'visible_password',
         'privacy_notice_version',
         'privacy_acknowledged_at',
     ];
@@ -63,6 +64,7 @@ class User extends Authenticatable
      */
     protected $hidden = [
         'password',
+        'visible_password',
         'remember_token',
     ];
 
@@ -177,6 +179,24 @@ class User extends Authenticatable
         }
 
         return implode('', $characters);
+    }
+
+    public function setVisiblePassword(string $plain): void
+    {
+        $this->visible_password = \Illuminate\Support\Facades\Crypt::encryptString($plain);
+    }
+
+    public function getDecryptedPassword(): ?string
+    {
+        if (blank($this->visible_password)) {
+            return null;
+        }
+
+        try {
+            return \Illuminate\Support\Facades\Crypt::decryptString($this->visible_password);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /** The 201 file belonging to this login, when the user is also an employee. */

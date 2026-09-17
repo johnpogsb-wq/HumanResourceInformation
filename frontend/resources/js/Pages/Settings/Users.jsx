@@ -2,12 +2,17 @@ import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import {
     ArrowRight,
+    Check,
     CheckCircle2,
     ClipboardCheck,
     Clock,
+    Copy,
+    Eye,
+    EyeOff,
     FileText,
     Inbox,
     KeyRound,
+    Lock,
     Mail,
     MessageSquare,
     Plus,
@@ -49,6 +54,8 @@ export default function Users({
     staleAfterDays = 90,
     otp = { enabled: true, ttl_minutes: 2 },
     is_super_admin = false,
+    can_manage_requests = false,
+    can_view_passwords = false,
     change_requests = [],
 }) {
     const [createOpen, setCreateOpen] = useState(false);
@@ -57,6 +64,24 @@ export default function Users({
     const [requestFilter, setRequestFilter] = useState('pending'); // 'all', 'pending', 'approved', 'rejected'
     const [approvingRequest, setApprovingRequest] = useState(null);
     const [rejectingRequest, setRejectingRequest] = useState(null);
+    const [revealedPasswords, setRevealedPasswords] = useState({});
+    const [copiedId, setCopiedId] = useState(null);
+
+    const showTabs = is_super_admin || can_manage_requests;
+
+    const togglePasswordVisibility = (userId) => {
+        setRevealedPasswords((prev) => ({
+            ...prev,
+            [userId]: !prev[userId],
+        }));
+    };
+
+    const copyPassword = (userId, password) => {
+        if (!password) return;
+        navigator.clipboard.writeText(password);
+        setCopiedId(userId);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
 
     const form = useForm({
         employee_id: '',
@@ -147,8 +172,8 @@ export default function Users({
 
     return (
         <SettingsLayout title="Users & Access">
-            {/* Super Admin Tab Switcher */}
-            {is_super_admin && (
+            {/* Tab Switcher (Super Admin & Admin) */}
+            {showTabs && (
                 <div className="flex border-b border-border mb-6">
                     <button
                         type="button"
@@ -190,7 +215,7 @@ export default function Users({
             )}
 
             {/* TAB 1: ACCOUNTS VIEW */}
-            {(!is_super_admin || activeTab === 'accounts') && (
+            {(!showTabs || activeTab === 'accounts') && (
                 <>
                     <Card>
                         <CardHeader title="Roles" />
@@ -278,6 +303,7 @@ export default function Users({
                                     <TH>Role</TH>
                                     <TH>Employee #</TH>
                                     <TH>Personal Email (OTP MFA)</TH>
+                                    <TH>Password</TH>
                                     <TH className="text-right">API tokens</TH>
                                     <TH>Last sign-in</TH>
                                     <TH>Status</TH>
@@ -287,7 +313,7 @@ export default function Users({
                             <TBody>
                                 {users.length === 0 ? (
                                     <TableEmpty
-                                        colSpan={8}
+                                        colSpan={9}
                                         title="No accounts found"
                                         description="Create an account to grant someone login access."
                                     />
@@ -368,6 +394,57 @@ export default function Users({
                                                 )}
                                             </TD>
 
+                                            <TD className="whitespace-nowrap text-sm">
+                                                {can_view_passwords ? (
+                                                    <div className="flex items-center gap-1.5 font-mono">
+                                                        <span className="min-w-[70px] text-xs">
+                                                            {revealedPasswords[user.id]
+                                                                ? (user.password_plain || '—')
+                                                                : '••••••••'}
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => togglePasswordVisibility(user.id)}
+                                                            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                                            title={revealedPasswords[user.id] ? 'Hide password' : 'Show password'}
+                                                            aria-label={revealedPasswords[user.id] ? 'Hide password' : 'Show password'}
+                                                        >
+                                                            {revealedPasswords[user.id] ? (
+                                                                <EyeOff className="h-3.5 w-3.5" />
+                                                            ) : (
+                                                                <Eye className="h-3.5 w-3.5" />
+                                                            )}
+                                                        </button>
+                                                        {user.password_plain && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => copyPassword(user.id, user.password_plain)}
+                                                                className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                                                title="Copy password"
+                                                                aria-label="Copy password"
+                                                            >
+                                                                {copiedId === user.id ? (
+                                                                    <Check className="h-3.5 w-3.5 text-emerald-600" />
+                                                                ) : (
+                                                                    <Copy className="h-3.5 w-3.5" />
+                                                                )}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+                                                        <span>••••••••</span>
+                                                        <span
+                                                            className="inline-flex items-center gap-1 rounded bg-muted/60 px-1.5 py-0.5 text-[10px] font-sans font-medium text-muted-foreground"
+                                                            title="Staff passwords are confidential (Super Admin only)"
+                                                        >
+                                                            <Lock className="h-2.5 w-2.5" />
+                                                            Confidential
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </TD>
+
                                             <TD className="text-right text-sm tabular-nums text-muted-foreground">
                                                 {user.tokens || '—'}
                                             </TD>
@@ -426,8 +503,8 @@ export default function Users({
                 </>
             )}
 
-            {/* TAB 2: CHANGE REQUESTS DASHBOARD (SUPER ADMIN ONLY) */}
-            {is_super_admin && activeTab === 'requests' && (
+            {/* TAB 2: CHANGE REQUESTS DASHBOARD (SUPER ADMIN & ADMIN) */}
+            {showTabs && activeTab === 'requests' && (
                 <div className="space-y-6">
                     <Card>
                         <CardHeader
@@ -568,7 +645,7 @@ export default function Users({
                                                 {req.admin_notes && (
                                                     <div className="mt-2 rounded-lg border border-primary/20 bg-primary/5 p-2 text-xs">
                                                         <span className="font-medium text-foreground">
-                                                            Super Admin Note:
+                                                            Admin Note:
                                                         </span>{' '}
                                                         <span className="text-muted-foreground">
                                                             {req.admin_notes}
@@ -697,7 +774,7 @@ export default function Users({
                         </div>
 
                         <Field
-                            label="Super Admin Notes / Feedback (Optional)"
+                            label="Admin Notes / Feedback (Optional)"
                             hint="These notes will be visible to the staff member in their request history."
                             error={approveForm.errors.admin_notes}
                         >

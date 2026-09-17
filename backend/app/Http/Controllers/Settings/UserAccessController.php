@@ -42,10 +42,12 @@ class UserAccessController extends Controller
         Gate::authorize('manageUsers', Setting::class);
 
         $isSuperAdmin = $request->user()->isSuperAdmin();
+        $canManageRequests = $request->user()->can('manageAccountRequests', Setting::class);
+        $canViewPasswords = $request->user()->can('viewStaffPasswords', Setting::class);
         $lastSignIns = $this->lastSignIns();
         $staleBefore = now()->subDays(self::STALE_AFTER_DAYS);
 
-        $changeRequests = $isSuperAdmin
+        $changeRequests = $canManageRequests
             ? AccountChangeRequest::with(['user:id,name,username,otp_email', 'decider:id,name'])
                 ->latest()
                 ->get()
@@ -68,6 +70,8 @@ class UserAccessController extends Controller
 
         return Inertia::render('Settings/Users', [
             'is_super_admin' => $isSuperAdmin,
+            'can_manage_requests' => $canManageRequests,
+            'can_view_passwords' => $canViewPasswords,
             'change_requests' => $changeRequests,
             'users' => User::with('employee:id,user_id,employee_number,first_name,middle_name,last_name,suffix')
                 ->orderBy('name')
@@ -92,6 +96,12 @@ class UserAccessController extends Controller
                     // save: `users.name` and the 201 file are meant to name
                     // one person and nothing here reconciles them.
                     'employee_name' => $user->employee?->full_name,
+                    /*
+                     * Passwords are encrypted at rest with AES-256-CBC.
+                     * Only Super Administrator is authorized to receive decrypted staff passwords.
+                     * For regular administrators, this is strictly null.
+                     */
+                    'password_plain' => $canViewPasswords ? $user->getDecryptedPassword() : null,
                     /*
                      * The personal inbox sign-in codes go to. Shown in full
                      * rather than masked: the administrator is the person who
@@ -209,6 +219,7 @@ class UserAccessController extends Controller
             'username' => $validated['username'] ?? null,
             'role' => $validated['role'],
             'password' => $password,
+            'visible_password' => \Illuminate\Support\Facades\Crypt::encryptString($password),
             'is_active' => true,
             // See RequirePasswordChange: a password the administrator has read
             // is not the account holder's password yet.
@@ -233,7 +244,12 @@ class UserAccessController extends Controller
             }
         }
 
-        $message = "Account created. Username: {$user->username} / temporary password: {$password}.";
+        if ($request->user()->isSuperAdmin()) {
+            $message = "Account created. Username: {$user->username} / temporary password: {$password}.";
+        } else {
+            $message = "Account created for {$user->username}.";
+        }
+
         if ($emailSent) {
             $message .= " Company login credentials and system link have been sent to {$user->otp_email}.";
         } elseif ($mailError) {
@@ -408,6 +424,7 @@ class UserAccessController extends Controller
 
         $user->update([
             'password' => $password,
+            'visible_password' => \Illuminate\Support\Facades\Crypt::encryptString($password),
             'must_change_password' => true,
         ]);
         $emailSent = false;
@@ -420,9 +437,16 @@ class UserAccessController extends Controller
             }
         }
 
-        $message = "New password for {$user->username}: {$password}";
-        if ($emailSent) {
-            $message .= " — emailed to {$user->otp_email}.";
+        if ($request->user()->isSuperAdmin()) {
+            $message = "New password for {$user->username}: {$password}";
+            if ($emailSent) {
+                $message .= " — emailed to {$user->otp_email}.";
+            }
+        } else {
+            $message = "Password has been reset for {$user->username}.";
+            if ($emailSent) {
+                $message .= " New login credentials have been emailed to {$user->otp_email}.";
+            }
         }
 
         return back()->with('success', $message);

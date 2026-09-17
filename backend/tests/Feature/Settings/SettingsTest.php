@@ -133,7 +133,7 @@ class SettingsTest extends TestCase
 
     public function test_an_admin_can_create_an_account(): void
     {
-        $this->actingAs($this->admin())
+        $this->actingAs(User::factory()->superAdmin()->create())
             ->post('/settings/users', [
                 'name' => 'Nina Cruz',
                 'username' => 'nina',
@@ -153,7 +153,7 @@ class SettingsTest extends TestCase
     {
         Notification::fake();
 
-        $this->actingAs($this->admin())
+        $this->actingAs(User::factory()->superAdmin()->create())
             ->post('/settings/users', [
                 'name' => 'Maria Santos',
                 'username' => 'mariasantos',

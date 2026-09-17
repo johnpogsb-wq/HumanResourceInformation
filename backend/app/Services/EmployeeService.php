@@ -184,6 +184,7 @@ class EmployeeService
             'name' => trim("{$data['first_name']} {$data['last_name']}"),
             'username' => User::usernameFor($data['first_name'], $data['last_name']),
             'password' => $this->generatedPassword,
+            'visible_password' => \Illuminate\Support\Facades\Crypt::encryptString($this->generatedPassword),
             'role' => $role,
             'is_active' => true,
             // HR reads this password out to the employee, so two people know

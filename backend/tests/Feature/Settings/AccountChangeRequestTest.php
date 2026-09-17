@@ -124,7 +124,7 @@ class AccountChangeRequestTest extends TestCase
                 ->where('change_requests.0.staff_name', $staff->name));
     }
 
-    public function test_regular_admin_does_not_receive_change_requests(): void
+    public function test_regular_admin_receives_change_requests(): void
     {
         $admin = User::factory()->admin()->create();
         $staff = User::factory()->create();
@@ -143,7 +143,8 @@ class AccountChangeRequestTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Settings/Users')
                 ->where('is_super_admin', false)
-                ->has('change_requests', 0));
+                ->where('can_manage_requests', true)
+                ->has('change_requests', 1));
     }
 
     public function test_super_admin_can_approve_account_change_request(): void
@@ -238,9 +239,9 @@ class AccountChangeRequestTest extends TestCase
         ]);
     }
 
-    public function test_non_super_admin_cannot_approve_or_reject_requests(): void
+    public function test_non_admin_cannot_approve_or_reject_requests(): void
     {
-        $admin = User::factory()->admin()->create();
+        $hrStaff = User::factory()->hrStaff()->create();
         $staff = User::factory()->create();
 
         $request = AccountChangeRequest::create([
@@ -251,12 +252,12 @@ class AccountChangeRequestTest extends TestCase
             'status' => AccountChangeRequest::STATUS_PENDING,
         ]);
 
-        // Regular admin is forbidden
-        $this->actingAs($admin)
+        // HR staff is forbidden
+        $this->actingAs($hrStaff)
             ->post("/settings/users/requests/{$request->id}/approve", [])
             ->assertForbidden();
 
-        $this->actingAs($admin)
+        $this->actingAs($hrStaff)
             ->post("/settings/users/requests/{$request->id}/reject", ['admin_notes' => 'No'])
             ->assertForbidden();
 
