@@ -21,7 +21,7 @@ class TestPhpMailerCommand extends Command
 
         $host = config('mail.mailers.smtp.host', env('MAIL_HOST', 'smtp.gmail.com'));
         $port = config('mail.mailers.smtp.port', env('MAIL_PORT', 587));
-        $from = config('mail.from.address', env('MAIL_FROM_ADDRESS', 'noreply@primepowersystem.com'));
+        $from = config('mail.from.address', env('MAIL_FROM_ADDRESS', 'primepowerhris@gmail.com'));
         $fromName = config('mail.from.name', env('MAIL_FROM_NAME', 'PrimePower Manpower HRIS'));
 
         $this->info("Mailer Engine: PHPMailer");

@@ -40,7 +40,7 @@ class AccountProvisioned extends Notification
             default => ucfirst($this->role),
         };
 
-        $fromAddress = config('mail.from.address', 'noreply@primepowersystem.com');
+        $fromAddress = config('mail.from.address', 'primepowerhris@gmail.com');
         $fromName = config('mail.from.name', 'PrimePower Manpower HRIS');
 
         return (new MailMessage)

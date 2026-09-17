@@ -112,7 +112,7 @@ return [
     */
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'noreply@primepowersystem.com'),
+        'address' => env('MAIL_FROM_ADDRESS', 'primepowerhris@gmail.com'),
         'name' => env('MAIL_FROM_NAME', 'PrimePower Manpower HRIS'),
     ],
 
