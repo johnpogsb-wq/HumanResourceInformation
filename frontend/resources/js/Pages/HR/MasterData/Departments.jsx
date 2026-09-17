@@ -329,36 +329,7 @@ export default function Departments({
 
             {/* VISUAL HIERARCHY TREE */}
             <div className="space-y-8">
-                    {/* Top Root Node: Company */}
-                    <div className="flex flex-col items-center text-center">
-                        <div className="relative z-10 w-full max-w-md rounded-2xl border-2 border-primary/40 bg-card p-5 shadow-md">
-                            <div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-                                <Building2 className="h-6 w-6" />
-                            </div>
-                            <h2 className="mt-3 text-base font-extrabold tracking-tight text-foreground">
-                                PRIMEPOWER MANPOWER SERVICES
-                            </h2>
-                            <p className="text-xs font-medium text-muted-foreground">
-                                Enterprise Organization Chart & Directory
-                            </p>
-                            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 border-t border-border pt-3">
-                                <Badge variant="secondary" className="font-mono text-xs">
-                                    {summary.total} Departments
-                                </Badge>
-                                <Badge variant="secondary" className="font-mono text-xs">
-                                    {totalPositions} Positions
-                                </Badge>
-                                <Badge variant="primary" className="font-mono text-xs">
-                                    {totalStaff} Active Staff
-                                </Badge>
-                            </div>
-                        </div>
-
-                        {/* Trunk line connecting to departments */}
-                        <div className="h-8 w-0.5 bg-primary/30" />
-                    </div>
-
-                    {/* Department Nodes Grid / Branches */}
+                {/* Department Nodes Grid / Branches */}
                     {filteredDepartments.length === 0 ? (
                         <Card>
                             <CardBody className="py-12 text-center">
