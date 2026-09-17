@@ -25,6 +25,9 @@ if [ "$RUN_MIGRATIONS" = "true" ]; then
     # Does nothing unless HRIS_ADMIN_PASSWORD is set in the panel. The way back
     # in when nobody knows the admin password and there is no terminal.
     php artisan hris:set-admin-password
+
+    # Automatically activate MFA on admin accounts with ADMIN_OTP_EMAIL
+    php artisan hris:bind-admin-otp || true
 fi
 
 php artisan config:cache
