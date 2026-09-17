@@ -307,15 +307,14 @@ export default function Positions({
 
     return (
         <AppLayout
-            title="Departments & Positions"
+            title="Positions Registry"
             breadcrumbs={[
                 { label: 'Human Resource' },
                 { label: 'Employee Information', href: '/hr/employees' },
-                { label: 'Departments & Positions' },
+                { label: 'Organization Chart', href: '/hr/departments' },
+                { label: 'Positions' },
             ]}
         >
-            <OrgTabs currentTab="positions" />
-
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
                 <StatCard
                     label="Positions"
