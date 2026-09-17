@@ -552,7 +552,15 @@ export function isItemActive(item, currentUrl) {
  * that silently loses its label for one role is the bug this guards against.
  */
 export function visibleGroups(groups, role) {
-    const allowed = (entry) => !entry.roles || entry.roles.includes(role);
+    const isSuperAdmin = role === 'super_admin';
+    const isAdmin = isSuperAdmin || role === 'admin';
+
+    const allowed = (entry) => {
+        if (!entry.roles) return true;
+        if (isSuperAdmin) return true;
+        if (entry.roles.includes('admin') && isAdmin) return true;
+        return entry.roles.includes(role);
+    };
 
     return groups
         .map((group) => ({
