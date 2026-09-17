@@ -291,7 +291,7 @@ export default function Users({
                                     onClick={() => setCreateOpen(true)}
                                 >
                                     <Plus className="h-4 w-4" />
-                                    New account
+                                    Create account
                                 </Button>
                             }
                         />
@@ -865,7 +865,7 @@ export default function Users({
                 )}
             </Modal>
 
-            {/* New account modal */}
+            {/* Create account modal */}
             <Modal
                 show={createOpen}
                 onClose={() => {
@@ -873,7 +873,7 @@ export default function Users({
                     form.reset();
                     form.clearErrors();
                 }}
-                title="New Account"
+                title="Create Account"
                 description="A temporary password and company login link are generated and emailed to the user's Gmail inbox."
                 maxWidth="lg"
             >
