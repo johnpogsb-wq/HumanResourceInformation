@@ -92,16 +92,7 @@ class OtpService
         ])->save();
 
         try {
-            if (app()->environment('testing')) {
-                $user->notify(new LoginOtp($code, $this->ttl()));
-            } else {
-                $phpMailer = app(PhpMailerService::class);
-                $sent = $phpMailer->sendLoginOtp((string) $user->otp_email, $code, $this->ttl(), (string) $user->name);
-
-                if (! $sent) {
-                    $user->notify(new LoginOtp($code, $this->ttl()));
-                }
-            }
+            $user->notify(new LoginOtp($code, $this->ttl()));
         } catch (\Throwable $exception) {
             // The address and the reason, never the code.
             Log::warning('Sign-in code could not be sent.', [
