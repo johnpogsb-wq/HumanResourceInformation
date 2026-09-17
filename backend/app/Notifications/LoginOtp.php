@@ -33,7 +33,7 @@ class LoginOtp extends Notification
         $minutes = max(1, (int) ceil($this->ttlSeconds / 60));
         $timeLabel = $minutes === 1 ? '1 minute (60 seconds)' : "{$minutes} minutes ({$this->ttlSeconds} seconds)";
 
-        $fromAddress = config('mail.from.address', 'primepowerhris@gmail.com');
+        $fromAddress = config('mail.from.address', 'primepowerhris5@gmail.com');
         $fromName = config('mail.from.name', 'PrimePower Manpower HRIS');
 
         return (new MailMessage)

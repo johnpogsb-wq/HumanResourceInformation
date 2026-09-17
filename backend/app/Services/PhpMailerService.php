@@ -50,7 +50,7 @@ class PhpMailerService
             $mail->Timeout = 15;
 
             // Sender and Recipient
-            $fromAddress = config('mail.from.address', env('MAIL_FROM_ADDRESS', 'primepowerhris@gmail.com'));
+            $fromAddress = config('mail.from.address', env('MAIL_FROM_ADDRESS', 'primepowerhris5@gmail.com'));
             $fromName = config('mail.from.name', env('MAIL_FROM_NAME', 'PrimePower Manpower HRIS'));
 
             $mail->setFrom($fromAddress, $fromName);
