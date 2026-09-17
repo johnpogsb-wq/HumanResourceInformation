@@ -40,7 +40,11 @@ class AccountProvisioned extends Notification
             default => ucfirst($this->role),
         };
 
+        $fromAddress = config('mail.from.address', 'noreply@primepowersystem.com');
+        $fromName = config('mail.from.name', 'PrimePower Manpower HRIS');
+
         return (new MailMessage)
+            ->from($fromAddress, $fromName)
             ->subject('Your PrimePower HRIS Account Credentials')
             ->greeting("Hello {$notifiable->name},")
             ->line('An account has been created for you on the PrimePower Human Resource Information System.')
