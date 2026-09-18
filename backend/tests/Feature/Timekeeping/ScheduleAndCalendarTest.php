@@ -10,6 +10,7 @@ use App\Models\Shift;
 use App\Models\User;
 use App\Services\LeaveService;
 use Illuminate\Support\Carbon;
+use Inertia\Testing\AssertableInertia;
 
 /** Shifts, rest days and holidays — and that Leave reads the same calendar. */
 class ScheduleAndCalendarTest extends TimekeepingTestCase
@@ -149,15 +150,15 @@ class ScheduleAndCalendarTest extends TimekeepingTestCase
         $this->actingAs($admin)
             ->get('/hr/timekeeping/shifts')
             ->assertOk()
-            ->assertInertia(fn (\Inertia\Testing\AssertableInertia $page) => $page
-                ->where('can.createShift', true)
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('can.createShift', true),
             );
 
         $this->actingAs($hr)
             ->get('/hr/timekeeping/shifts')
             ->assertOk()
-            ->assertInertia(fn (\Inertia\Testing\AssertableInertia $page) => $page
-                ->where('can.createShift', false)
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('can.createShift', false),
             );
     }
 }
