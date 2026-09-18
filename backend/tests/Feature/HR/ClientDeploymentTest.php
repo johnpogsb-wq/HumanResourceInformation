@@ -396,7 +396,7 @@ class ClientDeploymentTest extends TestCase
                 ->where('clients.0.employees.0.id', $employee->id)
                 ->where('clients.0.employees.0.contract_start', '2026-01-01')
                 ->where('clients.0.employees.0.contract_end', '2026-12-31')
-                ->where('clients.0.employees.0.is_wage_compliant', true)
+                ->where('clients.0.employees.0.is_wage_compliant', true),
             );
     }
 
