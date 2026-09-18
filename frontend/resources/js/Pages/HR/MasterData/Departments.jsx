@@ -76,7 +76,6 @@ export default function Departments({
     departmentOptions = [],
     moveTargets = [],
 }) {
-
     const [searchQuery, setSearchQuery] = useState(filters.search ?? '');
     const [selectedDeptId, setSelectedDeptId] = useState(null);
     const [expandedDeptIds, setExpandedDeptIds] = useState(
@@ -219,8 +218,10 @@ export default function Departments({
     });
 
     const activeRate = summary.total > 0 ? (summary.active / summary.total) * 100 : 0;
-    const totalStaff = summary.total_employees ?? departments.reduce((acc, d) => acc + d.employees_count, 0);
-    const totalPositions = summary.total_positions ?? departments.reduce((acc, d) => acc + d.positions_count, 0);
+    const totalStaff =
+        summary.total_employees ?? departments.reduce((acc, d) => acc + d.employees_count, 0);
+    const totalPositions =
+        summary.total_positions ?? departments.reduce((acc, d) => acc + d.positions_count, 0);
 
     const selectedDept = selectedDeptId
         ? filteredDepartments.find((d) => d.id === selectedDeptId) ||
@@ -282,7 +283,7 @@ export default function Departments({
                                 variant="outline"
                                 size="sm"
                                 onClick={() => setSelectedDeptId(null)}
-                                className="h-9 gap-1.5 text-xs font-semibold shrink-0"
+                                className="h-9 shrink-0 gap-1.5 text-xs font-semibold"
                             >
                                 <ArrowLeft className="h-4 w-4" />
                                 <span>All Departments</span>
@@ -293,7 +294,11 @@ export default function Departments({
                             <Input
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder={selectedDept ? `Search in ${selectedDept.name}...` : "Search departments, positions, staff..."}
+                                placeholder={
+                                    selectedDept
+                                        ? `Search in ${selectedDept.name}...`
+                                        : 'Search departments, positions, staff...'
+                                }
                                 className="pl-9 text-xs"
                             />
                             {searchQuery && (
@@ -311,7 +316,9 @@ export default function Departments({
                     <div className="flex flex-wrap items-center gap-2">
                         <Button
                             variant="secondary"
-                            onClick={() => openPosModal(selectedDeptId ? String(selectedDeptId) : '')}
+                            onClick={() =>
+                                openPosModal(selectedDeptId ? String(selectedDeptId) : '')
+                            }
                             className="h-9 gap-1.5 text-xs font-semibold"
                         >
                             <Plus className="h-4 w-4" />
@@ -334,16 +341,16 @@ export default function Departments({
                     /* VIEW: SPECIFIC DEPARTMENT POSITIONS */
                     <div className="space-y-6">
                         {/* Quick Department Switcher Ribbon */}
-                        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-card p-2 shadow-xs">
+                        <div className="shadow-xs flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-card p-2">
                             <button
                                 type="button"
                                 onClick={() => setSelectedDeptId(null)}
-                                className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                                className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                             >
                                 <ArrowLeft className="h-3.5 w-3.5" />
                                 <span>All Departments</span>
                             </button>
-                            <div className="h-4 w-px bg-border mx-1" />
+                            <div className="mx-1 h-4 w-px bg-border" />
                             {departments.map((d) => {
                                 const isCur = d.id === selectedDeptId;
                                 return (
@@ -354,7 +361,7 @@ export default function Departments({
                                         className={cn(
                                             'rounded-lg px-3 py-1.5 text-xs transition-all',
                                             isCur
-                                                ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
+                                                ? 'shadow-xs bg-primary font-semibold text-primary-foreground'
                                                 : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
                                         )}
                                     >
@@ -376,19 +383,23 @@ export default function Departments({
                                             <h2 className="text-lg font-bold text-foreground">
                                                 {selectedDept.name}
                                             </h2>
-                                            <Badge variant="outline" className="font-mono text-xs font-semibold text-primary">
+                                            <Badge
+                                                variant="outline"
+                                                className="font-mono text-xs font-semibold text-primary"
+                                            >
                                                 {selectedDept.code}
                                             </Badge>
                                         </div>
                                         <p className="mt-0.5 text-xs text-muted-foreground">
-                                            {selectedDept.employees_count} active staff &bull; {selectedPositions.length} positions
+                                            {selectedDept.employees_count} active staff &bull;{' '}
+                                            {selectedPositions.length} positions
                                         </p>
                                     </div>
                                 </div>
 
                                 <Button
                                     onClick={() => openPosModal(selectedDept.id)}
-                                    className="h-9 gap-1.5 text-xs font-semibold self-start sm:self-auto"
+                                    className="h-9 gap-1.5 self-start text-xs font-semibold sm:self-auto"
                                 >
                                     <Plus className="h-4 w-4" />
                                     <span>Add Position to {selectedDept.code}</span>
@@ -405,7 +416,8 @@ export default function Departments({
                                         No positions configured for {selectedDept.name}
                                     </p>
                                     <p className="mt-1 text-xs text-muted-foreground">
-                                        Get started by adding the first job position to this department.
+                                        Get started by adding the first job position to this
+                                        department.
                                     </p>
                                     <Button
                                         onClick={() => openPosModal(selectedDept.id)}
@@ -423,7 +435,7 @@ export default function Departments({
                                     return (
                                         <div
                                             key={pos.id}
-                                            className="flex flex-col rounded-xl border border-border bg-card p-4 shadow-xs transition-shadow hover:shadow-md"
+                                            className="shadow-xs flex flex-col rounded-xl border border-border bg-card p-4 transition-shadow hover:shadow-md"
                                         >
                                             <div className="border-b border-border/60 pb-3">
                                                 <div className="flex items-start justify-between gap-2">
@@ -434,34 +446,26 @@ export default function Departments({
                                                                 {pos.title}
                                                             </h3>
                                                         </div>
-                                                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                                            <span className="font-mono text-[11px] text-muted-foreground">
-                                                                {pos.code}
-                                                            </span>
-                                                            {pos.salary_grade && (
-                                                                <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
-                                                                    SG-{pos.salary_grade}
-                                                                </Badge>
-                                                            )}
-                                                            <SalaryBandBadge min={pos.min_salary} max={pos.max_salary} />
-                                                        </div>
                                                     </div>
-                                                    <Badge variant={holders.length > 0 ? 'secondary' : 'muted'} className="text-xs font-mono">
+                                                    <Badge
+                                                        variant={
+                                                            holders.length > 0
+                                                                ? 'secondary'
+                                                                : 'muted'
+                                                        }
+                                                        className="font-mono text-xs"
+                                                    >
                                                         {holders.length} Staff
                                                     </Badge>
                                                 </div>
                                             </div>
 
                                             {/* Assigned Staff Members */}
-                                            <div className="mt-3 flex-1 space-y-2">
-                                                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                                    Assigned Employees ({holders.length})
-                                                </p>
-                                                {holders.length === 0 ? (
-                                                    <p className="py-2 text-xs italic text-muted-foreground/80">
-                                                        Position is currently unstaffed.
+                                            {holders.length > 0 && (
+                                                <div className="mt-3 flex-1 space-y-2">
+                                                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                                        Assigned Employees ({holders.length})
                                                     </p>
-                                                ) : (
                                                     <div className="space-y-1.5">
                                                         {holders.map((emp) => (
                                                             <div
@@ -481,15 +485,19 @@ export default function Departments({
                                                                         />
                                                                     ) : (
                                                                         <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
-                                                                            {initials(emp.full_name)}
+                                                                            {initials(
+                                                                                emp.full_name,
+                                                                            )}
                                                                         </span>
                                                                     )}
                                                                     <div className="min-w-0 flex-1">
-                                                                        <p className="truncate text-xs font-medium text-foreground group-hover:text-primary transition-colors">
+                                                                        <p className="truncate text-xs font-medium text-foreground transition-colors group-hover:text-primary">
                                                                             {emp.full_name}
                                                                         </p>
                                                                         <p className="truncate font-mono text-[10px] text-muted-foreground">
-                                                                            {emp.employee_number}
+                                                                            {
+                                                                                emp.employee_number
+                                                                            }
                                                                         </p>
                                                                     </div>
                                                                 </Link>
@@ -497,7 +505,9 @@ export default function Departments({
                                                                 <Button
                                                                     variant="ghost"
                                                                     size="sm"
-                                                                    onClick={() => proposeMove(emp, pos)}
+                                                                    onClick={() =>
+                                                                        proposeMove(emp, pos)
+                                                                    }
                                                                     className="h-6 px-1.5 text-[11px] text-muted-foreground hover:text-primary"
                                                                     title="Reassign to another position"
                                                                 >
@@ -507,8 +517,8 @@ export default function Departments({
                                                             </div>
                                                         ))}
                                                     </div>
-                                                )}
-                                            </div>
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}
@@ -519,7 +529,8 @@ export default function Departments({
                         {selectedUnassigned.length > 0 && (
                             <div className="rounded-xl border border-amber-300 bg-amber-50/50 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
                                 <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-                                    Unassigned Employees in {selectedDept.name} ({selectedUnassigned.length}):
+                                    Unassigned Employees in {selectedDept.name} (
+                                    {selectedUnassigned.length}):
                                 </p>
                                 <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                                     {selectedUnassigned.map((emp) => (
@@ -536,7 +547,12 @@ export default function Departments({
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                onClick={() => proposeMove(emp, { id: null, title: 'Unassigned' })}
+                                                onClick={() =>
+                                                    proposeMove(emp, {
+                                                        id: null,
+                                                        title: 'Unassigned',
+                                                    })
+                                                }
                                                 className="h-6 px-2 text-[11px] text-primary"
                                             >
                                                 Assign
@@ -547,73 +563,71 @@ export default function Departments({
                             </div>
                         )}
                     </div>
+                ) : /* VIEW: ALL DEPARTMENTS CARDS */
+                filteredDepartments.length === 0 ? (
+                    <Card>
+                        <CardBody className="py-12 text-center">
+                            <p className="text-sm font-medium text-foreground">
+                                No organization records match &ldquo;{searchQuery}&rdquo;
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                Try clearing your search or adding a new department.
+                            </p>
+                        </CardBody>
+                    </Card>
                 ) : (
-                    /* VIEW: ALL DEPARTMENTS CARDS */
-                    filteredDepartments.length === 0 ? (
-                        <Card>
-                            <CardBody className="py-12 text-center">
-                                <p className="text-sm font-medium text-foreground">
-                                    No organization records match &ldquo;{searchQuery}&rdquo;
-                                </p>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                    Try clearing your search or adding a new department.
-                                </p>
-                            </CardBody>
-                        </Card>
-                    ) : (
-                        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                            {filteredDepartments.map((dept) => {
-                                const positions = dept.positions ?? [];
+                    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                        {filteredDepartments.map((dept) => {
+                            const positions = dept.positions ?? [];
 
-                                return (
-                                    <div
-                                        key={dept.id}
-                                        onClick={() => setSelectedDeptId(dept.id)}
-                                        className="group flex flex-col justify-between rounded-xl border border-border bg-card p-5 shadow-xs transition-all duration-200 hover:border-primary/60 hover:shadow-md cursor-pointer"
-                                    >
-                                        <div>
-                                            <div className="flex items-start justify-between gap-3">
-                                                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-                                                    <Building2 className="h-5 w-5" />
-                                                </span>
-                                                <Badge variant="outline" className="font-mono text-xs font-semibold text-primary">
-                                                    {dept.code}
-                                                </Badge>
-                                            </div>
-
-                                            <h3 className="mt-4 text-base font-bold text-foreground group-hover:text-primary transition-colors">
-                                                {dept.name}
-                                            </h3>
-
-                                            <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
-                                                {dept.description || 'Click to view positions and assigned personnel in this department.'}
-                                            </p>
+                            return (
+                                <div
+                                    key={dept.id}
+                                    onClick={() => setSelectedDeptId(dept.id)}
+                                    className="shadow-xs group flex cursor-pointer flex-col justify-between rounded-xl border border-border bg-card p-5 transition-all duration-200 hover:border-primary/60 hover:shadow-md"
+                                >
+                                    <div>
+                                        <div className="flex items-start justify-between gap-3">
+                                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                                                <Building2 className="h-5 w-5" />
+                                            </span>
+                                            <Badge
+                                                variant="outline"
+                                                className="font-mono text-xs font-semibold text-primary"
+                                            >
+                                                {dept.code}
+                                            </Badge>
                                         </div>
 
-                                        <div className="mt-5 border-t border-border/60 pt-4">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                                    <span className="flex items-center gap-1 font-medium text-foreground">
-                                                        <Users className="h-3.5 w-3.5 text-primary" />
-                                                        {dept.employees_count} staff
-                                                    </span>
-                                                    <span>&bull;</span>
-                                                    <span className="flex items-center gap-1">
-                                                        <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
-                                                        {positions.length} positions
-                                                    </span>
-                                                </div>
+                                        <h3 className="mt-4 text-base font-bold text-foreground transition-colors group-hover:text-primary">
+                                            {dept.name}
+                                        </h3>
+                                    </div>
 
-                                                <span className="flex items-center text-xs font-semibold text-primary group-hover:translate-x-0.5 transition-transform">
-                                                    Positions <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                                    <div className="mt-5 border-t border-border/60 pt-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                <span className="flex items-center gap-1 font-medium text-foreground">
+                                                    <Users className="h-3.5 w-3.5 text-primary" />
+                                                    {dept.employees_count} staff
+                                                </span>
+                                                <span>&bull;</span>
+                                                <span className="flex items-center gap-1">
+                                                    <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
+                                                    {positions.length} positions
                                                 </span>
                                             </div>
+
+                                            <span className="flex items-center text-xs font-semibold text-primary transition-transform group-hover:translate-x-0.5">
+                                                Positions{' '}
+                                                <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                                            </span>
                                         </div>
                                     </div>
-                                );
-                            })}
-                        </div>
-                    )
+                                </div>
+                            );
+                        })}
+                    </div>
                 )}
             </div>
 
@@ -638,13 +652,20 @@ export default function Departments({
                     <Field label="Code" required error={deptForm.errors.code}>
                         <Input
                             value={deptForm.data.code}
-                            onChange={(e) => deptForm.setData('code', e.target.value.toUpperCase())}
+                            onChange={(e) =>
+                                deptForm.setData('code', e.target.value.toUpperCase())
+                            }
                             placeholder="OPS"
-                            className="uppercase font-mono"
+                            className="font-mono uppercase"
                         />
                     </Field>
 
-                    <Field label="Name" required error={deptForm.errors.name} className="sm:col-span-2">
+                    <Field
+                        label="Name"
+                        required
+                        error={deptForm.errors.name}
+                        className="sm:col-span-2"
+                    >
                         <Input
                             value={deptForm.data.name}
                             onChange={(e) => deptForm.setData('name', e.target.value)}
@@ -652,7 +673,11 @@ export default function Departments({
                         />
                     </Field>
 
-                    <Field label="Description" error={deptForm.errors.description} className="sm:col-span-3">
+                    <Field
+                        label="Description"
+                        error={deptForm.errors.description}
+                        className="sm:col-span-3"
+                    >
                         <Textarea
                             rows={2}
                             value={deptForm.data.description}
@@ -693,7 +718,12 @@ export default function Departments({
                 }
             >
                 <form onSubmit={submitPos} className="grid gap-4 sm:grid-cols-2">
-                    <Field label="Department" required error={posForm.errors.department_id} className="sm:col-span-2">
+                    <Field
+                        label="Department"
+                        required
+                        error={posForm.errors.department_id}
+                        className="sm:col-span-2"
+                    >
                         <Select
                             value={posForm.data.department_id}
                             onChange={(e) => posForm.setData('department_id', e.target.value)}
@@ -707,9 +737,11 @@ export default function Departments({
                     <Field label="Code" required error={posForm.errors.code}>
                         <Input
                             value={posForm.data.code}
-                            onChange={(e) => posForm.setData('code', e.target.value.toUpperCase())}
+                            onChange={(e) =>
+                                posForm.setData('code', e.target.value.toUpperCase())
+                            }
                             placeholder="OPS-DRV"
-                            className="uppercase font-mono"
+                            className="font-mono uppercase"
                         />
                     </Field>
 
@@ -822,7 +854,7 @@ export default function Departments({
                         </div>
                     )}
 
-                    <div className="max-h-60 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                    <div className="max-h-60 divide-y divide-border overflow-y-auto rounded-lg border border-border">
                         {destinations.length === 0 ? (
                             <p className="p-4 text-center text-xs text-muted-foreground">
                                 No positions found matching your search.
@@ -837,27 +869,30 @@ export default function Departments({
                                         type="button"
                                         onClick={() => pickMoveTarget(dest)}
                                         className={cn(
-                                            'w-full flex items-center justify-between p-3 text-left text-xs transition-colors',
+                                            'flex w-full items-center justify-between p-3 text-left text-xs transition-colors',
                                             isSelected
-                                                ? 'bg-primary/10 text-primary font-medium'
-                                                : 'hover:bg-secondary/50 text-foreground',
+                                                ? 'bg-primary/10 font-medium text-primary'
+                                                : 'text-foreground hover:bg-secondary/50',
                                         )}
                                     >
                                         <div>
                                             <p className="font-semibold">{dest.title}</p>
-                                            <p className="text-muted-foreground font-mono text-[10.5px]">
+                                            <p className="font-mono text-[10.5px] text-muted-foreground">
                                                 {dest.code} &bull; {dest.department}
                                             </p>
                                         </div>
-                                        {isSelected && <Check className="h-4 w-4 text-primary" />}
+                                        {isSelected && (
+                                            <Check className="h-4 w-4 text-primary" />
+                                        )}
                                     </button>
                                 );
                             })
                         )}
                     </div>
 
-                    <p className="text-[11px] text-muted-foreground italic">
-                        Note: Reassignment updates the employee&rsquo;s official position and department. Base pay remains unchanged until adjusted in Compensation.
+                    <p className="text-[11px] italic text-muted-foreground">
+                        Note: Reassignment updates the employee&rsquo;s official position and
+                        department. Base pay remains unchanged until adjusted in Compensation.
                     </p>
                 </div>
             </Modal>
