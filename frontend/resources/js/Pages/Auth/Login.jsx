@@ -113,6 +113,43 @@ export default function Login({ status }) {
             />
 
             {/*
+                The company's own mark as a watermark behind the card.
+
+                **Rendered as a white silhouette rather than the full-colour
+                artwork**, and that is the decision worth explaining. At
+                watermark opacity the real logo puts a red wordmark over a blue
+                globe onto a blue field, and the red at 6% against #007DCC
+                turns a muddy violet — the artwork does not read as itself, it
+                reads as a printing fault. `grayscale` then `brightness(0)`
+                then `invert` collapses every colour to one, so what shows is
+                the *shape*: the globe's meridians and the arc of the wordmark,
+                which is what the mark is recognisable by from across a room.
+                The filter only touches opaque pixels, so the PNG's real
+                transparency is untouched and no box appears around it.
+
+                **Wider than the card on purpose.** The card is opaque and
+                centred, so a watermark that fits inside it would be a file
+                nobody ever sees. At 78rem it runs past the card on every side
+                and what reads is the halo around the card — brand presence
+                without anything competing with the two fields somebody came
+                here to fill.
+
+                6% is the number, and it is deliberately near the floor. An
+                earlier version of this watermark ran at 7% for the same
+                reason: a logo behind a sign-in form is decoration, and
+                decoration that can be read as content is decoration that has
+                gone wrong. It sits above the three gradient layers and below
+                the card, which is the only stacking order where it is visible
+                at all and still cannot touch the form.
+            */}
+            <img
+                src="/images/logo.png"
+                alt=""
+                aria-hidden="true"
+                className="pointer-events-none absolute left-1/2 top-1/2 w-[78rem] max-w-none -translate-x-1/2 -translate-y-1/2 opacity-[0.06] [filter:grayscale(1)_brightness(0)_invert(1)]"
+            />
+
+            {/*
                 `ring-1` matters more than it looks: a white card on a mid-blue
                 field has no edge of its own, and the hairline is what stops it
                 reading as a hole cut in the background.
@@ -175,15 +212,25 @@ export default function Login({ status }) {
                             is paired with text.
                         */}
                         {/*
-                            One arbitrary `filter` rather than Tailwind's
-                            `drop-shadow-*` utility, because two stacked
-                            shadows are needed and the utility takes one. The
-                            two must not both be written: the utility sets
-                            `--tw-drop-shadow` and an arbitrary `filter`
-                            replaces the whole property, so whichever loses is
-                            dead code that looks live.
+                            **One tight shadow, and the wide one it replaced is
+                            the lesson.** The first attempt paired a 10px glow
+                            at 45% with a 28px one at 25% — and a 28px radius
+                            is wider than the gaps between the globe and the
+                            wordmark arcing over it, so the halo filled those
+                            gaps and fused into a solid pale blob. The owner
+                            had just asked for the white disc to be removed,
+                            and it had been redrawn in light: the thing looked
+                            like a disc again while no disc was in the markup.
+                            A contrast fix that recreates what it replaced is
+                            not a fix.
+
+                            6px traces the letterforms instead of filling
+                            between them, which is all the black subtitle
+                            needs — its strokes are thin, so even a small lift
+                            separates them from the navy. The globe's own edge
+                            is mid-blue and was never the part at risk.
                         */}
-                        <LogoMark className="h-40 w-40 [filter:drop-shadow(0_0_10px_hsl(var(--hero-foreground)/0.45))_drop-shadow(0_0_28px_hsl(var(--hero-foreground)/0.25))]" />
+                        <LogoMark className="h-40 w-40 [filter:drop-shadow(0_0_6px_hsl(var(--hero-foreground)/0.3))]" />
 
                         <p className="mt-9 text-[11px] font-semibold uppercase tracking-[0.22em] text-hero-muted">
                             {name} Manpower
@@ -317,7 +364,7 @@ export default function Login({ status }) {
                                 loading={processing}
                                 disabled={processing}
                             >
-                                Login to Dashboard
+                                Log In
                             </Button>
                         </form>
                     </div>

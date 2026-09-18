@@ -6,6 +6,7 @@ use App\Models\Department;
 use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Crypt;
 
 class DatabaseSeeder extends Seeder
 {
@@ -125,7 +126,7 @@ class DatabaseSeeder extends Seeder
                 'name' => $account['name'],
                 'role' => $account['role'],
                 'password' => $plain,
-                'visible_password' => \Illuminate\Support\Facades\Crypt::encryptString($plain),
+                'visible_password' => Crypt::encryptString($plain),
                 'is_active' => true,
                 'must_change_password' => $this->passwordIsProvisional(),
             ];
@@ -178,7 +179,7 @@ class DatabaseSeeder extends Seeder
                 'name' => $employee->full_name,
                 'role' => User::ROLE_EMPLOYEE,
                 'password' => $plainEmp,
-                'visible_password' => \Illuminate\Support\Facades\Crypt::encryptString($plainEmp),
+                'visible_password' => Crypt::encryptString($plainEmp),
                 'is_active' => true,
                 'must_change_password' => $this->passwordIsProvisional(),
             ],
@@ -216,7 +217,7 @@ class DatabaseSeeder extends Seeder
                 'username' => $username,
                 'role' => User::ROLE_SUPERVISOR,
                 'password' => $plainSup,
-                'visible_password' => \Illuminate\Support\Facades\Crypt::encryptString($plainSup),
+                'visible_password' => Crypt::encryptString($plainSup),
                 'is_active' => true,
                 'must_change_password' => $this->passwordIsProvisional(),
             ]);

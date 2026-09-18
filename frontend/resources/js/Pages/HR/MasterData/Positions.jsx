@@ -296,7 +296,7 @@ export default function Positions({
             breadcrumbs={[
                 { label: 'Human Resource' },
                 { label: 'Employee Information', href: '/hr/employees' },
-                { label: 'Organization Chart', href: '/hr/departments' },
+                { label: 'Departments', href: '/hr/departments' },
                 { label: 'Positions' },
             ]}
         >
@@ -306,7 +306,6 @@ export default function Positions({
                     value={summary.total}
                     icon={Briefcase}
                     tone={summary.total > 0 ? 'primary' : 'muted'}
-                    hint="job titles on the org chart"
                 />
 
                 <MeterCard
@@ -317,7 +316,6 @@ export default function Positions({
                     icon={Users}
                     tone="success"
                     iconTone="success"
-                    hint={`of ${summary.total} — the rest are deactivated, not deleted`}
                 />
 
                 {/* Counted, not flagged as an error: a band is optional and
@@ -328,7 +326,6 @@ export default function Positions({
                     value={summary.without_band}
                     icon={TriangleAlert}
                     tone={summary.without_band > 0 ? 'info' : 'muted'}
-                    hint="a rate keyed here has nothing to check against"
                 />
             </div>
 

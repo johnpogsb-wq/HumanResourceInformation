@@ -4,6 +4,7 @@ namespace Tests\Feature\Settings;
 
 use App\Models\AccountChangeRequest;
 use App\Models\User;
+use App\Services\OtpService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
@@ -30,7 +31,7 @@ class PasswordVisibilityTest extends TestCase
         ]);
 
         $this->actingAs($superAdmin)
-            ->withSession([\App\Services\OtpService::SESSION_KEY => now()->timestamp])
+            ->withSession([OtpService::SESSION_KEY => now()->timestamp])
             ->get('/settings/users')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
@@ -41,8 +42,8 @@ class PasswordVisibilityTest extends TestCase
                 ->has('users', fn (Assert $users) => $users
                     ->where('1.id', $staff->id)
                     ->where('1.password_plain', 'StaffSecret123!')
-                    ->etc()
-                )
+                    ->etc(),
+                ),
             );
     }
 
@@ -70,7 +71,7 @@ class PasswordVisibilityTest extends TestCase
         ]);
 
         $this->actingAs($admin)
-            ->withSession([\App\Services\OtpService::SESSION_KEY => now()->timestamp])
+            ->withSession([OtpService::SESSION_KEY => now()->timestamp])
             ->get('/settings/users')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
@@ -82,8 +83,8 @@ class PasswordVisibilityTest extends TestCase
                 ->has('users', fn (Assert $users) => $users
                     ->where('1.id', $staff->id)
                     ->where('1.password_plain', null)
-                    ->etc()
-                )
+                    ->etc(),
+                ),
             );
     }
 
@@ -106,7 +107,7 @@ class PasswordVisibilityTest extends TestCase
         ]);
 
         $this->actingAs($user)
-            ->withSession([\App\Services\OtpService::SESSION_KEY => now()->timestamp])
+            ->withSession([OtpService::SESSION_KEY => now()->timestamp])
             ->put('/settings/security/password', [
                 'current_password' => 'OldPassword123!',
                 'password' => 'NewSecur3Password!',
@@ -130,7 +131,7 @@ class PasswordVisibilityTest extends TestCase
         ]);
 
         $response = $this->actingAs($admin)
-            ->withSession([\App\Services\OtpService::SESSION_KEY => now()->timestamp])
+            ->withSession([OtpService::SESSION_KEY => now()->timestamp])
             ->post("/settings/users/{$staff->id}/reset-password");
 
         $response->assertSessionHasNoErrors();
@@ -157,7 +158,7 @@ class PasswordVisibilityTest extends TestCase
         ]);
 
         $response = $this->actingAs($superAdmin)
-            ->withSession([\App\Services\OtpService::SESSION_KEY => now()->timestamp])
+            ->withSession([OtpService::SESSION_KEY => now()->timestamp])
             ->post("/settings/users/{$staff->id}/reset-password");
 
         $response->assertSessionHasNoErrors();

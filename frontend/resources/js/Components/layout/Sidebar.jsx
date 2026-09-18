@@ -5,6 +5,64 @@ import PrimePowerLogo, { LogoMark } from '@/Components/layout/PrimePowerLogo';
 import { NAV_GROUPS, isHrefActive, isItemActive, visibleGroups } from '@/config/navigation';
 import { cn, initials } from '@/lib/utils';
 
+/*
+ * Which module the reader last had open.
+ *
+ * Remembered because **a redirect can land you where no module owns the
+ * URL**, and without this the dropdown closes itself on arrival. That is the
+ * bug the owner reported twice: clicking `Employee Information` navigates to
+ * its first child, `/hr/my-profile`, which **302s to `/dashboard` for any
+ * account with no 201 file** — every administrator, and the only account left
+ * on a freshly emptied database. So the module opened, the visit bounced, the
+ * sidebar remounted on a URL nothing owns, and the menu was closed before the
+ * reader's finger left the button.
+ *
+ * The URL still wins where it says anything (below); this only answers when
+ * it says nothing. Same storage as the collapsed rail, which is the existing
+ * precedent for sidebar state living per-device rather than in the database.
+ */
+const EXPANDED_KEY = 'primepower-sidebar-module';
+
+function rememberedModule() {
+    try {
+        return window.localStorage.getItem(EXPANDED_KEY) || null;
+    } catch {
+        // A private window or blocked site data throws rather than returning
+        // null. The accordion still works for this visit; it is simply not
+        // remembered, which is the right way for this to degrade.
+        return null;
+    }
+}
+
+function rememberModule(id) {
+    try {
+        if (id) {
+            window.localStorage.setItem(EXPANDED_KEY, id);
+        } else {
+            window.localStorage.removeItem(EXPANDED_KEY);
+        }
+    } catch {
+        // As above — nothing here is worth failing a render over.
+    }
+}
+
+/**
+ * Which module entry owns this URL, by id, or null.
+ *
+ * Pulled out of the effect so the state initialiser and the effect ask the
+ * same question the same way — two copies of "which module am I inside" would
+ * be two chances to disagree, and the disagreement would show as a dropdown
+ * that opens on one navigation and not the next.
+ */
+function ownerOfUrl(groups, url) {
+    return (
+        groups
+            .flatMap((group) => group.items)
+            .find((item) => item.children?.some((child) => isHrefActive(child.href, url)))
+            ?.id ?? null
+    );
+}
+
 /**
  * What a nav entry's badge should read, or nothing.
  *
@@ -37,27 +95,78 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
      */
     const settingsActive = currentUrl.split('?')[0].startsWith('/settings');
 
-    // Accordion: at most one module open at a time.
-    const [expandedModule, setExpandedModule] = useState(null);
+    /*
+     * Accordion: at most one module open at a time.
+     *
+     * **Seeded from the URL on the first render, not after it**, and that is
+     * the fix for the dropdown appearing to vanish every time a module was
+     * clicked. `AppLayout` is not a persistent Inertia layout, so this whole
+     * component remounts on every navigation — and clicking a module parent
+     * *navigates* (it lands on the module's first page). The sequence was:
+     * remount, `useState(null)`, so the dropdown painted **closed**, then the
+     * effect below ran after paint and opened it again over a 300ms
+     * transition. Every click collapsed the module you had just opened and
+     * slid it back out.
+     *
+     * Computing the owner in the initialiser means the first paint is already
+     * correct and there is nothing to animate back from.
+     */
+    const [expandedModule, setExpandedModule] = useState(
+        // The URL first, because it is the truth about where the reader is;
+        // the remembered module only answers when the URL says nothing, which
+        // is exactly the case a redirect leaves behind.
+        () => ownerOfUrl(groups, currentUrl) ?? rememberedModule(),
+    );
 
-    // Keep the accordion in sync with whichever module owns the current URL.
+    /*
+     * Still needed, and not a duplicate of the initialiser: the URL changes
+     * without a remount on a partial reload, and a module reached from
+     * anywhere other than its own parent button (a dashboard link, the
+     * topbar, a redirect) has to open the right entry.
+     */
     useEffect(() => {
-        const owner = groups
-            .flatMap((group) => group.items)
-            .find((item) =>
-                item.children?.some((child) => isHrefActive(child.href, currentUrl)),
-            );
+        const owner = ownerOfUrl(groups, currentUrl);
 
-        if (owner) setExpandedModule(owner.id);
+        if (owner) {
+            setExpandedModule(owner);
+            rememberModule(owner);
+        }
     }, [currentUrl, groups]);
 
+    /**
+     * A press on a module's own row.
+     *
+     * **It closes only the module you are already inside**, and that
+     * condition is the whole rule. Toggling on "is it open" instead reads as
+     * the menu fighting the reader: the accordion can be open because the
+     * *remembered* module was restored — on the dashboard, say — and then the
+     * very first press on that module closes it rather than going into it,
+     * which is the complaint this is the second attempt at. Being inside a
+     * module is the only state where collapsing it is something somebody
+     * could mean, and it is still available there.
+     */
     const handleParentClick = (item) => {
-        const alreadyOpen = expandedModule === item.id;
+        const inside = ownerOfUrl(groups, currentUrl) === item.id;
 
-        setExpandedModule(alreadyOpen ? null : item.id);
+        if (inside && expandedModule === item.id) {
+            setExpandedModule(null);
+            rememberModule(null);
 
-        // Opening a module lands the user on its first page.
-        if (!alreadyOpen) {
+            return;
+        }
+
+        setExpandedModule(item.id);
+        // Written here rather than in an effect on `expandedModule`, so only a
+        // deliberate press is remembered — an effect would also record the
+        // accordion following the URL, and then a visit to one module would
+        // decide what the *next* page opens with.
+        rememberModule(item.id);
+
+        // Opening a module lands the reader on its first page. `inside`
+        // rather than the old "was it open": already in the module, this
+        // would throw somebody on Positions back to My Profile for pressing
+        // the heading above the list they were using.
+        if (!inside) {
             const first = item.children?.[0];
 
             if (first?.href && !isHrefActive(first.href, currentUrl)) {
@@ -71,7 +180,10 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
             {/* Mobile scrim */}
             <div
                 className={cn(
-                    'fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm transition-opacity lg:hidden',
+                    // No fade either: a scrim easing in behind a drawer that
+                    // now snaps open is the two halves of one gesture
+                    // disagreeing about whether it is animated.
+                    'fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm lg:hidden',
                     mobileOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
                 )}
                 onClick={onCloseMobile}
@@ -88,7 +200,21 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                      * edge of one.
                      */
                     'fixed inset-y-0 left-0 z-50 flex flex-col bg-sidebar',
-                    'transition-all duration-300 lg:translate-x-0',
+                    /*
+                     * No transition. This carried `transition-all
+                     * duration-300`, which slid the drawer in on a phone and
+                     * — because `transition-all` covers every property —
+                     * also animated the rail's width when it collapses on
+                     * desktop. Both went with the dropdown's animation on the
+                     * owner's instruction: the sidebar opens and closes, it
+                     * does not perform doing so.
+                     *
+                     * `lg:translate-x-0` stays and is load-bearing: it is
+                     * what keeps the sidebar on screen at desktop width,
+                     * where the `-translate-x-full` below would otherwise
+                     * push it off.
+                     */
+                    'lg:translate-x-0',
                     collapsed ? 'w-sidebar-collapsed' : 'w-sidebar',
                     mobileOpen ? 'translate-x-0' : '-translate-x-full',
                 )}
@@ -252,7 +378,11 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                                             </span>
                                                             <ChevronDown
                                                                 className={cn(
-                                                                    'h-4 w-4 shrink-0 text-sidebar-muted transition-transform duration-200',
+                                                                    // The arrow flips, it does not
+                                                                    // animate flipping — the
+                                                                    // rotation still says which
+                                                                    // module is open.
+                                                                    'h-4 w-4 shrink-0 text-sidebar-muted',
                                                                     isOpen && 'rotate-180',
                                                                 )}
                                                                 aria-hidden="true"
@@ -283,17 +413,31 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                                 </Link>
                                             )}
 
-                                            {/* Dropdown of sub-pages */}
-                                            {hasChildren && (
-                                                <div
-                                                    className={cn(
-                                                        'grid transition-all duration-300',
-                                                        isOpen
-                                                            ? 'grid-rows-[1fr] opacity-100'
-                                                            : 'grid-rows-[0fr] opacity-0',
-                                                    )}
-                                                >
-                                                    <ul className="ml-[1.4rem] mt-0.5 space-y-0.5 overflow-hidden border-l border-sidebar-border pl-2.5">
+                                            {/*
+                                                Dropdown of sub-pages, shown or
+                                                not shown — no expand animation.
+
+                                                It used to be the `grid-rows-[0fr]`
+                                                → `[1fr]` trick with an opacity
+                                                fade over 300ms. Removed on the
+                                                owner's instruction, and it was
+                                                the wrong mechanism here anyway:
+                                                the sidebar remounts on every
+                                                navigation, so the animation
+                                                replayed on each one, and a
+                                                transition that plays when
+                                                nothing has actually opened
+                                                reads as the menu losing its
+                                                place. Rendered conditionally
+                                                rather than hidden with a class,
+                                                so a collapsed module's links are
+                                                not in the tab order at all and
+                                                the `tabIndex` juggling that used
+                                                to be needed is gone with it.
+                                            */}
+                                            {hasChildren && isOpen && (
+                                                <div>
+                                                    <ul className="ml-[1.4rem] mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2.5">
                                                         {item.children.map((child) => {
                                                             const ChildIcon = child.icon;
                                                             const childActive = isHrefActive(
@@ -318,9 +462,6 @@ export default function Sidebar({ collapsed, onToggleCollapsed, mobileOpen, onCl
                                                                     <Link
                                                                         href={child.href}
                                                                         onClick={onCloseMobile}
-                                                                        tabIndex={
-                                                                            isOpen ? 0 : -1
-                                                                        }
                                                                         aria-current={
                                                                             childActive
                                                                                 ? 'page'

@@ -6,15 +6,17 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
 
     public const ROLE_SUPER_ADMIN = 'super_admin';
 
@@ -183,7 +185,7 @@ class User extends Authenticatable
 
     public function setVisiblePassword(string $plain): void
     {
-        $this->visible_password = \Illuminate\Support\Facades\Crypt::encryptString($plain);
+        $this->visible_password = Crypt::encryptString($plain);
     }
 
     public function getDecryptedPassword(): ?string
@@ -193,7 +195,7 @@ class User extends Authenticatable
         }
 
         try {
-            return \Illuminate\Support\Facades\Crypt::decryptString($this->visible_password);
+            return Crypt::decryptString($this->visible_password);
         } catch (\Throwable) {
             return null;
         }
@@ -203,6 +205,12 @@ class User extends Authenticatable
     public function employee(): HasOne
     {
         return $this->hasOne(Employee::class);
+    }
+
+    /** The 201 file belonging to this login, including when archived. */
+    public function employeeWithTrashed(): HasOne
+    {
+        return $this->hasOne(Employee::class)->withTrashed();
     }
 
     public function accountChangeRequests(): HasMany

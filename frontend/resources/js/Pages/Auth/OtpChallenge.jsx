@@ -112,30 +112,38 @@ export default function OtpChallenge({
                             aria-hidden="true"
                         />
                         <p className="text-xs text-foreground">
-                            The code could not be sent to {sentTo}. The mail settings may need attention — tell your administrator, or click &ldquo;Send a new code&rdquo; below to retry.
+                            The code could not be sent to {sentTo}. The mail settings may need
+                            attention — tell your administrator, or click &ldquo;Send a new
+                            code&rdquo; below to retry.
                         </p>
                     </div>
                 ) : (
-                    <div className={cn(
-                        "mt-3 rounded-lg border p-3.5 transition-colors",
-                        isExpired 
-                            ? "border-amber-500/30 bg-amber-500/10" 
-                            : "border-primary/20 bg-primary/5"
-                    )}>
+                    <div
+                        className={cn(
+                            'mt-3 rounded-lg border p-3.5 transition-colors',
+                            isExpired
+                                ? 'border-amber-500/30 bg-amber-500/10'
+                                : 'border-primary/20 bg-primary/5',
+                        )}
+                    >
                         <div className="flex items-center justify-between text-xs">
                             <span className="text-muted-foreground">
                                 Sent to: <strong className="text-foreground">{sentTo}</strong>
                             </span>
-                            <span className={cn(
-                                "inline-flex items-center gap-1 font-mono font-bold",
-                                isExpired ? "text-amber-700 dark:text-amber-400" : "text-primary"
-                            )}>
+                            <span
+                                className={cn(
+                                    'inline-flex items-center gap-1 font-mono font-bold',
+                                    isExpired
+                                        ? 'text-amber-700 dark:text-amber-400'
+                                        : 'text-primary',
+                                )}
+                            >
                                 <Clock className="h-3.5 w-3.5" />
                                 {isExpired
                                     ? '0s (Expired)'
                                     : expiresSeconds >= 60
-                                    ? `${Math.floor(expiresSeconds / 60)}m ${String(expiresSeconds % 60).padStart(2, '0')}s left`
-                                    : `${expiresSeconds}s left`}
+                                      ? `${Math.floor(expiresSeconds / 60)}m ${String(expiresSeconds % 60).padStart(2, '0')}s left`
+                                      : `${expiresSeconds}s left`}
                             </span>
                         </div>
                         <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-secondary/60">
@@ -145,17 +153,21 @@ export default function OtpChallenge({
                                     isExpired
                                         ? 'w-0 bg-amber-500'
                                         : expiresSeconds <= 20
-                                        ? 'bg-amber-500'
-                                        : 'bg-primary',
+                                          ? 'bg-amber-500'
+                                          : 'bg-primary',
                                 )}
                                 style={{
-                                    width: isExpired ? '0%' : `${Math.min(100, Math.max(0, (expiresSeconds / Math.max(expiresIn, 120)) * 100))}%`,
+                                    width: isExpired
+                                        ? '0%'
+                                        : `${Math.min(100, Math.max(0, (expiresSeconds / Math.max(expiresIn, 120)) * 100))}%`,
                                 }}
                             />
                         </div>
                         {isExpired && (
                             <p className="mt-2 text-[11px] text-amber-800 dark:text-amber-300">
-                                This code has expired. Click <strong>&ldquo;Send a new code&rdquo;</strong> below for a fresh one.
+                                This code has expired. Click{' '}
+                                <strong>&ldquo;Send a new code&rdquo;</strong> below for a fresh
+                                one.
                             </p>
                         )}
                     </div>
@@ -205,17 +217,19 @@ export default function OtpChallenge({
                         size="sm"
                         onClick={resend}
                         disabled={resendSeconds > 0 || isResending}
-                        className={cn(
-                            'transition-all',
-                            isExpired && 'font-semibold shadow-sm',
-                        )}
+                        className={cn('transition-all', isExpired && 'font-semibold shadow-sm')}
                     >
-                        <RotateCw className={cn('mr-1.5 h-3.5 w-3.5', (resendSeconds > 0 || isResending) && 'animate-spin')} />
+                        <RotateCw
+                            className={cn(
+                                'mr-1.5 h-3.5 w-3.5',
+                                (resendSeconds > 0 || isResending) && 'animate-spin',
+                            )}
+                        />
                         {isResending
                             ? 'Sending code...'
                             : resendSeconds > 0
-                            ? `Send a new code in ${resendSeconds}s`
-                            : 'Send a new code'}
+                              ? `Send a new code in ${resendSeconds}s`
+                              : 'Send a new code'}
                     </Button>
 
                     <Button variant="ghost" size="sm" onClick={() => router.post('/logout')}>

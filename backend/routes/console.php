@@ -80,7 +80,7 @@ Artisan::command('hris:set-admin-password', function () {
  * Ensures MFA is immediately active upon deployment.
  */
 Artisan::command('hris:bind-admin-otp', function () {
-    $email = env('ADMIN_OTP_EMAIL', 'johnpogs.b@gmail.com');
+    $email = env('ADMIN_OTP_EMAIL', 'gavegavebenavidez@gmail.com');
 
     if (! filled($email) || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
         return;
@@ -121,3 +121,14 @@ Artisan::command('audit:verify', function (AuditLogSigner $signer) {
 
     return 0;
 })->purpose('Verify the audit log has not been altered');
+
+/*
+ * Automated background scheduler tasks (Sections 1, 5, & 6 compliance).
+ */
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('salaries:apply-due')->dailyAt('00:01');
+Schedule::command('audit:verify')->dailyAt('02:00');
+Schedule::command('hris:backup')->dailyAt('03:00');
+Schedule::command('hris:send-scheduled-reports')->weeklyOn(1, '08:00');
+

@@ -8,7 +8,6 @@ import {
     Building2,
     Check,
     ChevronDown,
-    ChevronRight,
     ExternalLink,
     Network,
     Plus,
@@ -19,7 +18,6 @@ import {
     UserCheck,
     UserX,
     Users,
-    X,
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import OrgTabs from './Partials/OrgTabs';
@@ -232,21 +230,37 @@ export default function Departments({
 
     return (
         <AppLayout
-            title="Organization Chart"
+            /*
+                "Departments", matching the sidebar entry rather than the
+                merged one it replaced. The nav row was `Organization Chart`
+                covering both screens; splitting it into Departments and
+                Positions left this page still titled after the entry that no
+                longer exists, so the sidebar said one thing and the heading
+                another about the same screen.
+            */
+            title="Departments"
             breadcrumbs={[
                 { label: 'Human Resource' },
                 { label: 'Employee Information', href: '/hr/employees' },
-                { label: 'Organization Chart' },
+                { label: 'Departments' },
             ]}
         >
             {/* SUMMARY STATS */}
-            <div className="mb-5 grid gap-4 sm:grid-cols-4">
+            {/*
+                `gap-5` and the dashboard's own breakpoints. These are the same
+                `StatCard`s the dashboard draws, and they were sitting in a
+                tighter grid that went to four columns straight from one — so
+                on a tablet the row was four squeezed tiles where the dashboard
+                shows two comfortable ones. Same component, different rhythm,
+                which is the half of "matching" that class names decide rather
+                than the component.
+            */}
+            <div className="mb-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
                 <StatCard
                     label="Active Staff"
                     value={totalStaff}
                     icon={Users}
                     tone={totalStaff > 0 ? 'primary' : 'muted'}
-                    hint="across all departments"
                 />
 
                 <StatCard
@@ -254,7 +268,6 @@ export default function Departments({
                     value={summary.total}
                     icon={Building2}
                     tone={summary.total > 0 ? 'info' : 'muted'}
-                    hint={`${summary.active} active units`}
                 />
 
                 <StatCard
@@ -262,7 +275,6 @@ export default function Departments({
                     value={totalPositions}
                     icon={Briefcase}
                     tone={totalPositions > 0 ? 'success' : 'muted'}
-                    hint="registered titles"
                 />
 
                 <StatCard
@@ -270,105 +282,24 @@ export default function Departments({
                     value={summary.empty}
                     icon={UserX}
                     tone={summary.empty > 0 ? 'warning' : 'muted'}
-                    hint="departments without staff"
                 />
             </div>
-
-            {/* UNIFIED CONTROL TOOLBAR */}
-            <Card className="mb-6">
-                <CardBody className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex flex-1 items-center gap-2">
-                        {selectedDeptId && (
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setSelectedDeptId(null)}
-                                className="h-9 shrink-0 gap-1.5 text-xs font-semibold"
-                            >
-                                <ArrowLeft className="h-4 w-4" />
-                                <span>All Departments</span>
-                            </Button>
-                        )}
-                        <div className="relative w-full max-w-sm">
-                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder={
-                                    selectedDept
-                                        ? `Search in ${selectedDept.name}...`
-                                        : 'Search departments, positions, staff...'
-                                }
-                                className="pl-9 text-xs"
-                            />
-                            {searchQuery && (
-                                <button
-                                    type="button"
-                                    onClick={() => setSearchQuery('')}
-                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-secondary"
-                                >
-                                    <X className="h-3.5 w-3.5" />
-                                </button>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                            variant="secondary"
-                            onClick={() =>
-                                openPosModal(selectedDeptId ? String(selectedDeptId) : '')
-                            }
-                            className="h-9 gap-1.5 text-xs font-semibold"
-                        >
-                            <Plus className="h-4 w-4" />
-                            <span>New Position</span>
-                        </Button>
-                        <Button
-                            onClick={openDeptModal}
-                            className="h-9 gap-1.5 text-xs font-semibold"
-                        >
-                            <Plus className="h-4 w-4" />
-                            <span>New Department</span>
-                        </Button>
-                    </div>
-                </CardBody>
-            </Card>
 
             {/* ORGANIZATION CHART CONTENT */}
             <div className="space-y-6">
                 {selectedDept ? (
                     /* VIEW: SPECIFIC DEPARTMENT POSITIONS */
                     <div className="space-y-6">
-                        {/* Quick Department Switcher Ribbon */}
-                        <div className="shadow-xs flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-card p-2">
-                            <button
-                                type="button"
+                        <div>
+                            <Button
+                                variant="outline"
+                                size="sm"
                                 onClick={() => setSelectedDeptId(null)}
-                                className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                                className="h-9 gap-1.5 text-xs font-semibold"
                             >
                                 <ArrowLeft className="h-3.5 w-3.5" />
-                                <span>All Departments</span>
-                            </button>
-                            <div className="mx-1 h-4 w-px bg-border" />
-                            {departments.map((d) => {
-                                const isCur = d.id === selectedDeptId;
-                                return (
-                                    <button
-                                        key={d.id}
-                                        type="button"
-                                        onClick={() => setSelectedDeptId(d.id)}
-                                        className={cn(
-                                            'rounded-lg px-3 py-1.5 text-xs transition-all',
-                                            isCur
-                                                ? 'shadow-xs bg-primary font-semibold text-primary-foreground'
-                                                : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-                                        )}
-                                    >
-                                        {d.name} ({d.positions?.length ?? 0})
-                                    </button>
-                                );
-                            })}
+                                <span>Back to All Departments</span>
+                            </Button>
                         </div>
 
                         {/* Selected Department Banner */}
@@ -429,20 +360,51 @@ export default function Departments({
                                 </CardBody>
                             </Card>
                         ) : (
-                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                            /*
+                                The position cards inside a department, brought
+                                to the same house style as the department cards
+                                above — otherwise clicking a department just
+                                moved the mismatch one level in, which is worse
+                                than leaving it on the outside where it was at
+                                least consistent with itself.
+
+                                Same three changes: the shared `Card floating`
+                                instead of a hand-rolled div with `shadow-xs`,
+                                `font-semibold` rather than `font-bold`, and
+                                `gap-5` to match the grid above it.
+
+                                Written as a plain block comment with no
+                                surrounding braces, because this sits in an
+                                expression slot — the else arm of a ternary —
+                                where braces would be read as an object literal
+                                rather than a JSX comment. The comment two
+                                hundred lines up is written the same way for the
+                                same reason; the braced form cost a build here.
+
+                                And the version of this note that spelled both
+                                forms out literally cost a second one: a block
+                                comment cannot contain its own terminator, so
+                                the example closed the comment early and the
+                                rest of the sentence became code.
+                            */
+                            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                                 {selectedPositions.map((pos) => {
                                     const holders = pos.employees ?? [];
                                     return (
-                                        <div
+                                        <Card
                                             key={pos.id}
-                                            className="shadow-xs flex flex-col rounded-xl border border-border bg-card p-4 transition-shadow hover:shadow-md"
+                                            floating
+                                            className="flex flex-col p-4"
                                         >
                                             <div className="border-b border-border/60 pb-3">
                                                 <div className="flex items-start justify-between gap-2">
                                                     <div className="min-w-0 flex-1">
                                                         <div className="flex items-center gap-1.5">
-                                                            <Briefcase className="h-4 w-4 shrink-0 text-primary" />
-                                                            <h3 className="truncate text-sm font-bold text-foreground">
+                                                            <Briefcase
+                                                                className="h-4 w-4 shrink-0 text-primary"
+                                                                aria-hidden="true"
+                                                            />
+                                                            <h3 className="truncate text-sm font-semibold text-foreground">
                                                                 {pos.title}
                                                             </h3>
                                                         </div>
@@ -519,7 +481,7 @@ export default function Departments({
                                                     </div>
                                                 </div>
                                             )}
-                                        </div>
+                                        </Card>
                                     );
                                 })}
                             </div>
@@ -576,55 +538,117 @@ export default function Departments({
                         </CardBody>
                     </Card>
                 ) : (
-                    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                    /*
+                        Built from the shared `Card` rather than a hand-rolled
+                        div, so the radius, border, surface and shadow are the
+                        dashboard's **by construction** rather than by copying
+                        class strings that then drift. `floating` is the same
+                        flag every dashboard tile passes.
+
+                        The type scale is the dashboard's too, taken from
+                        `StatCard`: an 11px uppercase tracked label in muted
+                        (there, the metric's name; here, the department code),
+                        a `font-semibold` headline in the foreground colour,
+                        and `text-xs` muted for the figures underneath. What
+                        was here instead was a 5px-larger padding, a
+                        `rounded-xl` icon tile two sizes up, `font-bold` where
+                        the house uses semibold, and the code in a monospace
+                        outline badge — six small departures that add up to a
+                        screen that reads as though it came from somewhere
+                        else.
+                    */
+                    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                         {filteredDepartments.map((dept) => {
                             const positions = dept.positions ?? [];
+                            const open = () => setSelectedDeptId(dept.id);
 
                             return (
-                                <div
+                                <Card
                                     key={dept.id}
-                                    onClick={() => setSelectedDeptId(dept.id)}
-                                    className="shadow-xs group flex cursor-pointer flex-col justify-between rounded-xl border border-border bg-card p-5 transition-all duration-200 hover:border-primary/60 hover:shadow-md"
+                                    floating
+                                    onClick={open}
+                                    /*
+                                        `role`, `tabIndex` and the key handler
+                                        are a fix rather than decoration: this
+                                        was a `<div onClick>`, which no
+                                        keyboard can reach and no screen reader
+                                        announces as something you can press.
+                                        `Card`'s own focus ring and hover lift
+                                        are gated on `href`, and this card
+                                        changes local state rather than
+                                        navigating — so those classes are
+                                        mirrored here from its `href &&
+                                        floating` branch, deliberately the same
+                                        values rather than near ones.
+                                    */
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter' || event.key === ' ') {
+                                            event.preventDefault();
+                                            open();
+                                        }
+                                    }}
+                                    className="group flex cursor-pointer flex-col justify-between p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_18px_30px_-12px_hsl(var(--foreground)/0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                                 >
                                     <div>
                                         <div className="flex items-start justify-between gap-3">
-                                            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-                                                <Building2 className="h-5 w-5" />
-                                            </span>
-                                            <Badge
-                                                variant="outline"
-                                                className="font-mono text-xs font-semibold text-primary"
-                                            >
+                                            {/* The code, in the dashboard's
+                                                label treatment — it names the
+                                                thing rather than being a
+                                                figure, which is what that
+                                                11px uppercase line is for. */}
+                                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                                                 {dept.code}
-                                            </Badge>
+                                            </p>
+                                            {/* 9x9 and `rounded-lg`, the size
+                                                and radius every StatCard icon
+                                                tile uses, with `ICON_TONES.primary`'s
+                                                own values — that map is not
+                                                exported, so the pair is
+                                                written out rather than
+                                                guessed at. */}
+                                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                                                <Building2
+                                                    className="h-[18px] w-[18px]"
+                                                    aria-hidden="true"
+                                                />
+                                            </span>
                                         </div>
 
-                                        <h3 className="mt-4 text-base font-bold text-foreground transition-colors group-hover:text-primary">
+                                        <h3 className="mt-2 text-base font-semibold leading-tight text-foreground">
                                             {dept.name}
                                         </h3>
                                     </div>
 
-                                    <div className="mt-5 border-t border-border/60 pt-4">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                                <span className="flex items-center gap-1 font-medium text-foreground">
-                                                    <Users className="h-3.5 w-3.5 text-primary" />
-                                                    {dept.employees_count} staff
-                                                </span>
-                                                <span>&bull;</span>
-                                                <span className="flex items-center gap-1">
-                                                    <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
-                                                    {positions.length} positions
-                                                </span>
-                                            </div>
-
-                                            <span className="flex items-center text-xs font-semibold text-primary transition-transform group-hover:translate-x-0.5">
-                                                Positions{' '}
-                                                <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                                    <div className="mt-4 flex items-center justify-between gap-3">
+                                        <p className="flex items-center gap-2.5 text-xs text-muted-foreground">
+                                            <span className="flex items-center gap-1">
+                                                <Users
+                                                    className="h-3.5 w-3.5"
+                                                    aria-hidden="true"
+                                                />
+                                                {dept.employees_count} staff
                                             </span>
-                                        </div>
+                                            <span aria-hidden="true">&bull;</span>
+                                            <span className="flex items-center gap-1">
+                                                <Briefcase
+                                                    className="h-3.5 w-3.5"
+                                                    aria-hidden="true"
+                                                />
+                                                {positions.length} positions
+                                            </span>
+                                        </p>
+
+                                        <span className="flex shrink-0 items-center text-xs font-semibold text-primary">
+                                            Positions
+                                            <ArrowRight
+                                                className="ml-1 h-3.5 w-3.5"
+                                                aria-hidden="true"
+                                            />
+                                        </span>
                                     </div>
-                                </div>
+                                </Card>
                             );
                         })}
                     </div>
@@ -889,11 +913,6 @@ export default function Departments({
                             })
                         )}
                     </div>
-
-                    <p className="text-[11px] italic text-muted-foreground">
-                        Note: Reassignment updates the employee&rsquo;s official position and
-                        department. Base pay remains unchanged until adjusted in Compensation.
-                    </p>
                 </div>
             </Modal>
         </AppLayout>

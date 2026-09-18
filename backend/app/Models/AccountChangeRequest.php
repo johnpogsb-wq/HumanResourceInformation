@@ -12,7 +12,9 @@ class AccountChangeRequest extends Model
     use HasFactory;
 
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_APPROVED = 'approved';
+
     public const STATUS_REJECTED = 'rejected';
 
     public const STATUSES = [
@@ -37,16 +39,6 @@ class AccountChangeRequest extends Model
         'admin_notes',
     ];
 
-    /**
-     * @return array<string, string>
-     */
-    protected function casts(): array
-    {
-        return [
-            'decided_at' => 'datetime',
-        ];
-    }
-
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -60,5 +52,15 @@ class AccountChangeRequest extends Model
     public function scopePending(Builder $query): Builder
     {
         return $query->where('status', self::STATUS_PENDING);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'decided_at' => 'datetime',
+        ];
     }
 }

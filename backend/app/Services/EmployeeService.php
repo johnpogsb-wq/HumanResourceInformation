@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Notifications\AccountProvisioned;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -79,6 +80,7 @@ class EmployeeService
             }
 
             return Employee::create($data);
+
         });
     }
 
@@ -113,10 +115,17 @@ class EmployeeService
     {
         DB::transaction(function () use ($employee) {
             // Soft delete — the 201 file is retained for audit and payroll history.
-            $employee->update(['status' => 'inactive']);
+            $employee->update([
+                'status' => 'inactive',
+                'employment_status' => 'terminated',
+                'date_separated' => now(),
+            ]);
             $employee->delete();
 
-            $employee->user?->update(['is_active' => false]);
+            if ($employee->user) {
+                $employee->user->update(['is_active' => false]);
+                $employee->user->delete();
+            }
         });
     }
 
@@ -124,8 +133,20 @@ class EmployeeService
     {
         DB::transaction(function () use ($employee) {
             $employee->restore();
-            $employee->update(['status' => 'active']);
-            $employee->user?->update(['is_active' => true]);
+            $employee->update([
+                'status' => 'active',
+                'employment_status' => 'regular',
+                'date_separated' => null,
+                'separation_reason' => null,
+            ]);
+
+            if ($employee->user_id) {
+                $user = User::withTrashed()->find($employee->user_id);
+                if ($user) {
+                    $user->restore();
+                    $user->update(['is_active' => true]);
+                }
+            }
         });
     }
 
@@ -184,7 +205,7 @@ class EmployeeService
             'name' => trim("{$data['first_name']} {$data['last_name']}"),
             'username' => User::usernameFor($data['first_name'], $data['last_name']),
             'password' => $this->generatedPassword,
-            'visible_password' => \Illuminate\Support\Facades\Crypt::encryptString($this->generatedPassword),
+            'visible_password' => Crypt::encryptString($this->generatedPassword),
             'role' => $role,
             'is_active' => true,
             // HR reads this password out to the employee, so two people know
@@ -198,7 +219,7 @@ class EmployeeService
             try {
                 $user->notify(new AccountProvisioned($this->generatedPassword, $role));
             } catch (\Throwable $e) {
-                Log::error("Failed to email provisioned credentials for employee user: ".$e->getMessage());
+                Log::error('Failed to email provisioned credentials for employee user: '.$e->getMessage());
             }
         }
 

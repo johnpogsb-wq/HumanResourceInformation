@@ -15,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
@@ -139,11 +140,15 @@ class UserAccessController extends Controller
             'staleAfterDays' => self::STALE_AFTER_DAYS,
 
             // Employees who could be given a login but do not have one yet.
-            'unlinkedEmployees' => Employee::whereNull('user_id')
+            'unlinkedEmployees' => Employee::where(function ($q) {
+                $q->whereNull('user_id')
+                    ->orWhereDoesntHave('user', fn ($uq) => $uq->whereNull('deleted_at'));
+            })
                 ->orderBy('last_name')
-                ->get(['id', 'first_name', 'middle_name', 'last_name', 'suffix', 'email'])
+                ->get(['id', 'employee_number', 'first_name', 'middle_name', 'last_name', 'suffix', 'email'])
                 ->map(fn (Employee $employee) => [
                     'id' => $employee->id,
+                    'employee_number' => $employee->employee_number,
                     'full_name' => $employee->full_name,
                     'email' => $employee->email,
                     // Suggested, not assigned: the admin may type another.
@@ -219,7 +224,7 @@ class UserAccessController extends Controller
             'username' => $validated['username'] ?? null,
             'role' => $validated['role'],
             'password' => $password,
-            'visible_password' => \Illuminate\Support\Facades\Crypt::encryptString($password),
+            'visible_password' => Crypt::encryptString($password),
             'is_active' => true,
             // See RequirePasswordChange: a password the administrator has read
             // is not the account holder's password yet.
@@ -228,7 +233,14 @@ class UserAccessController extends Controller
         ]);
 
         if ($validated['employee_id'] ?? null) {
-            Employee::whereKey($validated['employee_id'])->update(['user_id' => $user->id]);
+            $employee = Employee::find($validated['employee_id']);
+            if ($employee) {
+                $employeeUpdates = ['user_id' => $user->id];
+                if (empty($employee->email) && ! empty($address)) {
+                    $employeeUpdates['email'] = $address;
+                }
+                $employee->update($employeeUpdates);
+            }
         }
 
         $emailSent = false;
@@ -416,6 +428,69 @@ class UserAccessController extends Controller
         );
     }
 
+    /**
+     * Deletes / archives a user account and archives their linked employee profile.
+     */
+    public function destroy(Request $request, User $user): RedirectResponse
+    {
+        Gate::authorize('deleteUser', Setting::class);
+
+        if ($user->id === $request->user()->id) {
+            return back()->with('error', 'You cannot delete your own account.');
+        }
+
+        if ($user->isSuperAdmin() && User::where('role', User::ROLE_SUPER_ADMIN)->count() <= 1) {
+            return back()->with('error', 'The last super administrator account cannot be deleted.');
+        }
+
+        $employeeNumber = null;
+
+        // If user has a linked employee, soft-delete and mark terminated so it leaves the Employee Directory
+        if ($user->employee) {
+            $employee = $user->employee;
+            $employeeNumber = $employee->employee_number;
+
+            $employee->update([
+                'status' => 'inactive',
+                'employment_status' => 'terminated',
+                'date_separated' => now(),
+                'separation_reason' => 'Terminated via User Access control by '.$request->user()->name,
+            ]);
+            $employee->delete();
+        }
+
+        // Revoke all API tokens
+        $user->tokens()->delete();
+
+        $name = $user->name;
+        $username = $user->username;
+
+        $user->update(['is_active' => false]);
+        $user->delete();
+
+        AuditLog::create([
+            'user_id' => $request->user()->id,
+            'auditable_type' => User::class,
+            'auditable_id' => $user->id,
+            'event' => 'account_deleted',
+            'old_values' => [
+                'target_user_id' => $user->id,
+                'target_name' => $name,
+                'target_username' => $username,
+                'linked_employee' => $employeeNumber,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        $message = "Account for {$name} ({$username}) has been archived.";
+        if ($employeeNumber) {
+            $message .= " Associated employee profile ({$employeeNumber}) has been moved to the Archive.";
+        }
+
+        return back()->with('success', $message);
+    }
+
     public function resetPassword(Request $request, User $user): RedirectResponse
     {
         Gate::authorize('manageUsers', Setting::class);
@@ -424,7 +499,7 @@ class UserAccessController extends Controller
 
         $user->update([
             'password' => $password,
-            'visible_password' => \Illuminate\Support\Facades\Crypt::encryptString($password),
+            'visible_password' => Crypt::encryptString($password),
             'must_change_password' => true,
         ]);
         $emailSent = false;
@@ -433,7 +508,7 @@ class UserAccessController extends Controller
                 $user->notify(new AccountProvisioned($password, $user->role));
                 $emailSent = true;
             } catch (\Throwable $e) {
-                Log::error("Failed to email reset credentials to {$user->otp_email}: " . $e->getMessage());
+                Log::error("Failed to email reset credentials to {$user->otp_email}: ".$e->getMessage());
             }
         }
 
@@ -564,9 +639,9 @@ class UserAccessController extends Controller
         ]);
 
         $userName = $accountChangeRequest->user?->name ?? 'Staff';
+
         return back()->with('success', "Account change request for {$userName} has been rejected.");
     }
-
 
     /** @return Collection<int, string> user id => ISO time of their latest sign-in */
     private function lastSignIns()

@@ -10,6 +10,7 @@ use App\Services\OtpService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
@@ -82,6 +83,7 @@ class SecurityController extends Controller
                 'otp_enabled' => (bool) ($user->otp_enabled ?? true),
                 'otp_verified' => $user->otp_email_verified_at !== null,
                 'ttl_minutes' => max(1, (int) ceil((int) config('otp.ttl_seconds', 120) / 60)),
+                'can_disable' => false,
             ],
 
             'is_super_admin' => $user->isSuperAdmin(),
@@ -190,17 +192,25 @@ class SecurityController extends Controller
 
         $user = $request->user();
         $hasEnabledInput = array_key_exists('otp_enabled', $validated);
-        $newStatus = $hasEnabledInput ? (bool) $validated['otp_enabled'] : (bool) ($user->otp_enabled ?? true);
+
+        // Disabling multi-factor authentication is strictly prohibited in settings
+        if ($hasEnabledInput && ! (bool) $validated['otp_enabled']) {
+            return back()->withErrors([
+                'otp_enabled' => 'Multi-Factor Authentication is mandatory and cannot be disabled in account settings.',
+            ]);
+        }
+
+        $newStatus = true;
 
         $hasEmailInput = array_key_exists('otp_email', $validated);
         $address = $hasEmailInput
             ? (filled($validated['otp_email'] ?? null) ? strtolower(trim($validated['otp_email'])) : null)
             : $user->otp_email;
 
-        // If enabling, require a valid email address
-        if ($newStatus && blank($address)) {
+        // Require a valid email address
+        if (blank($address)) {
             return back()->withErrors([
-                'otp_email' => 'Please provide a valid Gmail address to enable two-factor authentication.',
+                'otp_email' => 'Please provide a valid Gmail address to configure multi-factor authentication.',
             ]);
         }
 
@@ -277,7 +287,7 @@ class SecurityController extends Controller
 
         $user->update([
             'password' => $validated['password'],
-            'visible_password' => \Illuminate\Support\Facades\Crypt::encryptString($validated['password']),
+            'visible_password' => Crypt::encryptString($validated['password']),
             'must_change_password' => false,
         ]);
 

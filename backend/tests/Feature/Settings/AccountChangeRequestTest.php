@@ -3,8 +3,8 @@
 namespace Tests\Feature\Settings;
 
 use App\Models\AccountChangeRequest;
-use App\Models\AuditLog;
 use App\Models\User;
+use App\Services\OtpService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -44,7 +44,7 @@ class AccountChangeRequestTest extends TestCase
         ]);
 
         $response = $this->actingAs($user)
-            ->withSession([\App\Services\OtpService::SESSION_KEY => now()->timestamp])
+            ->withSession([OtpService::SESSION_KEY => now()->timestamp])
             ->post('/settings/security/change-request', [
                 'requested_username' => 'johnny',
                 'requested_email' => 'john.new@gmail.com',
