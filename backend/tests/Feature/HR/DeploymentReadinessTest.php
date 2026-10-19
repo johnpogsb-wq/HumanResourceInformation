@@ -8,7 +8,6 @@ use App\Models\EmployeeDocument;
 use App\Models\User;
 use App\Services\DeploymentReadinessChecker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 /**
@@ -109,53 +108,23 @@ class DeploymentReadinessTest extends TestCase
         $this->assertSame([], $row['reasons']);
     }
 
-    // --- The screen -------------------------------------------------------
+    // --- The screen is gone; the API still reads the checker ------------
 
-    public function test_the_summary_counts_the_whole_bench_not_the_filtered_view(): void
-    {
-        $this->completeEmployee();
-        $blocked = $this->completeEmployee();
-        $blocked->documents()->where('type', 'contract')->delete();
-
-        $this->actingAs(User::factory()->hrStaff()->create())
-            ->get('/hr/deployment?status=blocked')
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                // One row shown...
-                ->has('rows', 1)
-                // ...but the tiles still describe both.
-                ->where('summary.total', 2)
-                ->where('summary.ready', 1)
-                ->where('summary.blocked', 1),
-            );
-    }
-
-    public function test_the_list_can_be_filtered_by_client(): void
+    public function test_the_checker_reports_a_deployed_employee_under_their_client(): void
     {
         $client = Client::create(['code' => 'AAA', 'name' => 'Client A', 'is_active' => true]);
 
         $deployed = $this->completeEmployee();
         $deployed->update(['employment_category' => 'external', 'client_id' => $client->id]);
-        $this->completeEmployee();
 
-        $this->actingAs(User::factory()->hrStaff()->create())
-            ->get("/hr/deployment?client_id={$client->id}")
-            ->assertInertia(fn (Assert $page) => $page->has('rows', 1));
+        $this->assertSame('Client A', $this->assess($deployed->fresh())['client']);
     }
 
-    /** Scoped like every other list — a supervisor sees their own reports. */
-    public function test_an_employee_sees_only_their_own_readiness(): void
+    public function test_the_screen_is_gone(): void
     {
-        $this->completeEmployee();
-        $this->completeEmployee();
-
-        $user = User::factory()->create();
-        Employee::factory()->create(['user_id' => $user->id]);
-
-        $this->actingAs($user)
+        $this->actingAs(User::factory()->hrStaff()->create())
             ->get('/hr/deployment')
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page->has('rows', 1));
+            ->assertNotFound();
     }
 
     /** @return array<string, mixed> */

@@ -129,8 +129,8 @@ class IntegrationApiTest extends TestCase
 
         $body = $this->getJson('/api/v1/deployment-readiness')->assertOk()->json();
 
-        // The same service `/hr/deployment` renders, so the counts cannot
-        // drift between the screen and the consumer.
+        // The same service the dashboard reads, so the counts cannot drift
+        // between our screens and the consumer.
         $this->assertSame(3, $body['meta']['total']);
         $this->assertSame(
             3,

@@ -30,6 +30,8 @@ import SettingsLayout from '@/Layouts/SettingsLayout';
 import {
     Badge,
     Button,
+    ContextMenu,
+    useContextMenu,
     Card,
     CardBody,
     CardHeader,
@@ -45,7 +47,7 @@ import {
     Table,
     TableEmpty,
 } from '@/Components/ui';
-import { formatDate, initials } from '@/lib/utils';
+import { cn, formatDate, initials } from '@/lib/utils';
 
 export default function Users({
     users = [],
@@ -98,6 +100,7 @@ export default function Users({
         name: '',
         username: '',
         otp_email: '',
+        employee_id: '',
     });
 
     const deleteForm = useForm({});
@@ -111,6 +114,7 @@ export default function Users({
             name: user.name,
             username: user.username,
             otp_email: user.otp_email || '',
+            employee_id: user.employee_id ? String(user.employee_id) : '',
         });
         editForm.clearErrors();
     };
@@ -180,6 +184,70 @@ export default function Users({
     const sendTestCode = (user) => {
         setPending(null);
         router.post(`/settings/users/${user.id}/otp-test`, {}, { preserveScroll: true });
+    };
+
+    const rowMenu = useContextMenu();
+
+    /*
+     * What an account's right-click menu offers — the same conditions the row
+     * buttons used to be drawn under, so the menu shows nothing a reader was
+     * not already allowed to do. Delete sits last behind a divider and keeps
+     * its destructive tint; its confirmation modal is still what prevents the
+     * mistake.
+     */
+    const accountActions = (user) => {
+        const mayEdit = is_super_admin || can_manage_requests;
+
+        return [
+            mayEdit && {
+                label: user.otp_email ? 'Edit profile and email' : 'Edit profile / add email',
+                icon: Pencil,
+                onSelect: () => openEditModal(user),
+            },
+            user.otp_email && {
+                label: 'Send test code',
+                icon: Mail,
+                onSelect: () => sendTestCode(user),
+            },
+            can_view_passwords && {
+                label: revealedPasswords[user.id] ? 'Hide password' : 'Show password',
+                icon: revealedPasswords[user.id] ? EyeOff : Eye,
+                onSelect: () => togglePasswordVisibility(user.id),
+            },
+            can_view_passwords &&
+                user.password_plain && {
+                    label: 'Copy password',
+                    icon: Copy,
+                    onSelect: () => copyPassword(user.id, user.password_plain),
+                },
+            { divider: true },
+            {
+                label: 'Reset password',
+                icon: KeyRound,
+                onSelect: () => setPending({ user, action: 'reset' }),
+            },
+            is_super_admin &&
+                !user.is_self &&
+                user.is_active &&
+                user.role !== 'super_admin' && {
+                    label: 'View the system as this person',
+                    icon: UserCheck,
+                    onSelect: () => setPending({ user, action: 'impersonate' }),
+                },
+            !user.is_self && {
+                label: user.is_active ? 'Deactivate account' : 'Reactivate account',
+                icon: UserX,
+                onSelect: () => setPending({ user, action: 'toggle' }),
+            },
+            is_super_admin && !user.is_self && { divider: true },
+            is_super_admin &&
+                !user.is_self && {
+                    label: 'Terminate / archive account',
+                    icon: Trash2,
+                    destructive: true,
+                    onSelect: () => setDeletingUser(user),
+                },
+        ];
     };
 
     const confirm = () => {
@@ -407,7 +475,6 @@ export default function Users({
                                     */}
                                     {can_view_passwords && <TH>Password</TH>}
                                     <TH>Last sign-in</TH>
-                                    <TH className="text-right">Actions</TH>
                                 </TR>
                             </THead>
                             <TBody>
@@ -421,13 +488,35 @@ export default function Users({
                                         // wrong width is a broken-looking table
                                         // on the one screen that has no data to
                                         // distract from it.
-                                        colSpan={can_view_passwords ? 6 : 5}
+                                        colSpan={can_view_passwords ? 5 : 4}
                                         title="No accounts found"
                                         description="Create an account to grant someone login access."
                                     />
                                 ) : (
                                     users.map((user) => (
-                                        <TR key={user.id}>
+                                        /*
+                                         * Every action on an account lives in
+                                         * its right-click menu, on the owner's
+                                         * request. The row takes focus so the
+                                         * Menu key or Shift+F10 opens the same
+                                         * menu from a keyboard.
+                                         */
+                                        <TR
+                                            key={user.id}
+                                            tabIndex={0}
+                                            onContextMenu={(event) =>
+                                                rowMenu.openAt(event, user)
+                                            }
+                                            onKeyDown={(event) =>
+                                                rowMenu.onRowKeyDown(event, user)
+                                            }
+                                            aria-label={`${user.name} — right-click or press the Menu key for actions`}
+                                            className={cn(
+                                                'cursor-context-menu focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40',
+                                                rowMenu.menu?.target?.id === user.id &&
+                                                    'bg-secondary/60',
+                                            )}
+                                        >
                                             {/*
                                                 Account: who they are, what
                                                 they sign in as, which 201 file
@@ -503,66 +592,24 @@ export default function Users({
                                             <TD className="min-w-0 max-w-[15rem] text-sm">
                                                 {user.otp_email ? (
                                                     <div className="min-w-0">
-                                                        <div className="flex items-center gap-1.5">
-                                                            <p className="truncate font-medium text-foreground">
-                                                                {user.otp_email}
-                                                            </p>
-                                                            {(is_super_admin ||
-                                                                can_manage_requests) && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        openEditModal(user)
-                                                                    }
-                                                                    className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
-                                                                    title="Edit personal email"
-                                                                >
-                                                                    <Pencil className="h-3.5 w-3.5" />
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                                                            <Badge
-                                                                variant={
-                                                                    user.otp_verified
-                                                                        ? 'success'
-                                                                        : 'warning'
-                                                                }
-                                                            >
-                                                                {user.otp_verified
-                                                                    ? 'Code verified'
-                                                                    : 'Not proved yet'}
-                                                            </Badge>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    sendTestCode(user)
-                                                                }
-                                                                className="rounded px-1 py-0.5 text-xs font-medium text-primary hover:bg-primary/10"
-                                                            >
-                                                                Send test code
-                                                            </button>
-                                                        </div>
+                                                        <p className="truncate font-medium text-foreground">
+                                                            {user.otp_email}
+                                                        </p>
+                                                        <Badge
+                                                            className="mt-0.5"
+                                                            variant={
+                                                                user.otp_verified
+                                                                    ? 'success'
+                                                                    : 'warning'
+                                                            }
+                                                        >
+                                                            {user.otp_verified
+                                                                ? 'Code verified'
+                                                                : 'Not proved yet'}
+                                                        </Badge>
                                                     </div>
                                                 ) : (
-                                                    <div className="flex items-center gap-1.5">
-                                                        <Badge variant="muted">
-                                                            Password only
-                                                        </Badge>
-                                                        {(is_super_admin ||
-                                                            can_manage_requests) && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    openEditModal(user)
-                                                                }
-                                                                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-primary hover:bg-primary/10"
-                                                            >
-                                                                <Pencil className="h-3 w-3" />
-                                                                Add email
-                                                            </button>
-                                                        )}
-                                                    </div>
+                                                    <Badge variant="muted">Password only</Badge>
                                                 )}
                                             </TD>
 
@@ -592,50 +639,11 @@ export default function Users({
                                                                 ? user.password_plain || '—'
                                                                 : '••••••••'}
                                                         </span>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                togglePasswordVisibility(
-                                                                    user.id,
-                                                                )
-                                                            }
-                                                            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                                            title={
-                                                                revealedPasswords[user.id]
-                                                                    ? 'Hide password'
-                                                                    : 'Show password'
-                                                            }
-                                                            aria-label={
-                                                                revealedPasswords[user.id]
-                                                                    ? 'Hide password'
-                                                                    : 'Show password'
-                                                            }
-                                                        >
-                                                            {revealedPasswords[user.id] ? (
-                                                                <EyeOff className="h-3.5 w-3.5" />
-                                                            ) : (
-                                                                <Eye className="h-3.5 w-3.5" />
-                                                            )}
-                                                        </button>
-                                                        {user.password_plain && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    copyPassword(
-                                                                        user.id,
-                                                                        user.password_plain,
-                                                                    )
-                                                                }
-                                                                className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                                                title="Copy password"
-                                                                aria-label="Copy password"
-                                                            >
-                                                                {copiedId === user.id ? (
-                                                                    <Check className="h-3.5 w-3.5 text-emerald-600" />
-                                                                ) : (
-                                                                    <Copy className="h-3.5 w-3.5" />
-                                                                )}
-                                                            </button>
+                                                        {copiedId === user.id && (
+                                                            <span className="inline-flex items-center gap-1 font-sans text-xs text-success">
+                                                                <Check className="h-3.5 w-3.5" />
+                                                                Copied
+                                                            </span>
                                                         )}
                                                     </div>
                                                 </TD>
@@ -672,132 +680,29 @@ export default function Users({
                                                     </p>
                                                 )}
                                             </TD>
-
-                                            {/*
-                                                Icons rather than five labelled
-                                                buttons, and this was the single
-                                                biggest reason the table needed
-                                                a horizontal scrollbar: Edit,
-                                                Reset, View as, Deactivate and
-                                                Delete spelled out came to
-                                                roughly 450px of one row, more
-                                                than the name, username and
-                                                employee number put together.
-
-                                                Every one keeps a `title` and an
-                                                `aria-label`, so the label is a
-                                                hover away and a screen reader
-                                                still hears a sentence rather
-                                                than an icon name. This is the
-                                                one place in the system that
-                                                departs from the `hidden
-                                                sm:inline` rule for button
-                                                labels — that rule is for a
-                                                topbar with three actions, and
-                                                five in a table cell do not fit
-                                                at any width.
-
-                                                Delete keeps its destructive
-                                                tint. An icon-only button that
-                                                deletes an account needs to
-                                                *look* different from the four
-                                                beside it, and the confirmation
-                                                modal is still the thing that
-                                                actually prevents the mistake.
-                                            */}
-                                            <TD>
-                                                <div className="flex items-center justify-end gap-0.5">
-                                                    {(is_super_admin ||
-                                                        can_manage_requests) && (
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={() => openEditModal(user)}
-                                                            title="Edit profile and personal email"
-                                                            aria-label={`Edit ${user.name}`}
-                                                        >
-                                                            <Pencil className="h-4 w-4" />
-                                                        </Button>
-                                                    )}
-
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        onClick={() =>
-                                                            setPending({
-                                                                user,
-                                                                action: 'reset',
-                                                            })
-                                                        }
-                                                        title="Reset password"
-                                                        aria-label={`Reset the password for ${user.name}`}
-                                                    >
-                                                        <KeyRound className="h-4 w-4" />
-                                                    </Button>
-
-                                                    {is_super_admin &&
-                                                        !user.is_self &&
-                                                        user.is_active &&
-                                                        user.role !== 'super_admin' && (
-                                                            <Button
-                                                                size="sm"
-                                                                variant="ghost"
-                                                                onClick={() =>
-                                                                    setPending({
-                                                                        user,
-                                                                        action: 'impersonate',
-                                                                    })
-                                                                }
-                                                                title="View the system as this person"
-                                                                aria-label={`View the system as ${user.name}`}
-                                                            >
-                                                                <UserCheck className="h-4 w-4" />
-                                                            </Button>
-                                                        )}
-
-                                                    {!user.is_self && (
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={() =>
-                                                                setPending({
-                                                                    user,
-                                                                    action: 'toggle',
-                                                                })
-                                                            }
-                                                            title={
-                                                                user.is_active
-                                                                    ? 'Deactivate this account'
-                                                                    : 'Reactivate this account'
-                                                            }
-                                                            aria-label={`${user.is_active ? 'Deactivate' : 'Reactivate'} ${user.name}`}
-                                                        >
-                                                            <UserX className="h-4 w-4" />
-                                                        </Button>
-                                                    )}
-
-                                                    {is_super_admin && !user.is_self && (
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                                            onClick={() =>
-                                                                setDeletingUser(user)
-                                                            }
-                                                            title="Terminate / Archive this account"
-                                                            aria-label={`Terminate and archive ${user.name}`}
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
-                                                    )}
-                                                </div>
-                                            </TD>
                                         </TR>
                                     ))
                                 )}
                             </TBody>
                         </Table>
+
+                        {users.length > 0 && (
+                            <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+                                Right-click an account to see what you can do with it.
+                            </p>
+                        )}
                     </Card>
+
+                    <ContextMenu
+                        open={rowMenu.menu !== null}
+                        x={rowMenu.menu?.x ?? 0}
+                        y={rowMenu.menu?.y ?? 0}
+                        label={
+                            rowMenu.menu ? `Actions for ${rowMenu.menu.target.name}` : 'Actions'
+                        }
+                        items={rowMenu.menu ? accountActions(rowMenu.menu.target) : []}
+                        onClose={rowMenu.close}
+                    />
                 </>
             )}
 
@@ -1458,6 +1363,37 @@ export default function Users({
                                 placeholder="e.g. employee@gmail.com"
                                 onChange={(e) => editForm.setData('otp_email', e.target.value)}
                                 error={editForm.errors.otp_email}
+                            />
+                        )}
+                    </Field>
+
+                    <Field
+                        label="Linked 201 file"
+                        hint="The employee this login is. Needed for the Time Clock, face enrollment and the person's own records."
+                        error={editForm.errors.employee_id}
+                    >
+                        {({ id }) => (
+                            <Select
+                                id={id}
+                                value={editForm.data.employee_id}
+                                onChange={(e) =>
+                                    editForm.setData('employee_id', e.target.value)
+                                }
+                                placeholder="Not linked to an employee"
+                                options={[
+                                    ...(editingUser?.employee_id
+                                        ? [
+                                              {
+                                                  value: String(editingUser.employee_id),
+                                                  label: `${editingUser.employee_name} (${editingUser.employee_number})`,
+                                              },
+                                          ]
+                                        : []),
+                                    ...unlinkedEmployees.map((employee) => ({
+                                        value: String(employee.id),
+                                        label: `${employee.full_name} (${employee.employee_number})`,
+                                    })),
+                                ]}
                             />
                         )}
                     </Field>

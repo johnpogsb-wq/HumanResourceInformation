@@ -1,43 +1,25 @@
 import {
-    Archive,
     BadgeCheck,
-    Banknote,
-    Bell,
-    Briefcase,
-    Building2,
+    CalendarClock,
     CalendarDays,
-    CalendarCheck,
     CalendarRange,
     ClipboardList,
     Clock,
-    FilePenLine,
-    Database,
     DoorOpen,
-    FileSpreadsheet,
     FileText,
-    FileWarning,
     HandCoins,
-    Handshake,
     IdCard,
     Inbox,
     LayoutDashboard,
-    ListChecks,
-    Lock,
     MonitorSmartphone,
     Network,
-    Palette,
-    Plug,
     Receipt,
-    ScanLine,
+    ScanFace,
     ScrollText,
     Settings,
-    Shield,
-    ShieldAlert,
-    ShieldCheck,
     Target,
     Timer,
     TrendingUp,
-    User,
     Users,
     Wallet,
     Wallet2,
@@ -72,15 +54,6 @@ export const NAV_GROUPS = [
                 children: [
                     {
                         /*
-                         * The signed-in user's own 201 file and personal records.
-                         */
-                        id: 'employee-my-profile',
-                        label: 'My Profile',
-                        icon: User,
-                        href: '/hr/my-profile',
-                    },
-                    {
-                        /*
                          * The way into the workforce, so it sits above the
                          * directory rather than under it.
                          *
@@ -107,104 +80,28 @@ export const NAV_GROUPS = [
                         href: '/hr/employees',
                     },
                     /*
-                     * Departments and Positions, each with its own row again,
-                     * asked for by the owner.
+                     * Departments stays; Positions, Clients, Checks &
+                     * Readiness and the Archive were removed from the sidebar
+                     * on the owner's instruction.
                      *
-                     * They had been folded into one entry labelled
-                     * `Organization Chart` pointing at `/hr/departments`, with
-                     * `activePrefixes` covering Positions so the single row
-                     * lit for both. That saved a row and cost the thing a
-                     * sidebar is for: **Positions had no link anywhere**, so
-                     * the only way to it was to open Departments and find the
-                     * way across. One entry cannot be the door to two screens.
+                     * **The routes, controllers and policies are untouched** —
+                     * this is a change to what the sidebar offers, not to what
+                     * the system does. Every one of those screens still works
+                     * and still answers its URL; what they no longer have is a
+                     * row pointing at them.
                      *
-                     * They are two screens rather than one for a reason the
-                     * merged label hid: a department is where somebody is
-                     * filed, a position is what they are paid to do, and
-                     * Payroll checks a new rate against the *position's*
-                     * salary band. Both are master data behind
-                     * `manageOrganization`, which is why both carry the same
-                     * two roles.
+                     * The cost is the one `Organization Chart` already had:
+                     * Positions had no link anywhere then, and the only way in
+                     * was to open Departments and find the way across. It is
+                     * the same now for all four, and it is deliberate rather
+                     * than overlooked — recorded here because the next reader
+                     * will otherwise take a missing row for a missing feature.
                      */
                     {
                         id: 'employee-departments',
                         label: 'Departments',
                         icon: Network,
                         href: '/hr/departments',
-                        roles: ['admin', 'hr_staff'],
-                    },
-                    {
-                        id: 'employee-positions',
-                        label: 'Positions',
-                        icon: Briefcase,
-                        href: '/hr/positions',
-                        roles: ['admin', 'hr_staff'],
-                    },
-                    /*
-                     * Clients, back where Positions leaves off.
-                     *
-                     * This had its own group for a while, `Client Management`,
-                     * on the reasoning that a client is not a person — it is
-                     * who the workforce is sent to — and deserved to sit beside
-                     * `Employee Management` rather than inside it. That still
-                     * holds; it moved back anyway. One more heading in a
-                     * five-item sidebar is a cost the screen itself pays for
-                     * every visitor, and this is the shorter path to the same
-                     * screen for the two roles who open it at all.
-                     */
-                    {
-                        id: 'clients',
-                        label: 'Clients',
-                        icon: Handshake,
-                        href: '/hr/clients',
-                        roles: ['admin', 'hr_staff'],
-                    },
-
-                    /*
-                     * The four screens that *judge* the 201 file rather than
-                     * hold it — and this is the third arrangement they have
-                     * had, asked for by the owner.
-                     *
-                     * They were loose in this list once, then pulled out into
-                     * a sibling entry called `Checks & Readiness`, because
-                     * loose they read as four more record screens — which is
-                     * the wrong claim about all four: none of them stores
-                     * anything, and each answers a question the file itself
-                     * does not. What that argument was really against was the
-                     * *lack of a label*, not the nesting: these are reached
-                     * from a person's record, and a reader looking for "is
-                     * this driver's licence lapsing" opens Employee
-                     * Information first.
-                     *
-                     * So they are children again, with `divider` carrying the
-                     * heading the sibling entry used to be. The objection is
-                     * answered rather than overruled — the four still say what
-                     * they are, and they no longer cost a second top-level row
-                     * to say it.
-                     *
-                     * Named for what they do, not how: they spent a while
-                     * under "AI & Analytics" and not one of them calls a model
-                     * — they are config-driven rule engines over dates,
-                     * regexes and string comparisons, and `RecordIntegrityChecker`
-                     * says so in its own docblock. "Compliance" was the
-                     * obvious alternative and is taken: here it means SSS, BIR
-                     * and PhilHealth remittance, under Payroll.
-                     */
-                    {
-                        /*
-                         * Unified monitor for deployability, 201 file completeness,
-                         * and credential/licence validity across the workforce.
-                         */
-                        id: 'employee-deployment',
-                        label: 'Checks & Readiness',
-                        icon: BadgeCheck,
-                        href: '/hr/deployment',
-                    },
-                    {
-                        id: 'employee-archive',
-                        label: 'Archive',
-                        icon: Archive,
-                        href: '/hr/archive',
                         roles: ['admin', 'hr_staff'],
                     },
                 ],
@@ -221,10 +118,24 @@ export const NAV_GROUPS = [
                 icon: Clock,
                 children: [
                     {
+                        // Every employee's own Time in / Time out, verified
+                        // by their face on the device camera.
+                        id: 'timekeeping-clock',
+                        label: 'Time Clock',
+                        icon: Timer,
+                        href: '/hr/timekeeping/clock',
+                    },
+                    {
                         id: 'timekeeping-records',
                         label: 'Daily Time Records',
                         icon: ClipboardList,
                         href: '/hr/timekeeping',
+                    },
+                    {
+                        id: 'timekeeping-calendar',
+                        label: 'Attendance Calendar',
+                        icon: CalendarClock,
+                        href: '/hr/timekeeping/calendar',
                     },
                     {
                         id: 'timekeeping-shifts',
@@ -234,37 +145,19 @@ export const NAV_GROUPS = [
                         roles: ['admin', 'hr_staff'],
                     },
                     {
-                        id: 'timekeeping-holidays',
-                        label: 'Holiday Calendar',
-                        icon: CalendarCheck,
-                        href: '/hr/timekeeping/holidays',
+                        // Every role: HR enrolls anybody, everyone else their own face once.
+                        id: 'timekeeping-faces',
+                        label: 'Face Enrollment',
+                        icon: ScanFace,
+                        href: '/hr/timekeeping/faces',
                     },
-                    {
-                        id: 'timekeeping-overtime',
-                        label: 'Overtime Requests',
-                        icon: Timer,
-                        href: '/hr/timekeeping/overtime',
-                    },
-                    {
-                        id: 'timekeeping-corrections',
-                        label: 'Time Corrections',
-                        icon: FilePenLine,
-                        href: '/hr/timekeeping/corrections',
-                    },
-                    {
-                        id: 'timekeeping-cutoffs',
-                        label: 'Cutoff Closing',
-                        icon: Lock,
-                        href: '/hr/timekeeping/cutoffs',
-                        roles: ['admin', 'hr_staff'],
-                    },
-                    {
-                        id: 'timekeeping-client-timesheets',
-                        label: 'Client Timesheets',
-                        icon: Handshake,
-                        href: '/hr/timekeeping/client-timesheets',
-                        roles: ['admin', 'hr_staff'],
-                    },
+                    // Overtime Requests, Time Corrections, Cutoff Closing,
+                    // Client Timesheets and the Holiday Calendar were removed
+                    // from the sidebar on the owner's instruction. The screens
+                    // and their routes are untouched — see the note in
+                    // Employee Information above. The holidays still drive
+                    // holiday pay, leave and the DTR; /hr/timekeeping/holidays
+                    // is where HR adds the movable ones each year.
                 ],
             },
             {
@@ -321,13 +214,10 @@ export const NAV_GROUPS = [
                         icon: FileText,
                         href: '/hr/payroll/payslips',
                     },
-                    {
-                        id: 'payroll-salaries',
-                        label: 'Salaries & Adjustments',
-                        icon: Banknote,
-                        href: '/hr/payroll/salaries',
-                        roles: ['admin', 'hr_staff'],
-                    },
+                    // Salaries & Adjustments and Compliance were removed from
+                    // the sidebar on the owner's instruction. The screens and
+                    // their routes are untouched — see the note in Employee
+                    // Information above.
                     {
                         id: 'payroll-compensation',
                         label: 'Allowances & Loans',
@@ -335,18 +225,14 @@ export const NAV_GROUPS = [
                         href: '/hr/payroll/compensation',
                         roles: ['admin', 'hr_staff'],
                     },
+                    // Separation & Final Pay, back in the sidebar under the
+                    // name the owner uses for it. "Back pay" is what
+                    // Philippine staff call final pay.
                     {
-                        id: 'payroll-separations',
-                        label: 'Separation & Final Pay',
+                        id: 'payroll-back-pay',
+                        label: 'Back Pay',
                         icon: DoorOpen,
                         href: '/hr/payroll/separations',
-                        roles: ['admin', 'hr_staff'],
-                    },
-                    {
-                        id: 'payroll-compliance',
-                        label: 'Compliance',
-                        icon: ShieldCheck,
-                        href: '/hr/payroll/compliance',
                         roles: ['admin', 'hr_staff'],
                     },
                 ],
@@ -379,55 +265,15 @@ export const NAV_GROUPS = [
         ],
     },
     /*
-     * The group that is about the AI, and holds only what actually is.
+     * The AI & Analytics group is gone, removed from the sidebar on the
+     * owner's instruction — Reports, Workforce Analytics, the AI Batch
+     * Scanner and Scanner Accuracy with it.
      *
-     * It briefly held six screens on the reasoning that what unites them is
-     * reading across modules rather than maintaining one. True of all six, and
-     * the wrong name for it: five were config-driven rule engines — dates,
-     * regexes, string comparisons — and a group labelled "AI" whose members
-     * call no model is a claim the first click disproves. Worse, the one
-     * feature that *is* AI was not in it. They are back under the modules
-     * whose records they read; the criterion was fine, the label was not.
-     *
-     * What is left is the screen that measures the scanner, which belongs to
-     * the AI in the only way a screen can: it is where the accuracy figures
-     * come from. The scanner itself has no entry because it is not a screen —
-     * it fills a form on the 201-file upload and runs the batch filer, both
-     * reached from the Employees list.
+     * Its routes, controllers and policies are untouched: /hr/reports,
+     * /hr/analytics/workforce, /hr/employees/documents/batch and
+     * /hr/scan-accuracy all still answer. What went is the group heading and
+     * the four rows under it.
      */
-    {
-        label: 'AI & Analytics',
-        items: [
-            {
-                id: 'reports',
-                label: 'Reports',
-                icon: FileSpreadsheet,
-                href: '/hr/reports',
-                roles: ['admin', 'hr_staff'],
-            },
-            {
-                id: 'analytics-workforce',
-                label: 'Workforce Analytics',
-                icon: TrendingUp,
-                href: '/hr/analytics/workforce',
-                roles: ['admin', 'hr_staff'],
-            },
-            {
-                id: 'ai-document-batch',
-                label: 'AI Batch Scanner',
-                icon: ScanLine,
-                href: '/hr/employees/documents/batch',
-                roles: ['admin', 'hr_staff'],
-            },
-            {
-                id: 'analytics-scan-accuracy',
-                label: 'Scanner Accuracy',
-                icon: Target,
-                href: '/hr/scan-accuracy',
-                roles: ['admin', 'hr_staff'],
-            },
-        ],
-    },
     /*
      * Configuring the app, kept apart from doing the company's work.
      *
@@ -485,13 +331,10 @@ export const NAV_GROUPS = [
                 href: '/settings/audit-logs',
                 roles: ['admin', 'hr_staff'],
             },
-            {
-                id: 'archive-module',
-                label: 'Archive Module',
-                icon: Archive,
-                href: '/hr/archive',
-                roles: ['admin', 'hr_staff'],
-            },
+            // `Archive Module` was here, pointing at the same `/hr/archive`
+            // the Employee Information dropdown also offered. Both rows were
+            // removed on the owner's instruction; the screen still answers its
+            // URL.
             {
                 /*
                  * Who is signed in right now, and how to sign them out.
@@ -565,6 +408,18 @@ const ALL_HREFS = NAV_GROUPS.flatMap((group) =>
 /** The single nav href that best describes the current URL. */
 export function bestMatch(currentUrl) {
     const path = pathOf(currentUrl);
+
+    /*
+     * A tabbed module screen (Leave) is one URL with `?tab=`, while its
+     * sidebar children keep their own paths and redirect onto the tab — so
+     * `/hr/leave?tab=calendar` is read as `/hr/leave/calendar`. Without this
+     * every tab lit the first child, because the path never changes.
+     */
+    const tab = new URLSearchParams(currentUrl.split('?')[1]?.split('#')[0] ?? '').get('tab');
+
+    if (tab && ALL_HREFS.includes(`${path}/${tab}`)) {
+        return `${path}/${tab}`;
+    }
 
     return ALL_HREFS.find((href) => path === href || path.startsWith(`${href}/`)) ?? null;
 }

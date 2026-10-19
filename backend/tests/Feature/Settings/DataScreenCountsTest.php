@@ -79,7 +79,9 @@ class DataScreenCountsTest extends TestCase
         $this->actingAs($admin)
             ->get($row['href'])
             ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page->where('requests.meta.total', 3));
+            // Nested under the tab that owns it: Leave is one merged screen
+            // now and the filing list is `requestsTab`.
+            ->assertInertia(fn (Assert $page) => $page->where('requestsTab.requests.meta.total', 3));
     }
 
     /**

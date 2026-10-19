@@ -185,39 +185,20 @@ export default function Index({ periods, suggestion, filters, can }) {
                                                 </Button>
                                             )}
 
-                                            {can.create &&
-                                                !['approved', 'paid'].includes(
-                                                    period.run?.status,
-                                                ) && (
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        onClick={() =>
-                                                            router.post(
-                                                                `/hr/payroll/periods/${period.id}/generate`,
-                                                            )
-                                                        }
-                                                    >
-                                                        <Play className="h-4 w-4" />
-                                                        {period.run ? 'Recompute' : 'Compute'}
-                                                    </Button>
-                                                )}
-
-                                            {can.delete &&
-                                                !['approved', 'paid'].includes(
-                                                    period.run?.status,
-                                                ) && (
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                                        onClick={() => setDeleteTarget(period)}
-                                                        title="Delete payroll run"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                        Delete
-                                                    </Button>
-                                                )}
+                                            {can.create && !period.run && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() =>
+                                                        router.post(
+                                                            `/hr/payroll/periods/${period.id}/generate`,
+                                                        )
+                                                    }
+                                                >
+                                                    <Play className="h-4 w-4" />
+                                                    Compute
+                                                </Button>
+                                            )}
                                         </div>
                                     </TD>
                                 </TR>

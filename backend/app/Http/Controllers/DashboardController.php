@@ -3,11 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\AttendanceLog;
-use App\Models\ClientTimesheet;
 use App\Models\Department;
 use App\Models\DocumentScan;
 use App\Models\Employee;
-use App\Models\EmployeeDocument;
 use App\Models\LeaveRequest;
 use App\Models\OvertimeRequest;
 use App\Models\PayrollPeriod;
@@ -16,7 +14,6 @@ use App\Models\PerformanceReview;
 use App\Models\Setting;
 use App\Models\TimeCorrection;
 use App\Models\User;
-use App\Services\CredentialExpiryScanner;
 use App\Services\DocumentScanner;
 use App\Services\EmployeeService;
 use App\Services\LeaveService;
@@ -44,12 +41,8 @@ class DashboardController extends Controller
         'status' => null,
     ];
 
-    /** The window the "New Hires" tile counts over, and links with. */
-    private const NEW_HIRE_DAYS = 30;
-
     public function __construct(
         private readonly EmployeeService $employees,
-        private readonly CredentialExpiryScanner $credentials,
         private readonly LeaveService $leave,
         private readonly PerformanceScorer $scorer,
         private readonly ScanAccuracyReport $accuracy,
@@ -77,16 +70,13 @@ class DashboardController extends Controller
             'profile' => $this->profile($request->user(), $today),
             'statistics' => $this->statistics($scoped),
             'headcountByDepartment' => $this->headcountByDepartment(),
-            'headcountTrend' => $this->headcountTrend($today),
             'statusMix' => $this->statusMix(),
             'leaveToday' => $this->leaveToday($today),
             'attendanceToday' => $this->attendanceToday($scoped, $today),
             'approvals' => $this->approvals($request),
-            'needsAction' => $this->needsAction($scoped, $today),
             'payroll' => $canViewCompanyFigures ? $this->latestPayroll() : self::NO_PAYROLL,
             'leaveSummary' => $canViewCompanyFigures ? $this->leaveSummary($today) : null,
             'payrollSummary' => $canViewCompanyFigures ? $this->payrollSummary() : null,
-            'onboardingSummary' => $this->onboardingSummary($scoped, $today),
             'scannerSummary' => $this->scannerSummary($request->user()),
             'recentHires' => (clone $scoped)
                 ->whereNotNull('date_hired')
@@ -169,43 +159,6 @@ class DashboardController extends Controller
 
             ],
         ];
-    }
-
-    /**
-     * Active headcount at the close of each of the last twelve months.
-     *
-     * Cumulative rather than hires-per-month: with a workforce this size most
-     * individual months would be a zero, and a chart that is mostly zero shows
-     * nothing. Read from `date_hired` against the whole table, so it does not
-     * depend on attendance having been recorded.
-     *
-     * @return array<int, array{label: string, value: int}>
-     */
-    private function headcountTrend(Carbon $today): array
-    {
-        // One query, then counted in PHP — twelve separate COUNTs would be
-        // twelve round trips for a figure this small.
-        $hires = Employee::whereNotNull('date_hired')
-            ->pluck('date_hired')
-            ->map(fn ($date) => Carbon::parse($date));
-
-        $separations = Employee::whereNotNull('date_separated')
-            ->pluck('date_separated')
-            ->map(fn ($date) => Carbon::parse($date));
-
-        $months = [];
-
-        for ($offset = 11; $offset >= 0; $offset--) {
-            $endOfMonth = $today->copy()->subMonths($offset)->endOfMonth();
-
-            $months[] = [
-                'label' => $endOfMonth->format('M'),
-                'value' => $hires->filter(fn (Carbon $date) => $date->lte($endOfMonth))->count()
-                    - $separations->filter(fn (Carbon $date) => $date->lte($endOfMonth))->count(),
-            ];
-        }
-
-        return $months;
     }
 
     /**
@@ -314,60 +267,6 @@ class DashboardController extends Controller
     private function peso(float $amount): string
     {
         return '₱'.number_format($amount, 2);
-    }
-
-    /**
-     * The 201-file health figures.
-     *
-     * `expiring` is read from `CredentialExpiryScanner` rather than counted
-     * here, and that is a correction rather than a preference. This method
-     * used to apply a flat 60-day window of its own, while the Credentials
-     * screen applies a window *per document type* — 60 days for an LTO licence
-     * because a renewal needs the lead time, 30 for a certificate because it
-     * does not. So the two screens reported different numbers for the same
-     * documents, and the tile opened a list that did not match it. One scan
-     * over the scoped set is one query; the saving was never worth two screens
-     * disagreeing about the same licence.
-     *
-     * `OnboardingChecker` is still deliberately not called: it walks every
-     * employee to build a findings list, which is the right shape for its own
-     * screen and the wrong one for a tile that needs a count.
-     *
-     * @return array<string, mixed>
-     */
-    private function onboardingSummary($scoped, Carbon $today): array
-    {
-        $newHires = (clone $scoped)
-            ->where('date_hired', '>=', $today->copy()->subDays(self::NEW_HIRE_DAYS))
-            ->count();
-
-        $expiring = $this->credentials
-            ->scan(EmployeeDocument::whereIn('employee_id', (clone $scoped)->select('employees.id')))
-            ->where('status', CredentialExpiryScanner::STATUS_EXPIRING)
-            ->count();
-
-        $withoutDocuments = (clone $scoped)
-            ->where('status', 'active')
-            ->whereDoesntHave('documents')
-            ->count();
-
-        $latest = (clone $scoped)
-            ->whereNotNull('date_hired')
-            ->orderByDesc('date_hired')
-            ->first();
-
-        return [
-            'new_hires' => $newHires,
-            'new_hire_days' => self::NEW_HIRE_DAYS,
-            'expiring' => $expiring,
-            'without_documents' => $withoutDocuments,
-            'latest' => $latest === null ? null : [
-                'id' => $latest->id,
-                'title' => $latest->full_name,
-                'subtitle' => $latest->position?->title ?? 'No position assigned',
-                'status' => $latest->employment_status,
-            ],
-        ];
     }
 
     /**
@@ -689,64 +588,6 @@ class DashboardController extends Controller
             'date' => $today->toDateString(),
             'change' => $worked - $yesterdayWorked,
             'as_of' => $today->format('M j'),
-        ];
-    }
-
-    /**
-     * The things that are nobody's queue and still somebody's problem.
-     *
-     * Each line is read from the service that already owns it — the credential
-     * scanner, the time records, the client timesheets — so this card cannot
-     * disagree with the screen it links to. `headline` names the most urgent
-     * one in words, because a row of three numbers is three questions and the
-     * reader wants the answer to "what first".
-     *
-     * @return array<string, mixed>
-     */
-    private function needsAction($scoped, Carbon $today): array
-    {
-        $expiring = $this->credentials->countFor(
-            EmployeeDocument::query()->whereIn('employee_id', (clone $scoped)->select('employees.id')),
-        );
-
-        // A missing time-out is never flagged for today — the shift may not
-        // have ended. Only days already behind us count.
-        $incomplete = AttendanceLog::query()
-            ->whereIn('employee_id', (clone $scoped)->select('employees.id'))
-            ->where('status', AttendanceLog::STATUS_INCOMPLETE)
-            ->whereDate('work_date', '<', $today->toDateString())
-            ->count();
-
-        $period = PayrollPeriod::query()
-            ->whereDate('start_date', '<=', $today->toDateString())
-            ->orderByDesc('start_date')
-            ->first();
-
-        $deployed = Employee::query()
-            ->where('employment_category', 'external')
-            ->where('status', '!=', 'inactive')
-            ->whereNotNull('client_id')
-            ->distinct()
-            ->pluck('client_id');
-
-        $unconfirmed = $period === null ? 0 : max(0, $deployed->count() - ClientTimesheet::query()
-            ->where('payroll_period_id', $period->id)
-            ->whereIn('status', [ClientTimesheet::STATUS_CONFIRMED, ClientTimesheet::STATUS_DISPUTED])
-            ->whereIn('client_id', $deployed)
-            ->count());
-
-        $headline = match (true) {
-            $expiring > 0 => $expiring.' credential(s) expired or expiring — a lapsed licence stops somebody being dispatched.',
-            $incomplete > 0 => $incomplete.' day(s) with no time-out — they pay as not worked until fixed.',
-            $unconfirmed > 0 => $unconfirmed.' client(s) have not confirmed their timesheet for '.$period?->name.'.',
-            default => null,
-        };
-
-        return [
-            'credentials' => $expiring,
-            'incomplete' => $incomplete,
-            'timesheets' => $unconfirmed,
-            'headline' => $headline,
         ];
     }
 

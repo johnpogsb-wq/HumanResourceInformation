@@ -16,6 +16,7 @@ import {
     ShieldOff,
     TriangleAlert,
     User,
+    X,
     XCircle,
 } from 'lucide-react';
 import SettingsLayout from '@/Layouts/SettingsLayout';
@@ -63,6 +64,7 @@ export default function Security({
     });
 
     const hasPendingRequest = changeRequests.some((r) => r.status === 'pending');
+    const [passwordSuccess, setPasswordSuccess] = useState(false);
 
     const passwordForm = useForm({
         current_password: '',
@@ -88,7 +90,10 @@ export default function Security({
 
         passwordForm.put('/settings/security/password', {
             preserveScroll: true,
-            onSuccess: () => passwordForm.reset(),
+            onSuccess: () => {
+                passwordForm.reset();
+                setPasswordSuccess(true);
+            },
         });
     };
 
@@ -169,6 +174,32 @@ export default function Security({
                         .
                     </p>
 
+                    {passwordSuccess && (
+                        <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-950 dark:text-emerald-200">
+                            <div className="flex items-start gap-3">
+                                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                <div>
+                                    <p className="font-semibold text-emerald-900 dark:text-emerald-100">
+                                        Matagumpay na napalitan ang iyong password! / Password
+                                        updated successfully!
+                                    </p>
+                                    <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">
+                                        Na-update at na-save na ang iyong bagong password.
+                                        Gamitin na ito sa susunod mong pag-sign in.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setPasswordSuccess(false)}
+                                className="rounded p-1 text-emerald-600 transition-colors hover:bg-emerald-500/20 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-100"
+                                aria-label="Dismiss notification"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                    )}
+
                     <form onSubmit={submitPassword} className="space-y-4">
                         <Field
                             label="Current Password"
@@ -182,12 +213,13 @@ export default function Security({
                                     type="password"
                                     autoComplete="current-password"
                                     value={passwordForm.data.current_password}
-                                    onChange={(event) =>
+                                    onChange={(event) => {
+                                        setPasswordSuccess(false);
                                         passwordForm.setData(
                                             'current_password',
                                             event.target.value,
-                                        )
-                                    }
+                                        );
+                                    }}
                                     error={passwordForm.errors.current_password}
                                 />
                             )}
@@ -205,9 +237,13 @@ export default function Security({
                                         type="password"
                                         autoComplete="new-password"
                                         value={passwordForm.data.password}
-                                        onChange={(event) =>
-                                            passwordForm.setData('password', event.target.value)
-                                        }
+                                        onChange={(event) => {
+                                            setPasswordSuccess(false);
+                                            passwordForm.setData(
+                                                'password',
+                                                event.target.value,
+                                            );
+                                        }}
                                         error={passwordForm.errors.password}
                                     />
                                 )}
@@ -220,18 +256,25 @@ export default function Security({
                                         type="password"
                                         autoComplete="new-password"
                                         value={passwordForm.data.password_confirmation}
-                                        onChange={(event) =>
+                                        onChange={(event) => {
+                                            setPasswordSuccess(false);
                                             passwordForm.setData(
                                                 'password_confirmation',
                                                 event.target.value,
-                                            )
-                                        }
+                                            );
+                                        }}
                                     />
                                 )}
                             </Field>
                         </div>
 
-                        <div className="flex justify-end">
+                        <div className="flex items-center justify-end gap-3">
+                            {passwordSuccess && (
+                                <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                                    <CheckCircle2 className="h-4 w-4" />
+                                    Password updated
+                                </span>
+                            )}
                             <Button type="submit" loading={passwordForm.processing}>
                                 Update Password
                             </Button>

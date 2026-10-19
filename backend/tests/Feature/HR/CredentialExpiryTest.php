@@ -7,9 +7,15 @@ use App\Models\EmployeeDocument;
 use App\Models\User;
 use App\Services\CredentialExpiryScanner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Collection;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
+/**
+ * The scanner has no screen of its own any more; it still feeds Deployment
+ * Readiness, the dashboard, the topbar indicator, the bell and the
+ * integration API, so its rules are tested directly.
+ */
 class CredentialExpiryTest extends TestCase
 {
     use RefreshDatabase;
@@ -19,25 +25,19 @@ class CredentialExpiryTest extends TestCase
         // Driver's licences warn 60 days out.
         $this->document(expiresInDays: 30, type: 'drivers_license');
 
-        $this->actingAs($this->hr())
-            ->get('/hr/credentials')
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('HR/Employees/Credentials')
-                ->has('credentials', 1)
-                ->where('credentials.0.status', CredentialExpiryScanner::STATUS_EXPIRING)
-                ->where('credentials.0.days_remaining', 30)
-                ->where('credentials.0.blocking', true),
-            );
+        $rows = $this->scan();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(CredentialExpiryScanner::STATUS_EXPIRING, $rows[0]['status']);
+        $this->assertSame(30, $rows[0]['days_remaining']);
+        $this->assertTrue($rows[0]['blocking']);
     }
 
     public function test_a_licence_beyond_its_window_is_left_alone(): void
     {
         $this->document(expiresInDays: 120, type: 'drivers_license');
 
-        $this->actingAs($this->hr())
-            ->get('/hr/credentials')
-            ->assertInertia(fn (Assert $page) => $page->has('credentials', 0));
+        $this->assertCount(0, $this->scan());
     }
 
     public function test_each_type_gets_its_own_lead_time(): void
@@ -46,24 +46,20 @@ class CredentialExpiryTest extends TestCase
         $this->document(expiresInDays: 45, type: 'drivers_license');
         $this->document(expiresInDays: 45, type: 'certificate');
 
-        $this->actingAs($this->hr())
-            ->get('/hr/credentials')
-            ->assertInertia(fn (Assert $page) => $page
-                ->has('credentials', 1)
-                ->where('credentials.0.type', 'drivers_license'),
-            );
+        $rows = $this->scan();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('drivers_license', $rows[0]['type']);
     }
 
     public function test_an_expired_document_is_reported_as_overdue(): void
     {
         $this->document(expiresInDays: -10, type: 'medical');
 
-        $this->actingAs($this->hr())
-            ->get('/hr/credentials')
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('credentials.0.status', CredentialExpiryScanner::STATUS_EXPIRED)
-                ->where('credentials.0.days_remaining', -10),
-            );
+        $rows = $this->scan();
+
+        $this->assertSame(CredentialExpiryScanner::STATUS_EXPIRED, $rows[0]['status']);
+        $this->assertSame(-10, $rows[0]['days_remaining']);
     }
 
     public function test_expired_documents_sort_above_merely_expiring_ones(): void
@@ -71,12 +67,10 @@ class CredentialExpiryTest extends TestCase
         $this->document(expiresInDays: 5, type: 'medical');
         $this->document(expiresInDays: -1, type: 'medical');
 
-        $this->actingAs($this->hr())
-            ->get('/hr/credentials')
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('credentials.0.status', CredentialExpiryScanner::STATUS_EXPIRED)
-                ->where('credentials.1.status', CredentialExpiryScanner::STATUS_EXPIRING),
-            );
+        $rows = $this->scan();
+
+        $this->assertSame(CredentialExpiryScanner::STATUS_EXPIRED, $rows[0]['status']);
+        $this->assertSame(CredentialExpiryScanner::STATUS_EXPIRING, $rows[1]['status']);
     }
 
     public function test_a_document_with_no_expiry_is_never_reported(): void
@@ -84,68 +78,14 @@ class CredentialExpiryTest extends TestCase
         // A resume does not lapse.
         $this->document(expiresInDays: null, type: 'resume');
 
-        $this->actingAs($this->hr())
-            ->get('/hr/credentials')
-            ->assertInertia(fn (Assert $page) => $page->has('credentials', 0));
+        $this->assertCount(0, $this->scan());
     }
 
     public function test_a_non_blocking_document_is_not_flagged_as_stopping_work(): void
     {
         $this->document(expiresInDays: 10, type: 'certificate');
 
-        $this->actingAs($this->hr())
-            ->get('/hr/credentials')
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('credentials.0.blocking', false)
-                ->where('summary.blocking', 0),
-            );
-    }
-
-    public function test_the_summary_separates_expired_from_expiring(): void
-    {
-        $this->document(expiresInDays: -3, type: 'medical');
-        $this->document(expiresInDays: 10, type: 'medical');
-        $this->document(expiresInDays: 10, type: 'certificate');
-
-        $this->actingAs($this->hr())
-            ->get('/hr/credentials')
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('summary.total', 3)
-                ->where('summary.expired', 1)
-                ->where('summary.expiring', 2)
-                ->where('summary.blocking', 2),
-            );
-    }
-
-    public function test_filtering_by_status_narrows_the_list(): void
-    {
-        $this->document(expiresInDays: -3, type: 'medical');
-        $this->document(expiresInDays: 10, type: 'medical');
-
-        $this->actingAs($this->hr())
-            ->get('/hr/credentials?status='.CredentialExpiryScanner::STATUS_EXPIRED)
-            ->assertInertia(fn (Assert $page) => $page
-                ->has('credentials', 1)
-                // The summary still describes everything, not just the view.
-                ->where('summary.total', 2),
-            );
-    }
-
-    public function test_an_employee_sees_only_their_own_credentials(): void
-    {
-        $user = User::factory()->create();
-        $own = Employee::factory()->create(['user_id' => $user->id]);
-
-        $this->document(expiresInDays: 10, type: 'medical', employee: $own);
-        $this->document(expiresInDays: 10, type: 'medical');
-
-        $this->actingAs($user)
-            ->get('/hr/credentials')
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->has('credentials', 1)
-                ->where('credentials.0.employee_id', $own->id),
-            );
+        $this->assertFalse($this->scan()[0]['blocking']);
     }
 
     public function test_the_topbar_count_matches_what_the_user_may_see(): void
@@ -160,14 +100,21 @@ class CredentialExpiryTest extends TestCase
             ->get('/dashboard')
             ->assertInertia(fn (Assert $page) => $page->where('expiringCredentials', 1));
 
-        $this->actingAs($this->hr())
+        $this->actingAs(User::factory()->hrStaff()->create())
             ->get('/dashboard')
             ->assertInertia(fn (Assert $page) => $page->where('expiringCredentials', 2));
     }
 
-    public function test_guests_are_redirected_to_login(): void
+    public function test_the_screen_is_gone(): void
     {
-        $this->get('/hr/credentials')->assertRedirect('/login');
+        $this->actingAs(User::factory()->hrStaff()->create())
+            ->get('/hr/credentials')
+            ->assertNotFound();
+    }
+
+    private function scan(): Collection
+    {
+        return app(CredentialExpiryScanner::class)->scan(EmployeeDocument::query());
     }
 
     private function document(
@@ -185,10 +132,5 @@ class CredentialExpiryTest extends TestCase
                 ? null
                 : now()->addDays($expiresInDays)->toDateString(),
         ]);
-    }
-
-    private function hr(): User
-    {
-        return User::factory()->hrStaff()->create();
     }
 }

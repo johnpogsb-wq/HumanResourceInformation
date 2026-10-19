@@ -128,7 +128,6 @@ class TimekeepingService
         ?User $by = null,
     ): AttendanceLog {
         $date = $date->copy()->startOfDay();
-        $this->assertOpen($date);
 
         $in = $this->at($date, $timeIn);
         $out = $this->at($date, $timeOut);
@@ -137,11 +136,45 @@ class TimekeepingService
             $out->addDay();
         }
 
+        // Break punches from the time clock are kept: a day HR re-keys or a
+        // correction approves still had the break it had.
+        $existing = $this->logOn($employee, $date);
+
+        return $this->writeDay($employee, $date, $in, $out, $existing?->break_start, $existing?->break_end, $source, $remarks, $by);
+    }
+
+    /** The day's row, if there is one. */
+    public function logOn(Employee $employee, Carbon $date): ?AttendanceLog
+    {
+        return AttendanceLog::query()
+            ->where('employee_id', $employee->id)
+            ->whereDate('work_date', $date->toDateString())
+            ->first();
+    }
+
+    /**
+     * Writes one day from exact times — the time clock's path, and the one
+     * `record()` ends in, so both are computed and refused the same way.
+     */
+    public function writeDay(
+        Employee $employee,
+        Carbon $date,
+        ?Carbon $in,
+        ?Carbon $out,
+        ?Carbon $breakStart,
+        ?Carbon $breakEnd,
+        string $source,
+        ?string $remarks = null,
+        ?User $by = null,
+    ): AttendanceLog {
+        $date = $date->copy()->startOfDay();
+        $this->assertOpen($date);
+
         $schedule = $this->calendar->scheduleFor($employee, $date);
         $holiday = $this->calendar->holidayOn($date);
         $restDay = $this->calendar->isRestDay($employee, $date);
 
-        $figures = $this->calculator->compute($date, $schedule?->shift, $in, $out, $restDay, (bool) $holiday);
+        $figures = $this->calculator->compute($date, $schedule?->shift, $in, $out, $restDay, (bool) $holiday, $breakStart, $breakEnd);
 
         // An absence covered by approved leave is leave, not an absence.
         if ($figures['status'] === AttendanceLog::STATUS_ABSENT
@@ -149,15 +182,15 @@ class TimekeepingService
             $figures['status'] = AttendanceLog::STATUS_ON_LEAVE;
         }
 
-        $log = AttendanceLog::query()
-            ->where('employee_id', $employee->id)
-            ->whereDate('work_date', $date->toDateString())
-            ->first() ?? new AttendanceLog(['employee_id' => $employee->id, 'work_date' => $date->toDateString()]);
+        $log = $this->logOn($employee, $date)
+            ?? new AttendanceLog(['employee_id' => $employee->id, 'work_date' => $date->toDateString()]);
 
         $log->fill([
             ...$figures,
             'shift_id' => $schedule?->shift_id,
             'time_in' => $in,
+            'break_start' => $breakStart,
+            'break_end' => $breakEnd,
             'time_out' => $out,
             'source' => $source,
             'remarks' => $remarks,

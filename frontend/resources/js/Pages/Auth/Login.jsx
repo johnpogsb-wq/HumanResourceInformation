@@ -75,8 +75,31 @@ export default function Login({ status }) {
         password: '',
     });
 
-    const submit = (event) => {
+    const [preparing, setPreparing] = useState(false);
+
+    /*
+     * A fresh CSRF token is fetched right before the credentials go, because
+     * the one this page loaded with dies with the session — minutes, here —
+     * and a login page is exactly the screen people leave open. Posting with a
+     * dead token answered 419 before the password was ever checked, the app
+     * reloaded the page and the typed fields vanished, so the first attempt
+     * always "failed" and the second worked. If the refresh itself fails the
+     * post goes anyway: the worst case is the old behaviour, never a stuck form.
+     */
+    const submit = async (event) => {
         event.preventDefault();
+        setPreparing(true);
+
+        try {
+            await fetch('/sanctum/csrf-cookie', {
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json' },
+            });
+        } catch {
+            // Fall through and post with what the page has.
+        }
+
+        setPreparing(false);
 
         post(route('login'), {
             onFinish: () => reset('password'),
@@ -361,8 +384,8 @@ export default function Login({ status }) {
                                 type="submit"
                                 size="lg"
                                 className="mt-1 w-full"
-                                loading={processing}
-                                disabled={processing}
+                                loading={processing || preparing}
+                                disabled={processing || preparing}
                             >
                                 Log In
                             </Button>

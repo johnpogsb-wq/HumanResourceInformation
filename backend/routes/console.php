@@ -130,4 +130,5 @@ use Illuminate\Support\Facades\Schedule;
 Schedule::command('salaries:apply-due')->dailyAt('00:01');
 Schedule::command('audit:verify')->dailyAt('02:00');
 Schedule::command('hris:backup')->dailyAt('03:00');
+Schedule::command('timeclock:prune-snapshots')->dailyAt('03:30');
 Schedule::command('hris:send-scheduled-reports')->weeklyOn(1, '08:00');

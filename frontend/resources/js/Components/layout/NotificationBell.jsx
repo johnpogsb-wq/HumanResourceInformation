@@ -10,7 +10,6 @@ import {
     FileClock,
     Inbox,
     Loader2,
-    ShieldAlert,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 
@@ -19,7 +18,6 @@ const ICONS = {
     overtime: Clock,
     corrections: FileClock,
     hires: Inbox,
-    credentials: ShieldAlert,
 };
 
 const TONES = {

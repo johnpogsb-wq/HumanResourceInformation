@@ -71,7 +71,22 @@ workforce splits two ways, on `employees.employment_category`:
   `default_wage_region`. Used to **flag, never to enforce**, like a position's
   salary band — and the figures go stale with every new wage order, so treat
   them as this system's assumption rather than as the law.
-- **Deployment Readiness (`/hr/deployment`) is the composition screen.** It
+- **The three check screens are gone; the checkers behind them are not.**
+  Deployment Readiness (`/hr/deployment`), Credentials (`/hr/credentials`) and
+  201 File Status (`/hr/onboarding`) — the "Checks & Readiness Hub" with its
+  three tabs — were deleted on the owner's instruction, with their
+  controllers, pages and routes. The three URLs now 404.
+  `DeploymentReadinessChecker`, `CredentialExpiryScanner` and
+  `OnboardingChecker` stay, because other things still read them: the
+  integration API's `/deployment-readiness` (a contract other ISMERS teams
+  call), the
+  employee record, the org directory, and the document scanner's expiry
+  check. Their tests were rewritten to call the services directly rather than
+  deleted, so the rules — a lapsed licence blocks, a résumé only warns — are
+  still held. **What was lost with the screens**: the dashboard tiles that
+  opened them are now figures without links, and the bell no longer lists
+  expiring documents, since there is no screen left that lists exactly them.
+- **`DeploymentReadinessChecker` is the composition.** It
   answers "can this person be sent to a client tomorrow?", which no single
   module can: it needs credentials, 201-file completeness, and employment
   standing at once. `DeploymentReadinessChecker` **re-uses
@@ -432,6 +447,17 @@ Light and dark both work because components reference tokens, not values.
 - **A fixed `w-*` on a filter control is a mobile bug unless it is inside
   something that already copes** — a `flex-wrap` row, a table cell (tables
   scroll), or a modal. Write `w-full sm:w-52`, not `w-52`.
+- **Every table row floats under the pointer**, on the owner's request:
+  lifted 2px, shadowed, drawn on `--card` with a hairline of `--primary`.
+  It is one rule, `.table-float` in `app.css`, put on every `TBody` by the UI
+  kit, so all modules got it at once and a new table gets it for free — a
+  raw `<table>` does not, which today is only the print sheet, where it
+  should not. Header and footer rows do not move, and `TableEmpty`'s row
+  carries `data-empty` so "No records found" never pretends to be a record.
+  It is hover feedback, the same class as `transition-colors`, not the
+  sidebar motion that was removed; `prefers-reduced-motion` keeps the shadow
+  and drops the lift. `Table`'s scroller has `pb-1` so the last row's shadow
+  is not clipped.
 - **Seven columns is seven columns.** The leave calendar and the date picker
   cannot become one column on a phone without ceasing to be calendars, so the
   calendar scrolls inside `min-w-[560px]` instead of shrinking to 38px a day —
@@ -475,6 +501,16 @@ Light and dark both work because components reference tokens, not values.
     keeps its destructive tint, because an icon-only button that deletes an
     account has to look different from the four beside it; the confirmation
     modal is still what actually prevents the mistake.
+  - **Then the actions left the row altogether: they are a right-click menu
+    now**, on the owner's request (`ContextMenu` / `useContextMenu` in the UI
+    kit). Edit, add email, send test code, show and copy password, reset,
+    view-as, deactivate and archive are all in it, under exactly the
+    conditions the buttons were drawn under; the row keeps only facts. The
+    Actions column is gone, so the table is five columns. **The cost is
+    discoverability**, which a one-line hint under the table pays for, and
+    touch: Android raises `contextmenu` on a long press, iOS Safari does not,
+    so on an iPhone these actions are unreachable. The row takes focus and
+    the Menu key or Shift+F10 opens the menu, so a keyboard is not shut out.
 - **The sidebar has no animations, and removing them fixed a bug rather than
   only a preference.** The owner reported that pressing a module made its
   dropdown vanish, and asked for the animations to go. The vanishing was real
@@ -545,18 +581,37 @@ Light and dark both work because components reference tokens, not values.
     `-translate-x-full`, `rotate-180` and `w-sidebar-collapsed` all stayed
     too, and each is load-bearing rather than decorative: the first is what
     keeps the sidebar on screen at desktop width at all.
-- **Departments and Positions each have their own row again**, asked for by
-  the owner. They had been folded into one entry labelled `Organization Chart`
-  pointing at `/hr/departments`, with `activePrefixes` covering Positions so
-  the single row lit for both — which saved a row and cost the thing a sidebar
-  is for: **Positions had no link anywhere**, so the only way to it was to
-  open Departments and find the way across. One entry cannot be the door to
-  two screens. They are two screens for a reason the merged label hid: a
-  department is where somebody is filed, a position is what they are paid to
-  do, and Payroll checks a new rate against the *position's* salary band.
-  `/hr/directory` was in that entry's `activePrefixes` too and has no row of
-  its own either way — it is reached from the dashboard, which is the screen
-  it belongs to.
+- **The sidebar is a deliberately short list now, and seventeen rows were
+  removed from it on the owner's instruction.** Gone: My Profile, Positions,
+  Clients, Checks & Readiness and Archive from Employee Information; Overtime
+  Requests, Time Corrections, Cutoff Closing and Client Timesheets from
+  Timekeeping; Salaries & Adjustments, Separation & Final Pay and Compliance
+  from Payroll; the whole `AI & Analytics` group (Reports, Workforce
+  Analytics, AI Batch Scanner, Scanner Accuracy); and the duplicate `Archive
+  Module` row under Administration.
+  - **Not one route, controller, policy or test changed.** Every screen still
+    answers its URL — verified by walking all fourteen of them and getting
+    200 — and each is still reachable from inside the module it belongs to:
+    Positions from Departments, the readiness screens from an employee's
+    record, Compliance and Final Pay from a payroll run. What went is the row,
+    not the feature.
+  - **The cost is the one `Organization Chart` already demonstrated**, and it
+    is worth stating rather than discovering twice. Folding Positions into
+    Departments left it with no link anywhere, and the only way in was to open
+    Departments and find the way across; that is now the situation for all
+    fourteen. It is a choice about how short the sidebar should be, not an
+    oversight — but a reader who meets a missing row will read it as a missing
+    feature unless something says otherwise, which is what this note is for.
+  - **A merge into tabbed module hubs was built and then undone**, which is
+    the other half of the same conversation. Each module became one sidebar
+    row with its screens as a tab row on the page (`config/modules.js`,
+    `ModuleTabs`), ordered by the Philippine HR lifecycle, and it is what
+    turned up that seventeen screens had no door at that time. The owner asked
+    for it to be reverted. The patch is kept outside the repository rather
+    than in it; what survives here is the finding, because the finding was
+    never about the tabs.
+  - `/hr/directory` has no row either, and never did — it is reached from the
+    dashboard, which is the screen it belongs to.
 - **A module with several screens is one sidebar entry with `children`**, which
   the sidebar renders as an expandable dropdown — not a flat link per screen.
   Payroll's seven screens live this way, same shape as Employee Information,
@@ -565,18 +620,24 @@ Light and dark both work because components reference tokens, not values.
   highlight the right entry when its screen is open. Children filter by role
   like every other nav entry.
 - **Those entries sit in labelled groups** — Employee Management, Time &
-  Attendance, Payroll & Performance, AI & Analytics, and Administration —
-  above an unlabelled Dashboard. The grouping is
+  Attendance, Payroll & Performance, and Administration — above an unlabelled
+  Dashboard. The grouping is
   presentational: it is what gives the sidebar its rhythm, and it moves no
   module, route, or permission. Five modules under one heading read as a flat
   list of five things rather than as a system with parts.
-  - **The order is business first, system last.** The four groups that are
-    about the company's work come before the two that are about the app
+  - **The order is business first, system last.** The three groups that are
+    about the company's work come before the one that is about the app
     itself. `visibleGroups()` drops any group whose items all filter out by
     role, so `roles` belongs on the item and never on the group — a heading
     with nothing under it is worse than no heading.
-- **A fifth group, AI & Analytics, holds only Scanner Accuracy — and the
-  reason it holds nothing else is the point.** It briefly held six screens,
+- **The `AI & Analytics` group is gone from the sidebar** (removed on the
+  owner's instruction, along with its four rows), so what follows is the
+  reasoning that shaped it while it existed rather than a description of the
+  current sidebar. It is kept because the argument is about *labelling a group
+  after a technology its members do not use*, which is a mistake worth not
+  repeating the next time a group is proposed.
+- **It held only Scanner Accuracy, and the reason it held nothing else was the
+  point.** It briefly held six screens,
   grouped on a criterion that was actually sound: Credentials, 201 File
   Status, Attendance Exceptions, Deployment Readiness, and Record Checks each
   read *across* modules rather than maintaining one, and none of them owns a
@@ -596,8 +657,13 @@ Light and dark both work because components reference tokens, not values.
   the batch filer, and neither is a destination. Filing by input was the
   earlier mistake and it is worth not overcorrecting into the opposite one:
   the fix for a wrong label is a right label, not a wrong group.
-  - **The four checks are children of Employee Information, behind a
-    `divider` — the third arrangement, and the owner asked for it.** They were
+  - **The four checks were children of Employee Information behind a
+    `divider`, and that row is gone too** — `Checks & Readiness` was removed
+    with the rest. The arrangement below is what it was, and `visibleGroups()`
+    still moves a `divider` to the next surviving child, so the mechanism is
+    live even though no entry uses it today.
+  - **It was the third arrangement of those four, and the owner asked for
+    it.** They were
     loose in that list once, then pulled into a sibling entry called `Checks &
     Readiness` because loose they read as four more record screens, which is
     the wrong claim about all four: none of them stores anything, and each
@@ -778,12 +844,63 @@ Light and dark both work because components reference tokens, not values.
     every dashboard load, and the screen the link opens already shows the days
     themselves. A link is cheaper than a number nobody reconciles.
 - **Below that it reads in four bands**, top to bottom: headline `StatCard`s,
-  then the `SplitStatCard` / `MeterCard` detail row, then charts, then the
-  three summary cards. `StatTile` and `TilePreview` are the units the summary
+  then the `SplitStatCard` / `MeterCard` detail row (three cards), then
+  charts, then the summary cards — Leave, Payroll and the Document Scanner,
+  each gated, so the row is not drawn for a role that gets none of them.
+  **The 201 File Health and Needs Action cards were removed on the owner's
+  instruction**, with the `onboardingSummary` and `needsAction` props behind
+  them; what they counted is still on the screens they linked to (the
+  Employees list, Daily Time Records, Client Timesheets). `StatTile` and `TilePreview` are the units the summary
   cards are built from — a row of tinted figures over the single most recent
   record. One preview row, never a list: the card is a glance, and the screen
   behind it is where the rest lives.
-- **`TrendChart` is one series only.** The fill under the line reads as "this
+- **The Client Deployment card is gone too**, removed on the owner's
+  instruction with `clientOverview`, its query and the readiness scan it ran
+  on every dashboard load; the Employment Status donut has the chart row to
+  itself. The `client_id=none` bench filter on the Employees list it linked to
+  stays. What follows is how the card was reasoned while it existed.
+- **The wide chart slot held the Client Deployment card, which replaced a
+  14-day attendance and tardiness trend on the owner's request.** The trend
+  restated what Daily Time Records shows a day at a time; the owner asked for
+  something useful and specifically *not another trend*. What the dashboard
+  had no answer to at all was clients — on a manpower agency's landing page.
+  - **Per active client**: deployed headcount split ready / needs attention /
+    cannot deploy, and days left on the contract. **Every readiness count is
+    `DeploymentReadinessChecker`'s**, run once and grouped by client — the scan
+    the integration API publishes.
+  - **Only On Bench links.** The rows used to open
+    `/hr/deployment?client_id=…`, and that screen is gone (see the note at the
+    top of this file). No other screen lists exactly what a row or the other
+    three tiles count, and a link that opens a different number from the tile
+    has replaced the question rather than answered it.
+  - **On Bench is linked, because it can be exact**, and it is the one figure
+    with a legal clock: an active external employee with no client is on
+    floating status, which Article 301 caps at six months. It needed one new
+    filter value — `client_id=none` in `Employee::scopeFilter()` — and a chip
+    on the Employees list that says so, since no dropdown offers it.
+  - **Sorted so the client needing somebody comes first**: anyone blocked,
+    then the contract ending soonest, then by name. `sortBy([...])` with
+    closures takes **comparators** `($a, $b)`, not key extractors — Laravel
+    calls each as `$prop($a, $b)`, so a one-argument closure's key is misread
+    as a comparison result and the order scrambles silently. The first version
+    did exactly that and put a year-long contract above one ending in ten
+    days; a test caught it. **`DeploymentReadinessChecker::scan()` uses the
+    same one-argument shape** for its "blocked first" order and is affected
+    the same way — noted here, not yet fixed.
+  - The contract window is 30 days (`CONTRACT_WARNING_DAYS`), a planning
+    window rather than a statutory one: a lapsed service agreement does not
+    end the staff's employment — DO 174-17 removed co-terminus contracts —
+    it puts them on floating status, and Article 301's clock starts that day.
+  - Gated on `manageOrganization`, the Clients screen's own gate. Any other
+    role gets `null`. It used to see a 12-month Headcount Trend in that slot;
+    **that card was removed for every role on the owner's instruction**, with
+    the `headcountTrend` prop and its query, so for those roles the
+    Employment Status donut has the row to itself.
+  - The removed trend used raw `emerald-500`/`amber-500` utilities, which the
+    design system forbids; the card uses the `success`/`warning`/`destructive`
+    tokens and works in both themes.
+- **`TrendChart` is one series only** (and nothing on the dashboard draws one
+  any more — the component stays in the UI kit). The fill under the line reads as "this
   quantity"; two overlapping fills stop meaning anything. It paints with
   `currentColor` so the caller sets `text-chart-1` and the SVG gradient stays
   on a token — a gradient stop needs a real colour value, and `currentColor`
@@ -1989,7 +2106,8 @@ that screen reuse `DocumentScanner::nameMatches()`.
 
 ## Credential expiry (Module 1)
 
-**Credentials** watches the `expires_at` already stored on every 201-file
+**`CredentialExpiryScanner`** (its `/hr/credentials` screen was deleted — see
+the note at the top of this file) watches the `expires_at` already stored on every 201-file
 document. `EmployeeDocument::isExpired()` answers one document at a time and
 only once it is too late; `CredentialExpiryScanner` looks *forward* instead —
 config-driven and database-free, the same shape as `AttendanceExceptionScanner`.
@@ -2122,69 +2240,53 @@ redirects to `/hr/departments` rather than 404ing.
     that is what DOLE accredits under D.O. 198-18, and a fleet operator is
     required to have one.
 
-## Educational & qualification records (Module 1)
+## Printing a 201 file (Module 1)
 
-**A Qualifications section on the employee's own profile**, between Employment
-and Documents — three lists: schooling, completed trainings and certifications,
-and skills. It answers what somebody is *qualified for*, which the rest of the
-201 file does not: employment says what they are paid to do, documents say what
-paper is on file, and neither says whether this driver may be sent on a job
-that needs a forklift ticket.
+**`/hr/employees/{employee}/print` is the record laid out for paper**, under
+the company letterhead — the logo and `company.name`, tagline, address,
+phone and email from Settings > General — with every section of the file
+including the documents on file, two signature lines,
+and a confidentiality footer naming RA 10173. Printed from the browser like
+the payslip; "Save as PDF" in the dialog makes the file.
 
-- **Three tables, not one with a `type` column.** The three are alike only in
-  belonging to a person: a school has a course and a year, a training has a
-  provider and an expiry, a skill has a grade and neither. One table would be
-  eleven mostly-null columns and a validation rule per type pretending to be a
-  schema.
-- **The paper stays in Documents.** A diploma, a transcript, and a TESDA
-  certificate are *evidence*; these rows are the *fact*, and the fact survives
-  the paper going missing. Filing it twice would be two answers to one
-  question — which is why `diploma` and `transcript` became document types of
-  their own rather than fields here.
-- **Highest attainment is derived, never stored.** `Employee::highestEducation()`
-  ranks by the order of `config('qualifications.education_levels')`, so adding
-  a degree cannot leave a stale flag behind, and an unknown level ranks *last*
-  so a level dropped from config cannot outrank a real one. The same config
-  drives the form's dropdown, sent from the controller rather than restated in
-  the component: the order is what makes "highest" mean anything, and a second
-  copy would drift from the one the server ranks by.
-- **A blank expiry on a training means "does not lapse", not "not typed".** The
-  screen says so in those words, the same distinction the document scanner
-  draws — "—" there would read as a date somebody forgot. `expiryState()` reads
-  `credentials.warning_days.certificate` rather than holding its own number, so
-  this row and the Credentials screen cannot disagree about the same TESDA
-  card.
-- **No service, deliberately.** A school and a training course are recorded
-  facts, not derived ones: nothing computes off them and nothing else has to
-  agree with them, so a service that only forwarded to `create()` would be a
-  layer pretending to earn its place. The rules that do exist — which levels,
-  which grades, what a plausible year is — live in `config/qualifications.php`.
-- **Writes are gated on `EmployeePolicy::update`, not a permission of their
-  own**: editing somebody's qualifications is editing their record. Reading is
-  outside `viewSensitive` for the opposite reason — a school and a forklift
-  ticket are not salary, and a supervisor deciding who to send on a run
-  legitimately needs them.
-- **A child row is checked against its parent.** Both ids are in the URL and
-  Laravel binds them independently, so `/employees/7/skill/12` resolves happily
-  when skill 12 is employee 9's — and the policy check passed on employee 7.
-  Without `belongsTo()`, being allowed to edit one person is being allowed to
-  delete a row off anybody. Guarded by a test.
-- **Duplicate skills are caught case-insensitively in PHP, not by a unique
-  index.** "Forklift" and "forklift" are the same skill and a list holding both
-  is a list nobody can count — but a database uniqueness rule compares by the
-  driver's collation, which differs between the Postgres this runs on and the
-  SQLite the tests use.
-- **`EmployeeEducation` states its table name.** Laravel treats "education" as
-  uncountable and looks for `employee_education`; renaming the table to match
-  would leave one singular table in a schema where nothing else is.
-- **Skills are free text today, and that is the known limit.** The upgrade is a
-  skills library beside Departments and Positions, with employees tagged from
-  it — which is what "who has a Forklift NC II" needs, and what a client asking
-  for five certified operators is really asking.
+- **Masked unless asked for and allowed.** Government numbers and the bank
+  account print as `••••••` plus the last four by default; a reader who holds
+  `viewSensitive` can tick "Print government numbers in full". Somebody
+  without it gets no checkbox and no numbers at all, whatever `?full=1` says.
+  A sheet left in a tray is the one copy of a 201 file no gate stands in
+  front of.
+- **Every opening is an `accessed` row** (`how: print`, `full_numbers`),
+  gated on `EmployeePolicy::view` like the record — so an employee prints
+  their own and nobody else's.
+- **The letterhead is a `<div>`, not a `<header>`.** `app.css` hides every
+  `header` element in print to drop the topbar, and a `<header>` letterhead
+  would have printed every sheet without the logo.
+
+## Educational & qualification records (removed)
+
+**Education, trainings and skills are gone from the system, on the owner's
+instruction** — after being moved from the profile onto the Add and Edit
+forms, they were removed altogether. The forms, the print sheet's three
+lists, the per-row endpoints (`employees.education.*` and the rest), the
+controller and form request, the three models, `config/qualifications.php`
+and their tests were all deleted.
+
+- **The tables were deliberately kept.** `employee_educations`,
+  `employee_trainings` and `employee_skills` are still in the schema, because
+  the live site may hold rows in them and dropping a table is the one step
+  here that cannot be undone. Nothing reads or writes them now;
+  `hris:reset-demo-data` still clears them by name. Dropping them is a
+  migration, and a decision for the owner once the live data is checked.
+- **The privacy notice still lists "education, trainings and skills"** for the
+  same reason: while rows may still be held, saying the system holds them is
+  the accurate disclosure. Take it out of the notice with the tables.
+- **`diploma` and `transcript` stay as document types.** The paper was always
+  filed under Documents; only the structured rows went.
 
 ## 201 file completeness (Module 1)
 
-**201 File Status** answers what Credentials doesn't: not "what is about to
+**`OnboardingChecker`** (its `/hr/onboarding` screen was deleted — see the
+note at the top of this file) answers what the credential scanner doesn't: not "what is about to
 lapse" but "what was never filed". `OnboardingChecker` is config-driven and
 database-free, the same shape as the other scanners — `config/onboarding.php`
 holds what a complete file needs, so a new client audit demanding another
@@ -2214,6 +2316,16 @@ Days**, **Holiday Calendar**, **Overtime Requests**, **Time Corrections**,
 `2026_09_16_000001_create_time_and_attendance_tables`. Old links
 (`/hr/timekeeping/period`, `/reports`, …) redirect to the records with a reason.
 
+- **Daily Time Records is read per employee.** It opens on a roster — each
+  employee in scope with their days worked, late, absent, no time-out and
+  hours for the range — and *View DTR* opens that employee's sheet: **every
+  date in the range, recorded or not**, with time in, break, time out and the
+  figures, totals underneath and a print layout with two signature lines. A
+  working day nobody recorded reads "No record", never "Absent". Somebody
+  whose scope is only themselves lands on their own sheet. **A `status` with
+  nobody chosen still lists the matching days across everyone** (`view=days`
+  forces the same list), because the tiles here and the dashboard's "No
+  time-out" count days, and a figure has to open the rows it counted.
 - **`AttendanceCalculator` is database-free and unit tested**, because payroll
   multiplies its output by money. Grace forgives lateness entirely; past it,
   lateness counts from the shift start. A shift or a time-out at or before the
@@ -2284,10 +2396,189 @@ them hard-stops a run.
 everyone's; supervisor: direct reports'; never their own), as
 `NotificationFeed::awaitingDecision()`.
 
+**Attendance Calendar (`/hr/timekeeping/calendar`) is one employee's month, a
+day at a time**, modelled on the biometric app the owner's staff already use:
+a Monday-first grid with a status dot and shift code per day, and beside it the
+selected day's shift, time in and out against the scheduled times, and a
+Normal / Late / Left early / Missing badge on each punch.
+
+- **`AttendanceCalendar::month()` is read by the screen *and* the email**, so
+  the copy in somebody's inbox cannot disagree with the screen they are told
+  to check it against. It judges nothing: late and early come from the
+  `late_minutes` / `undertime_minutes` the calculator already stored.
+- **A past working day with no row is "no record", never "absent".** Absence
+  is a status somebody recorded; inventing one here would put an absence in an
+  inbox that no DTR and no payslip contains.
+- Tiles count the way Daily Time Records does, so Late and Absences link there
+  with `employee`, `from`, `to` and `status` and open the same number.
+- **Emailing is HR's (`AttendanceLogPolicy::manage`)** — one employee, or
+  everyone in scope with at least one record that month (nobody is sent an
+  empty calendar). It goes through the `MAIL_*` Gmail the sign-in codes
+  already use, **synchronously**, because there is no queue worker on the
+  deployment: `AttendanceCalendarMail` is deliberately not `ShouldQueue`, for
+  the reason `LoginOtp` gives.
+  - **The body carries the whole month**, as a seven-column table with inline
+    styles — Gmail on a phone reads neither a CSS grid nor the app's tokens, so
+    the brand values are written out, the same reason the PDF report view is.
+    The employee can read it without signing in; the link is for checking it
+    against the screen and filing a correction.
+  - Sent to the email on the 201 file, else the personal inbox connected to
+    the login. **Reserved domains are refused rather than sent**
+    (`example.com/.net/.org`, `.test`, `.invalid`…): every seeded employee has
+    one, so "Email everyone" on a demo database would otherwise hand Gmail
+    fifty-odd messages to nowhere and fill the sending inbox with bounces.
+  - Every send that leaves writes an `exported` audit row
+    (`attendance:email`) with the address **masked**, like the OTP events. A
+    failed send is logged without the address and reported by name.
+
+**Time Clock (`/hr/timekeeping/clock`) is where an employee punches their own
+day — Time in, Start break, End break, Time out — and each press is verified
+against their face on the device camera.** It is the one write to a DTR its
+owner makes, which `AttendanceLogPolicy::punch` allows and "only HR writes a
+day" otherwise forbids. What makes the exception safe is that the employee
+chooses nothing: **the time is the server's clock at the request**, never a
+value the page sends, the face has to match the one HR enrolled, and changing
+the day afterwards is still a Time Correction somebody else decides.
+
+- **For HR and admin the Time Clock is a kiosk** (`AttendanceLogPolicy::kiosk`):
+  the face says who is punching, so one laptop at the office door serves
+  everybody, and the screen lists every punch of a chosen day. Most admin
+  logins have no 201 file, which is what made the personal mode a dead end
+  for them. `FaceMatcher::identify()` ranks every enrolled face and accepts
+  the nearest only when it beats the next by `timeclock.identify_margin`
+  (0.06) — two people too close to call is refused, the same refusal the
+  batch filer makes for two people fitting one name. An unrecognised face
+  writes `clock_face_unrecognised`; the operator signed in on the kiosk is
+  kept on the punch as `operator_id`, and a refusal names whose day it was
+  about. The day's list opens a punch's photo on click rather than drawing
+  thumbnails, because every photo view is an `accessed` audit row and a page
+  of sixty would bury the reads that matter. An employee on their own login
+  keeps the 1:1 mode and sees their last fourteen days.
+- **An administrator's login usually has no 201 file, which left the kiosk
+  looking broken to the person standing at it.** The kiosk clocks in
+  *employees*; a login that is nobody's employee record has nobody to time
+  in as, and with no face enrolled the buttons are disabled. So the kiosk
+  says which of the two it is for the operator (`operator.has_file`,
+  `operator.enrolled`) with the next step as a link, and **Users & Access →
+  Edit now has "Linked 201 file"** (`UserAccessController::linkEmployee()`):
+  a login could only be linked when it was created, so an account made first
+  and filed later could never become anybody. A file another live login
+  holds is refused rather than taken — re-pointing it would hand somebody
+  else's payslips and DTR to this account. The field is only acted on when
+  sent, so an older client changes nothing.
+- **The face is read on the device, not sent anywhere.** `@vladmandic/face-api`
+  runs in the browser (lazily imported — 1.3 MB with its TensorFlow runtime)
+  and turns a frame into a 128-number template; the models are copied out of
+  the package into `public/build/face-models` by a Vite plugin at build time,
+  because the Dockerfile ships only `public/build`. No image goes to a third
+  party — the opposite of the document scanner, and deliberate for data this
+  sensitive.
+- **The comparison runs on the server** (`FaceMatcher`, Euclidean distance,
+  `timeclock.match_threshold` 0.5 — stricter than face-api's own 0.6). The
+  enrolled template never leaves the server, so a page cannot be made to
+  report a match it never saw.
+- **What it cannot do, stated rather than hidden**: the template is computed
+  by a browser the employee controls, so a tampered client can send any
+  numbers it likes, and the blink check (`timeclock.require_blink`, eye aspect
+  ratio from the 68 landmarks) raises the bar against a printed photo rather
+  than closing the door. The real control is the evidence: **every press is an
+  `AttendancePunch` row nothing updates**, with the server time, the match
+  distance and a snapshot. A face that does not match writes a
+  `clock_face_rejected` audit row before refusing.
+- **Every role may enroll their own face, once; replacing one is HR's.**
+  `/hr/timekeeping/faces` is HR's list of everybody (enroll, re-enroll,
+  remove) and every other role's own card (`AttendanceLogPolicy::enrollOwnFace`,
+  which needs a 201 file). It began as HR-only and never-for-yourself, and
+  the owner asked for it in every role. **The once is the control that
+  survived**: the first enrollment is the person's own face on their own
+  login, but a self-service *re*-enrollment is exactly how somebody holding a
+  colleague's password would swap their own face in and clock in for them —
+  so `TimeClockService::enroll()` refuses a second self-enrollment and points
+  at HR, HR included. `enrolled_by` equal to the employee's own login marks a
+  row **Self-enrolled** on HR's list, so the witnessed and the unwitnessed
+  are told apart; HR can compare it against the 201 photo and re-enroll.
+  Three samples and a consent checkbox the request requires, either way.
+- **A face template is biometric data — sensitive personal information under
+  RA 10173.** `face_enrollments.descriptors` is `encrypted:array`, excluded from
+  the audit trail, snapshots are on the private disk behind `viewPunch` (HR,
+  the owner, their supervisor; anybody else's view is logged as `accessed`),
+  and `timeclock:prune-snapshots` deletes punch photos after
+  `snapshot_retention_days` (90, scheduled 03:30) while keeping the punch rows.
+  **There is no cron on the deployment host**, so on Hostforge the schedule
+  does not run by itself — the same as the other scheduled commands.
+- **Order is enforced from the day's state** (`TimeClockService::state()`): out
+  before in, a second break, timing out while on break and a second time-in
+  are refused with a sentence saying which. An open day is one timed in within
+  `max_shift_hours` (16) and not out, which is what lets a night shift close on
+  the day it started. A time-in older than that with no time-out is `stale` and
+  waits for a correction — a new time-in would overwrite the morning's punch.
+- **Break punches are columns on the day**, and `AttendanceCalculator` takes
+  the break as taken or as scheduled, **whichever is longer**: an overbreak is
+  time not worked, a short break earns nothing. With no break punched the
+  shift's break comes off as before. `record()` keeps a day's break punches
+  when HR re-keys it or a correction is approved. **The limit**: payroll
+  deducts lateness, undertime and absence, not `minutes_worked`, so an
+  overbreak shows on the DTR and does not by itself dock a monthly salary.
+- Every punch goes through `TimekeepingService::writeDay()`, the path
+  `record()` now ends in, so it is computed and refused inside a closed cutoff
+  exactly like an HR entry or a biometric import.
+- **The camera has only been exercised by its tests, not by a person.** The
+  suite covers the server half with synthetic templates; whether the blink
+  prompt and the thresholds feel right on a real phone in a depot's light has
+  to be found by using it.
+
 Not rebuilt from the old module, on purpose for now: the Exceptions scanner,
 the edit History screen (the audit log still records every change), the
-per-employee calendar, the dashboard attendance tiles and `/api/v1/attendance`.
+dashboard attendance tiles and `/api/v1/attendance`.
 ## Leave (Module 3)
+
+**The module is one screen with four tabs, and it is the first module merged
+this way — the pattern the other four are to follow.** Filing, the calendar,
+the credits and the types were four separate pages reached from a sidebar
+dropdown, so moving between them was a navigation: the server rebuilt
+everything and an approver checking the calendar before deciding on a request
+lost the request they were looking at.
+
+- **`LeaveController::index()` renders `HR/Leave/Hub` with all four tabs'
+  props**, and the page keeps the active tab in React state, so **switching a
+  tab costs no request at all.** `ModuleTabs` is buttons rather than links for
+  exactly that reason — a `<Link>` would quietly put the round trip back.
+- **The props are still built by the controller that owns each tab.**
+  `calendarProps()`, `balancesProps()` and `typesProps()` were extracted from
+  the three old actions and are resolved as method arguments on `index()`. A
+  fifth copy of "what the credits screen shows" is the drift this codebase
+  refuses everywhere else: the day one changed, the tab and the old screen
+  would disagree and nothing would say which was right.
+- **One gate for the module.** All four screens asked `viewAny` on
+  `LeaveRequest` and nothing else, so asking it once is the same rule rather
+  than a relaxation. Anything narrower stays on the tab's own `can` flags —
+  `adjust` on the credits, `manage` on the types.
+- **The three old URLs redirect onto their tab, carrying the query string** —
+  `/hr/leave/balances?year=2025` becomes `/hr/leave?year=2025&tab=balances`, so
+  a bookmark keeps both the screen and the year. The sidebar children still
+  point at the clean paths and go through the same redirect, which means one
+  code path rather than two.
+- **`tab` is written back to the URL with `router.replace`, and was not at
+  first — which is a bug the owner found.** The sidebar lights the child that
+  owns the URL, the path is always `/hr/leave`, so with the tab kept only in
+  React state every tab lit "Requests". Switching a tab now replaces the
+  URL client-side (still no request), and `bestMatch()` reads
+  `/hr/leave?tab=calendar` as `/hr/leave/calendar`. *Replace*, never push: a
+  tab is which part of one screen you are reading, and a history entry per
+  tab would make Back walk through tabs instead of leaving the module.
+- **The cost is stated rather than hidden: a visit builds all four tabs even
+  though one is drawn.** Measured at **422 ms on the real database** — 15
+  requests, 58 employees' credits, 8 types — and that is what buys the instant
+  switch. If a module outgrows it the answer is Inertia's deferred props for
+  the tabs below the first, not a return to four pages.
+- A count rides a tab only where it is something to act on: requests awaiting
+  a decision, and how many types are configured. Four numbers competing for
+  one glance is four numbers nobody reads, and the count is **null rather than
+  0** so an empty queue is quiet.
+- The four page components became `Partials/*Panel.jsx` — the same components
+  with the `AppLayout` wrapper removed, since the hub provides it. No screen's
+  own markup or behaviour changed, which is why only five test assertions
+  needed moving to the nested prop path.
 
 **The employee files; HR or an admin decides.** One step, and nobody signs off
 on their own leave — HR included.
@@ -2482,6 +2773,36 @@ was paid, leave for what was not taken, compensation for what is still borrowed.
   inactive.
 - The list counts down against DOLE Labor Advisory 06-20's 30 days, which is
   what turns it from a table into a work queue.
+- **It is called "Back Pay" on screen and in the sidebar**, back under Payroll
+  after the sidebar trim removed it, because that is what the owner and
+  Philippine staff call final pay. Routes, policy and the `Separation` model
+  keep their names. "End of Contract" reads "End of Contract (Endo)".
+- **Unpaid salary is counted off the Daily Time Records** unless HR types a
+  figure (`SeparationService::unpaidDays()`); it was typed by hand because it
+  predates Module 2. The window starts the day after the last *reportable*
+  payroll period this employee has a payslip in — a draft run is not paid —
+  and counts what a monthly salary covers: worked days, approved paid leave on
+  a working day, and regular holidays on a working day. Absences and special
+  non-working days are not paid. The breakdown says which source the count
+  came from.
+  - **Never paid here means counting from the first DTR record, not the hire
+    date.** The first run against the real database reached back to a 2023
+    hire date and paid every regular holiday since January for somebody the
+    system had records of only from August. With no payslip and no record at
+    all it returns 0 and says to enter the days by hand.
+- **Convertible leave is accrued to the last day**, through
+  `LeaveAccrualCalculator`, rather than read off `leave_balances`. The row is a
+  cache and was stale in the overpaying direction: a full-year grant still
+  said 15 days of VL in September for somebody who had earned 10. The floor
+  `accrue()` holds is kept — never below what was used.
+- **VL is seeded convertible to cash.** Article 95 makes unused Service
+  Incentive Leave commutable, VL is what stands in for SIL here, and with no
+  convertible type every back pay's leave conversion was ₱0. It is a flag on
+  the Leave Types tab if the company's policy differs.
+- Still not included, deliberately: a **tax refund or additional withholding**
+  from annualising the year's tax at separation. It needs the year-to-date
+  taxable income and withheld tax to be reconciled against the annual table,
+  and a wrong figure there is a BIR problem, so it is left to HR.
 
 ## Performance (Module 5)
 
@@ -3364,6 +3685,18 @@ container start** — storage link, then (with `RUN_MIGRATIONS=true`) migrate an
     It only works over TLS, so it is coupled to the site being secured in Herd.
   - Guarded by `HardeningTest::test_a_same_site_none_session_cookie_is_also_secure`,
     which is a no-op on the default `lax` and fails loudly on the broken pair.
+- **A login page left open longer than the session lived failed the first
+  sign-in, every time.** The CSRF token the page loaded with dies with the
+  session — `SESSION_LIFETIME` is 5 by default and **2 in the local `.env`** —
+  so posting from a page that had sat open answered **419 before the password
+  was looked at**, `router.on('invalid')` reloaded `/login`, the typed fields
+  vanished, and the second attempt worked because the reload had brought a
+  new token. It read as "it rejects my password once", and no `login_failed`
+  row was ever written, which is the tell. `Login.jsx` now fetches
+  `/sanctum/csrf-cookie` immediately before it posts, so the token is always
+  minutes-old at most; `AuthenticationTest` guards the route. Reproduced
+  against the real site first — a session left 135 seconds, the stale post
+  answered 419 and the refreshed one did not.
 - **`APP_URL` is pinned in `phpunit.xml`, and it has to be.** It was unset, so
   it fell through to the developer's own `.env` — and a relative-path request
   in a test (`$this->get('/login')`) builds its absolute URL from that value,

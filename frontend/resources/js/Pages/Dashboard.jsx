@@ -1,7 +1,6 @@
 import { Link, router } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 import {
-    BellRing,
     Building2,
     CalendarClock,
     CalendarDays,
@@ -30,7 +29,6 @@ import {
     StatCard,
     StatTile,
     TilePreview,
-    TrendChart,
 } from '@/Components/ui';
 import { cn, formatCurrency, formatDate, initials } from '@/lib/utils';
 
@@ -55,18 +53,6 @@ const SCAN_OUTCOME_TONES = {
 /** Fixed order, never cycled — the set is only validated for four slots. */
 const SERIES = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4'];
 const SERIES_TEXT = ['text-chart-1', 'text-chart-2', 'text-chart-3', 'text-chart-4'];
-
-/**
- * First point to last, for the badge beside the trend chart.
- *
- * Null rather than zero when there is nothing to compare — a badge reading
- * "+0" on a one-point series claims a stability that was never measured.
- */
-function trendDelta(series) {
-    if (!Array.isArray(series) || series.length < 2) return null;
-
-    return (Number(series.at(-1).value) || 0) - (Number(series[0].value) || 0);
-}
 
 /**
  * Active headcount by department.
@@ -234,17 +220,14 @@ function StatusDonut({ data }) {
 export default function Dashboard({
     statistics,
     headcountByDepartment,
-    headcountTrend,
     statusMix,
     recentHires,
     approvals,
     attendanceToday,
-    needsAction,
     payroll,
     leaveToday,
     leaveSummary,
     payrollSummary,
-    onboardingSummary,
     scannerSummary,
     profile,
     can,
@@ -276,11 +259,9 @@ export default function Dashboard({
      * The column count follows the number that survived, because a fixed
      * `lg:grid-cols-3` holding four cards leaves the fourth alone on a row of
      * its own, and holding two stretches each across half a screen of
-     * whitespace. 201 File Health is the one card every role gets, so it is
-     * counted as a constant rather than tested.
+     * whitespace. With none left — every one is gated — the row is not drawn.
      */
-    const summaryCards =
-        [leaveSummary, payrollSummary, scannerSummary].filter(Boolean).length + 1;
+    const summaryCards = [leaveSummary, payrollSummary, scannerSummary].filter(Boolean).length;
 
     const summaryColumns =
         {
@@ -455,7 +436,7 @@ export default function Dashboard({
             </div>
 
             {/* Operational detail */}
-            <div className="mb-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mb-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 {/* The bar takes the band's own colour, so the meter and the
                     badge cannot disagree about how the score reads. */}
                 {/*
@@ -513,86 +494,12 @@ export default function Dashboard({
                         },
                     ]}
                 />
-
-                {/*
-                    Nobody's queue, and still somebody's problem: a lapsed
-                    licence, a day with no time-out, a client who has not
-                    confirmed. The headline names the most urgent in words,
-                    because three numbers are three questions and the reader
-                    wants "what first" answered. The whole card drops to grey
-                    when all three are zero — "0 blocked" in red reads as a
-                    problem when it is the opposite.
-                */}
-                <Card floating className="flex flex-col justify-between p-4">
-                    <div className="flex items-start justify-between gap-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            Needs Action
-                        </p>
-                        <span
-                            className={cn(
-                                'grid h-8 w-8 shrink-0 place-items-center rounded-lg',
-                                needsAction.headline
-                                    ? 'bg-warning/10 text-warning'
-                                    : 'bg-muted text-muted-foreground',
-                            )}
-                        >
-                            <BellRing className="h-4 w-4" aria-hidden="true" />
-                        </span>
-                    </div>
-
-                    <div className="mt-3 flex gap-2">
-                        <StatTile
-                            label="Credentials"
-                            value={needsAction.credentials}
-                            tone={needsAction.credentials > 0 ? 'destructive' : 'muted'}
-                            href="/hr/credentials"
-                        />
-                        <StatTile
-                            label="No time-out"
-                            value={needsAction.incomplete}
-                            tone={needsAction.incomplete > 0 ? 'warning' : 'muted'}
-                            href="/hr/timekeeping?status=incomplete"
-                        />
-                        <StatTile
-                            label="Timesheets"
-                            value={needsAction.timesheets}
-                            tone={needsAction.timesheets > 0 ? 'warning' : 'muted'}
-                            href="/hr/timekeeping/client-timesheets"
-                        />
-                    </div>
-
-                    <p className="mt-3 text-[11px] leading-snug text-muted-foreground">
-                        {needsAction.headline ??
-                            'Nothing waiting — credentials, time records and client timesheets are all clear.'}
-                    </p>
-                </Card>
             </div>
 
             {/* Charts */}
-            <div className="mb-5 grid gap-5 lg:grid-cols-3">
-                <Card floating className="lg:col-span-2">
-                    <CardHeader
-                        title="Headcount Trend"
-                        action={
-                            trendDelta(headcountTrend) === null ? undefined : (
-                                <Badge
-                                    variant={
-                                        trendDelta(headcountTrend) >= 0
-                                            ? 'success'
-                                            : 'destructive'
-                                    }
-                                >
-                                    {trendDelta(headcountTrend) >= 0 ? '+' : ''}
-                                    {trendDelta(headcountTrend)} over 12 months
-                                </Badge>
-                            )
-                        }
-                    />
-                    <CardBody>
-                        <TrendChart data={headcountTrend} valueLabel="Active headcount" />
-                    </CardBody>
-                </Card>
-
+            {/* The Client Deployment card and the Headcount Trend that shared
+                this row were both removed on the owner's instruction. */}
+            <div className="mb-5 grid gap-5">
                 <Card floating>
                     <CardHeader
                         title="Employment Status"
@@ -613,9 +520,13 @@ export default function Dashboard({
                 </Card>
             </div>
 
-            {/* Headcount by department keeps its own card — it is a different
-                question from the trend above (who, not when). */}
-            <div className={cn('mb-5 grid gap-5', summaryColumns)}>
+            <div
+                className={cn(
+                    'mb-5 grid gap-5',
+                    summaryColumns,
+                    summaryCards === 0 && 'hidden',
+                )}
+            >
                 {leaveSummary && (
                     <Card floating className="lg:col-span-1">
                         <CardHeader
@@ -738,71 +649,6 @@ export default function Dashboard({
                         </CardBody>
                     </Card>
                 )}
-
-                <Card floating>
-                    <CardHeader
-                        title="201 File Health"
-                        action={
-                            <Link
-                                href="/hr/onboarding"
-                                className="text-xs font-medium text-primary hover:underline"
-                            >
-                                View all
-                            </Link>
-                        }
-                    />
-                    <CardBody>
-                        {/* The three go to three different screens, because
-                            they are three different questions. "Expiring" is
-                            about documents and belongs to Credentials, whose
-                            warning window is per document type — this tile
-                            reads that same scanner rather than keeping a flat
-                            window of its own, which is what used to make the
-                            two disagree. */}
-                        <div className="flex gap-2">
-                            <StatTile
-                                label="New Hires"
-                                value={onboardingSummary.new_hires}
-                                tone="info"
-                                href={`/hr/employees?hired_within=${onboardingSummary.new_hire_days}`}
-                            />
-                            <StatTile
-                                label="Expiring"
-                                value={onboardingSummary.expiring}
-                                tone="warning"
-                                href="/hr/credentials?status=expiring"
-                            />
-                            {/* `status=active` as well, because that is what
-                                the count was taken over — an archived record
-                                with an empty file is not somebody's missing
-                                paperwork. */}
-                            <StatTile
-                                label="No Documents"
-                                value={onboardingSummary.without_documents}
-                                tone="destructive"
-                                href="/hr/employees?without_documents=1&status=active"
-                            />
-                        </div>
-
-                        <TilePreview
-                            icon={UserPlus}
-                            tone="success"
-                            href={
-                                onboardingSummary.latest
-                                    ? `/hr/employees/${onboardingSummary.latest.id}`
-                                    : undefined
-                            }
-                            title={onboardingSummary.latest?.title}
-                            subtitle={onboardingSummary.latest?.subtitle}
-                            badge={
-                                onboardingSummary.latest && (
-                                    <Badge status={onboardingSummary.latest.status} />
-                                )
-                            }
-                            empty="No employees on file yet."
-                        />
-                    </CardBody>
-                </Card>
 
                 {/* The one AI feature in the system, and the only one that had
                     no presence on this screen — which made it the thing nobody

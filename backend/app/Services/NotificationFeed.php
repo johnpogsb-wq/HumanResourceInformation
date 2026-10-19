@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\EmployeeDocument;
 use App\Models\EmployeeEndorsement;
 use App\Models\LeaveRequest;
 use App\Models\OvertimeRequest;
@@ -17,18 +16,13 @@ use Illuminate\Database\Eloquent\Builder;
  * "notification", so nothing can go stale or need marking read. Each entry
  * links to the screen where it is acted on, and each is scoped by the same
  * rules as that screen: HR sees every queue, a supervisor sees their direct
- * reports', everyone sees their own leave decisions and lapsing documents.
+ * reports', everyone sees their own leave decisions.
  */
 class NotificationFeed
 {
     private const RECENT_DECISION_DAYS = 14;
 
     private const LEAVE_PREVIEW = 5;
-
-    public function __construct(
-        private readonly EmployeeService $employees,
-        private readonly CredentialExpiryScanner $credentials,
-    ) {}
 
     /** How many things are waiting on this person to act — the red badge. */
     public function count(User $user): int
@@ -72,14 +66,6 @@ class NotificationFeed
 
         if (($hires = $this->pendingHires($user)) > 0) {
             $items[] = $this->summary('hires', 'info', "{$hires} new hire(s) from Core 1", 'Endorsements waiting for review', '/hr/endorsements');
-        }
-
-        $expiring = $this->credentials->countFor(
-            EmployeeDocument::query()->whereIn('employee_id', $this->employees->scopedQuery($user)->select('employees.id')),
-        );
-
-        if ($expiring > 0) {
-            $items[] = $this->summary('credentials', 'destructive', "{$expiring} document(s) expired or expiring", 'Licences and clearances that need renewing', '/hr/credentials');
         }
 
         foreach ($this->recentDecisionsOnOwnLeave($user) as $leave) {

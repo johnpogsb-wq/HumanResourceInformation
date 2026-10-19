@@ -38,8 +38,10 @@ class SecurityHeaders
         // would leak it to any external link a user follows.
         'Referrer-Policy' => 'strict-origin-when-cross-origin',
 
-        // Nothing in this system uses a camera, a microphone, or location.
-        'Permissions-Policy' => 'camera=(), microphone=(), geolocation=(), payment=()',
+        // The time clock reads the employee's face, so the camera is allowed
+        // for this site's own pages — `camera=()` refused it before the
+        // browser ever asked the user. Nothing uses a microphone or location.
+        'Permissions-Policy' => 'camera=(self), microphone=(), geolocation=(), payment=()',
 
         'Content-Security-Policy' => "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
     ];

@@ -7,10 +7,15 @@ use App\Models\Employee;
 use App\Models\EmployeeDocument;
 use App\Models\Position;
 use App\Models\User;
+use App\Services\OnboardingChecker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Inertia\Testing\AssertableInertia as Assert;
+use Illuminate\Support\Collection;
 use Tests\TestCase;
 
+/**
+ * The checker has no screen of its own any more; it still feeds Deployment
+ * Readiness and the integration API, so its rules are tested directly.
+ */
 class OnboardingTest extends TestCase
 {
     use RefreshDatabase;
@@ -26,14 +31,7 @@ class OnboardingTest extends TestCase
             $this->document($employee, $type);
         }
 
-        $this->actingAs($this->hr())
-            ->get('/hr/onboarding')
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('HR/Employees/Onboarding')
-                ->has('rows', 0)
-                ->where('summary.incomplete', 0),
-            );
+        $this->assertCount(0, $this->scan());
     }
 
     public function test_a_missing_document_is_reported(): void
@@ -44,14 +42,12 @@ class OnboardingTest extends TestCase
             $this->document($employee, $type);
         }
 
-        $this->actingAs($this->hr())
-            ->get('/hr/onboarding')
-            ->assertInertia(fn (Assert $page) => $page
-                ->has('rows', 1)
-                ->where('rows.0.missing_count', 1)
-                ->where('rows.0.missing.0.key', 'contract')
-                ->where('rows.0.missing.0.blocking', true),
-            );
+        $rows = $this->scan();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(1, $rows[0]['missing_count']);
+        $this->assertSame('contract', $rows[0]['missing'][0]['key']);
+        $this->assertTrue($rows[0]['missing'][0]['blocking']);
     }
 
     public function test_a_missing_resume_does_not_stop_deployment(): void
@@ -62,14 +58,11 @@ class OnboardingTest extends TestCase
             $this->document($employee, $type);
         }
 
-        $this->actingAs($this->hr())
-            ->get('/hr/onboarding')
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('rows.0.missing.0.key', 'resume')
-                ->where('rows.0.missing.0.blocking', false)
-                ->where('rows.0.blocking', 0)
-                ->where('summary.blocking', 0),
-            );
+        $row = $this->scan()[0];
+
+        $this->assertSame('resume', $row['missing'][0]['key']);
+        $this->assertFalse($row['missing'][0]['blocking']);
+        $this->assertSame(0, $row['blocking']);
     }
 
     /** A driver needs a licence; a dispatcher does not. */
@@ -81,13 +74,11 @@ class OnboardingTest extends TestCase
             $this->document($driver, $type);
         }
 
-        $this->actingAs($this->hr())
-            ->get('/hr/onboarding')
-            ->assertInertia(fn (Assert $page) => $page
-                ->has('rows', 1)
-                ->where('rows.0.missing.0.key', 'drivers_license')
-                ->where('rows.0.missing.0.blocking', true),
-            );
+        $rows = $this->scan();
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('drivers_license', $rows[0]['missing'][0]['key']);
+        $this->assertTrue($rows[0]['missing'][0]['blocking']);
     }
 
     public function test_a_non_driver_is_not_asked_for_a_licence(): void
@@ -98,9 +89,7 @@ class OnboardingTest extends TestCase
             $this->document($dispatcher, $type);
         }
 
-        $this->actingAs($this->hr())
-            ->get('/hr/onboarding')
-            ->assertInertia(fn (Assert $page) => $page->has('rows', 0));
+        $this->assertCount(0, $this->scan());
     }
 
     public function test_a_missing_government_number_is_reported(): void
@@ -111,15 +100,12 @@ class OnboardingTest extends TestCase
             $this->document($employee, $type);
         }
 
-        $this->actingAs($this->hr())
-            ->get('/hr/onboarding')
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('rows.0.missing.0.kind', 'government_number')
-                ->where('rows.0.missing.0.key', 'tin')
-                // It doesn't stop the person working — it stops the filing.
-                ->where('rows.0.missing.0.blocking', false)
-                ->where('summary.missing_numbers', 1),
-            );
+        $missing = $this->scan()[0]['missing'][0];
+
+        $this->assertSame('government_number', $missing['kind']);
+        $this->assertSame('tin', $missing['key']);
+        // It doesn't stop the person working — it stops the filing.
+        $this->assertFalse($missing['blocking']);
     }
 
     public function test_blocking_gaps_sort_above_the_rest(): void
@@ -134,54 +120,22 @@ class OnboardingTest extends TestCase
             $this->document($blocked, $type); // no contract
         }
 
-        $this->actingAs($this->hr())
+        $rows = $this->scan();
+
+        $this->assertSame($blocked->id, $rows[0]['employee_id']);
+        $this->assertSame($tidy->id, $rows[1]['employee_id']);
+    }
+
+    public function test_the_screen_is_gone(): void
+    {
+        $this->actingAs(User::factory()->hrStaff()->create())
             ->get('/hr/onboarding')
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('rows.0.employee_id', $blocked->id)
-                ->where('rows.1.employee_id', $tidy->id),
-            );
+            ->assertNotFound();
     }
 
-    public function test_filtering_to_blocking_only_narrows_the_list(): void
+    private function scan(): Collection
     {
-        $tidy = $this->employee();
-        foreach (['contract', 'government_id', 'clearance', 'medical'] as $type) {
-            $this->document($tidy, $type);
-        }
-
-        $blocked = $this->employee();
-        foreach (['government_id', 'clearance', 'medical', 'resume'] as $type) {
-            $this->document($blocked, $type);
-        }
-
-        $this->actingAs($this->hr())
-            ->get('/hr/onboarding?blocking=1')
-            ->assertInertia(fn (Assert $page) => $page
-                ->has('rows', 1)
-                ->where('rows.0.employee_id', $blocked->id)
-                // The summary still describes everything, not just the view.
-                ->where('summary.incomplete', 2),
-            );
-    }
-
-    public function test_an_employee_sees_only_their_own_file(): void
-    {
-        $user = User::factory()->create();
-        $own = $this->employee(['user_id' => $user->id]);
-        $this->employee();
-
-        $this->actingAs($user)
-            ->get('/hr/onboarding')
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->has('rows', 1)
-                ->where('rows.0.employee_id', $own->id),
-            );
-    }
-
-    public function test_guests_are_redirected_to_login(): void
-    {
-        $this->get('/hr/onboarding')->assertRedirect('/login');
+        return app(OnboardingChecker::class)->scan(Employee::query());
     }
 
     private function employee(array $attributes = [], string $position = 'Dispatcher'): Employee
@@ -215,10 +169,5 @@ class OnboardingTest extends TestCase
             'file_path' => "documents/{$type}.pdf",
             'file_name' => "{$type}.pdf",
         ]);
-    }
-
-    private function hr(): User
-    {
-        return User::factory()->hrStaff()->create();
     }
 }

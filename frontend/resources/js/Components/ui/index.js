@@ -25,3 +25,4 @@ export {
     Select,
     Textarea,
 } from './Form';
+export { ContextMenu, useContextMenu } from './ContextMenu';

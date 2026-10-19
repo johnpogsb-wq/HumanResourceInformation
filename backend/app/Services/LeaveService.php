@@ -69,11 +69,11 @@ class LeaveService
      * `employeeId|Y-m-d`.
      *
      * This is the join between Modules 2 and 3, and it is what tells an
-     * absence from an AWOL. Without it the two modules each hold half the
-     * answer: attendance knows somebody did not come in, leave knows they
-     * were allowed not to, and nothing put the two together — so payroll
-     * deducted the absence *and* the unpaid leave for the same day, and a
-     * paid VL was docked as though it were unexcused.
+     * excused absence from an Absence Without Leave. Without it the two
+     * modules each hold half the answer: attendance knows somebody did not
+     * come in, leave knows they were allowed not to, and nothing put the two
+     * together — so payroll deducted the absence *and* the unpaid leave for
+     * the same day, and a paid VL was docked as though it were unexcused.
      *
      * One query for however many employees. Expanded in PHP rather than by a
      * date-generating join, because the expansion is a calendar walk and SQL

@@ -281,6 +281,38 @@
 }
 
 @layer components {
+    /*
+     * Table rows float under the pointer — lifted a little, shadowed, and
+     * drawn on the card colour — on every table in the system, on the owner's
+     * request. On `tbody` only, so headers and control totals stay put, and
+     * never on the empty-state row, which is not a record. Hover feedback
+     * rather than motion that moves content away, so it is the same class of
+     * thing as `transition-colors`, not the sidebar animations that were
+     * removed; it still stands still for anybody who asked for less motion.
+     */
+    .table-float > tr {
+        transition:
+            transform 150ms ease,
+            box-shadow 150ms ease,
+            background-color 150ms ease;
+    }
+
+    .table-float > tr:not([data-empty]):hover {
+        position: relative;
+        z-index: 1;
+        transform: translateY(-2px);
+        background-color: hsl(var(--card));
+        box-shadow:
+            0 8px 20px -10px hsl(var(--foreground) / 0.25),
+            0 0 0 1px hsl(var(--primary) / 0.15);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .table-float > tr:not([data-empty]):hover {
+            transform: none;
+        }
+    }
+
     .scrollbar-thin {
         scrollbar-width: thin;
         scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;

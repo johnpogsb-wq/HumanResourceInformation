@@ -4,14 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\Department;
 use App\Models\Employee;
-use App\Models\EmployeeDocument;
 use App\Models\LeaveRequest;
 use App\Models\LeaveType;
 use App\Models\PayrollPeriod;
 use App\Models\PayrollRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
@@ -77,7 +75,7 @@ class DashboardDrilldownTest extends TestCase
                 $expected,
                 $this->total(
                     "/hr/leave?status={$status}&filed_from={$summary['filed_from']}",
-                    'requests',
+                    'requestsTab.requests',
                 ),
                 "the leave \"{$status}\" tile does not open the rows it counted",
             );
@@ -112,81 +110,6 @@ class DashboardDrilldownTest extends TestCase
                 "the payroll \"{$stage}\" tile does not open the rows it counted",
             );
         }
-    }
-
-    /*
-     * -----------------------------------------------------------------
-     * 201 File Health — three tiles, three different screens
-     * -----------------------------------------------------------------
-     */
-
-    public function test_the_new_hires_tile_opens_the_people_it_counted(): void
-    {
-        Employee::factory()->count(2)->create([
-            'status' => 'active',
-            'date_hired' => now()->subDays(5),
-        ]);
-
-        // Outside the window, so it must not appear on either side.
-        Employee::factory()->create([
-            'status' => 'active',
-            'date_hired' => now()->subMonths(6),
-        ]);
-
-        $summary = $this->dashboard()['onboardingSummary'];
-
-        $this->assertSame(2, $summary['new_hires']);
-        $this->assertSame(
-            2,
-            $this->total("/hr/employees?hired_within={$summary['new_hire_days']}", 'employees'),
-        );
-    }
-
-    public function test_the_no_documents_tile_opens_the_people_it_counted(): void
-    {
-        $withFile = Employee::factory()->create(['status' => 'active']);
-        $this->document($withFile);
-
-        Employee::factory()->count(3)->create(['status' => 'active']);
-
-        // Inactive, so it is not somebody's missing paperwork — which is why
-        // the link carries `status=active` as well.
-        Employee::factory()->create(['status' => 'inactive']);
-
-        $summary = $this->dashboard()['onboardingSummary'];
-
-        $this->assertSame(3, $summary['without_documents']);
-        $this->assertSame(
-            3,
-            $this->total('/hr/employees?without_documents=1&status=active', 'employees'),
-        );
-    }
-
-    /**
-     * The tile used to apply a flat 60-day window while the Credentials screen
-     * applied one per document type — so the two reported different numbers
-     * for the same documents, and the tile opened a list that did not match
-     * it. Both read `CredentialExpiryScanner` now.
-     */
-    public function test_the_expiring_tile_agrees_with_the_credentials_screen(): void
-    {
-        $employee = Employee::factory()->create(['status' => 'active']);
-
-        // Inside every warning window.
-        $this->document($employee, 'drivers_license', now()->addDays(10));
-        $this->document($employee, 'nbi_clearance', now()->addDays(10));
-
-        // Well outside both, so neither side may count it.
-        $this->document($employee, 'contract', now()->addYears(2));
-
-        $summary = $this->dashboard()['onboardingSummary'];
-
-        $this->assertSame(2, $summary['expiring']);
-        $this->assertCount(
-            2,
-            $this->props('/hr/credentials?status=expiring')['credentials'],
-            'the Expiring tile and the Credentials screen disagree',
-        );
     }
 
     /*
@@ -283,9 +206,6 @@ class DashboardDrilldownTest extends TestCase
             ->assertOk();
         $this->assertSame($run->id, $props['payrollSummary']['latest']['id']);
 
-        $this->actingAs($this->admin)
-            ->get("/hr/employees/{$props['onboardingSummary']['latest']['id']}")
-            ->assertOk();
     }
 
     /**
@@ -331,10 +251,17 @@ class DashboardDrilldownTest extends TestCase
         return $response->viewData('page')['props'];
     }
 
-    /** The number of rows a list screen reports for a set of filters. */
+    /**
+     * The number of rows a list screen reports for a set of filters.
+     *
+     * `$key` is a dotted path, because a merged module screen nests each tab's
+     * props under its own key — the Leave list lives at
+     * `requestsTab.requests` rather than at `requests`. A flat key worked
+     * while every screen was its own page.
+     */
     private function total(string $uri, string $key): int
     {
-        return (int) ($this->props($uri)[$key]['meta']['total'] ?? -1);
+        return (int) (data_get($this->props($uri), "{$key}.meta.total") ?? -1);
     }
 
     private function leaveRequest(Employee $employee, LeaveType $type, string $status): LeaveRequest
@@ -371,23 +298,6 @@ class DashboardDrilldownTest extends TestCase
             'run_number' => 'PR-'.now()->year.'-'.str_pad((string) ($offset + 1), 4, '0', STR_PAD_LEFT),
             'status' => $status,
             'total_net' => $net,
-        ]);
-    }
-
-    private function document(
-        Employee $employee,
-        string $type = 'contract',
-        ?Carbon $expires = null,
-    ): EmployeeDocument {
-        return $employee->documents()->create([
-            'type' => $type,
-            'title' => 'Test document',
-            'file_path' => 'documents/test.pdf',
-            'file_name' => 'test.pdf',
-            'mime_type' => 'application/pdf',
-            'file_size' => 1024,
-            'expires_at' => $expires,
-            'uploaded_by' => $this->admin->id,
         ]);
     }
 }

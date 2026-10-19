@@ -238,12 +238,23 @@ class LeaveAccrualTest extends TestCase
         Employee::factory()->count(2)->create(['date_hired' => '2020-01-01']);
         $this->leaveType(15);
 
+        /*
+         * The credits screen is a tab of the Leave module now, so the old URL
+         * redirects onto it. Following the redirect is the point: it is what
+         * proves an existing bookmark still lands on the credits rather than
+         * somewhere else in the module.
+         */
         $this->actingAs(User::factory()->hrStaff()->create())
             ->get('/hr/leave/balances')
+            ->assertRedirect('/hr/leave?tab=balances');
+
+        $this->actingAs(User::factory()->hrStaff()->create())
+            ->get('/hr/leave?tab=balances')
             ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page
-                ->component('HR/Leave/Balances')
-                ->has('rows', 2),
+                ->component('HR/Leave/Hub')
+                ->where('tab', 'balances')
+                ->has('balancesTab.rows', 2),
             );
     }
 

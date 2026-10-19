@@ -38,8 +38,7 @@ class DepartmentSeeder extends Seeder
                  * Development is the half this department gained when it was
                  * renamed, so it needs somebody to do it: a compliance officer
                  * and a benefits specialist between them do not run a training
-                 * calendar, and the Qualifications section on a 201 file is
-                 * where completed trainings are recorded.
+                 * calendar.
                  */
                 ['CNB-TRN', 'Training & Development Officer', 'SG-14', 30000, 45000],
                 ['CNB-LND', 'Learning & Development Specialist', 'SG-12', 25000, 38000],

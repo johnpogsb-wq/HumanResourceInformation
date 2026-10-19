@@ -16,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
@@ -93,6 +94,7 @@ class UserAccessController extends Controller
                     'role' => $user->role,
                     'is_active' => (bool) $user->is_active,
                     'employee_number' => $user->employee?->employee_number,
+                    'employee_id' => $user->employee?->id,
                     // Offered in the edit form, and compared with after the
                     // save: `users.name` and the 201 file are meant to name
                     // one person and nothing here reconciles them.
@@ -317,7 +319,18 @@ class UserAccessController extends Controller
              * which would refuse a correct address.
              */
             'otp_email' => ['nullable', 'email:rfc', 'max:180'],
+            // Which 201 file this login is. Only when the form sends it, so
+            // an older client that does not know the field changes nothing.
+            'employee_id' => ['sometimes', 'nullable', 'integer', Rule::exists('employees', 'id')->whereNull('deleted_at')],
         ]);
+
+        if ($request->has('employee_id')) {
+            $linked = $this->linkEmployee($user, $validated['employee_id'] ?? null);
+
+            if ($linked !== null) {
+                return back()->withErrors(['employee_id' => $linked]);
+            }
+        }
 
         $username = User::withDomain($validated['username']);
 
@@ -362,20 +375,6 @@ class UserAccessController extends Controller
         return back()->with('success', "Profile saved. {$user->name} signs in as {$user->username}.".$drifted.$factor);
     }
 
-    /**
-     * Sends a real code to the connected inbox, now, so a typo or a broken
-     * mailer is found here rather than at somebody's next sign-in.
-     *
-     * This is the whole reason the button exists. `MAIL_*` is configuration
-     * nobody can verify by reading it, and an address is typed by hand: with
-     * no way to test either, the first proof that both are right would be an
-     * employee who cannot get in and an administrator who cannot tell which
-     * of the two is wrong.
-     *
-     * It issues a genuine code rather than a fake one, because a test that
-     * exercises a different path proves nothing about this one. The code is
-     * live for its normal two minutes and the person can simply use it.
-     */
     public function sendTestCode(User $user): RedirectResponse
     {
         Gate::authorize('manageUsers', Setting::class);
@@ -641,6 +640,63 @@ class UserAccessController extends Controller
         $userName = $accountChangeRequest->user?->name ?? 'Staff';
 
         return back()->with('success', "Account change request for {$userName} has been rejected.");
+    }
+
+    /**
+     * Sends a real code to the connected inbox, now, so a typo or a broken
+     * mailer is found here rather than at somebody's next sign-in.
+     *
+     * This is the whole reason the button exists. `MAIL_*` is configuration
+     * nobody can verify by reading it, and an address is typed by hand: with
+     * no way to test either, the first proof that both are right would be an
+     * employee who cannot get in and an administrator who cannot tell which
+     * of the two is wrong.
+     *
+     * It issues a genuine code rather than a fake one, because a test that
+     * exercises a different path proves nothing about this one. The code is
+     * live for its normal two minutes and the person can simply use it.
+     */
+    /**
+     * Points a login at a 201 file, or at none — which is what lets an
+     * administrator's own account have a time record, a face to enroll and a
+     * profile. A login could only be linked when it was created, so an
+     * account made first and filed later had no way to become anybody.
+     *
+     * A file already held by another live login is refused rather than
+     * taken: re-pointing it would silently hand somebody else's payslips and
+     * DTR to this account. The change is written to the employee row, so
+     * `Auditable` records who moved it.
+     *
+     * @return string|null an error to show, or null when it was applied
+     */
+    private function linkEmployee(User $user, ?int $employeeId): ?string
+    {
+        $current = $user->employee;
+
+        if ($current?->id === $employeeId) {
+            return null;
+        }
+
+        if ($employeeId !== null) {
+            $target = Employee::findOrFail($employeeId);
+            $holder = $target->user_id ? User::find($target->user_id) : null;
+
+            if ($holder && $holder->id !== $user->id) {
+                return "That 201 file already belongs to {$holder->username}.";
+            }
+        }
+
+        DB::transaction(function () use ($user, $current, $employeeId) {
+            $current?->update(['user_id' => null]);
+
+            if ($employeeId !== null) {
+                Employee::whereKey($employeeId)->firstOrFail()->update(['user_id' => $user->id]);
+            }
+        });
+
+        $user->unsetRelation('employee');
+
+        return null;
     }
 
     /** @return Collection<int, string> user id => ISO time of their latest sign-in */

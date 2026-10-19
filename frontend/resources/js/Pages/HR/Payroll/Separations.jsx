@@ -30,6 +30,10 @@ const titleCase = (value) =>
         .replace(/[_-]/g, ' ')
         .replace(/\b\w/g, (character) => character.toUpperCase());
 
+/** "Endo" is what everybody calls it, so the label says so. */
+const reasonLabel = (reason) =>
+    reason === 'end_of_contract' ? 'End of Contract (Endo)' : titleCase(reason);
+
 const STATUS_VARIANT = {
     draft: 'warning',
     cleared: 'primary',
@@ -94,11 +98,11 @@ export default function Separations({
 
     return (
         <AppLayout
-            title="Separation & Final Pay"
+            title="Back Pay"
             breadcrumbs={[
                 { label: 'Human Resource' },
                 { label: 'Payroll', href: '/hr/payroll' },
-                { label: 'Separation & Final Pay' },
+                { label: 'Back Pay' },
             ]}
         >
             <div className="mb-5 grid gap-4 sm:grid-cols-3">
@@ -120,7 +124,7 @@ export default function Separations({
                 />
 
                 <StatCard
-                    label="Final Pay Payable"
+                    label="Back Pay Payable"
                     value={formatCurrency(payable)}
                     icon={Wallet}
                     tone={payable > 0 ? 'info' : 'muted'}
@@ -154,7 +158,7 @@ export default function Separations({
                                     { value: '', label: 'All reasons' },
                                     ...reasons.map((reason) => ({
                                         value: reason,
-                                        label: titleCase(reason),
+                                        label: reasonLabel(reason),
                                     })),
                                 ]}
                             />
@@ -175,7 +179,7 @@ export default function Separations({
                             <TH>Last Day</TH>
                             <TH>Reason</TH>
                             <TH>Status</TH>
-                            <TH className="text-right">Net Final Pay</TH>
+                            <TH className="text-right">Net Back Pay</TH>
                             <TH>Release Deadline</TH>
                         </TR>
                     </THead>
@@ -203,7 +207,7 @@ export default function Separations({
                                         </p>
                                     </TD>
                                     <TD>{formatDate(row.last_day)}</TD>
-                                    <TD>{titleCase(row.reason)}</TD>
+                                    <TD>{reasonLabel(row.reason)}</TD>
                                     <TD>
                                         <Badge
                                             variant={STATUS_VARIANT[row.status] ?? 'default'}
@@ -241,7 +245,7 @@ export default function Separations({
                             Cancel
                         </Button>
                         <Button onClick={submit} disabled={form.processing}>
-                            Compute Final Pay
+                            Compute Back Pay
                         </Button>
                     </>
                 }
@@ -263,7 +267,7 @@ export default function Separations({
                             onChange={(event) => form.setData('reason', event.target.value)}
                             options={reasons.map((reason) => ({
                                 value: reason,
-                                label: titleCase(reason),
+                                label: reasonLabel(reason),
                             }))}
                         />
                     </Field>
@@ -278,7 +282,7 @@ export default function Separations({
                     <Field
                         label="Unpaid days worked"
                         error={form.errors.days_unpaid}
-                        hint="Days worked after the last payroll run closed."
+                        hint="Leave blank to count them from the Daily Time Records."
                     >
                         <Input
                             type="number"

@@ -14,6 +14,7 @@ use App\Models\Employee;
 use App\Models\EmployeeDocument;
 use App\Models\EmployeeEndorsement;
 use App\Models\Position;
+use App\Models\Setting;
 use App\Services\DataAccessLogger;
 use App\Services\DocumentScanner;
 use App\Services\EmployeeService;
@@ -271,6 +272,52 @@ class EmployeeController extends Controller
         return $this->show($request, $employee, isMyProfile: true);
     }
 
+    /**
+     * The employee's information sheet, laid out for paper.
+     *
+     * Government numbers and the bank account print masked unless the reader
+     * may see them *and* asked for them in full: a sheet left in a tray or a
+     * filing cabinet is the one copy of a 201 file no gate stands in front
+     * of. Every opening is an `accessed` row saying which it was — the same
+     * trail a document preview leaves, because a printout is a read that
+     * walks out of the building.
+     */
+    public function printSheet(Request $request, Employee $employee, DataAccessLogger $access): Response
+    {
+        Gate::authorize('view', $employee);
+
+        $mayShowFull = $request->user()->can('viewSensitive', $employee);
+        $full = $mayShowFull && $request->boolean('full');
+
+        $access->accessed($employee, 'print', [
+            'employee' => $employee->full_name,
+            'full_numbers' => $full,
+        ]);
+
+        $employee->load([
+            'department:id,name',
+            'client:id,code,name',
+            'position:id,title',
+            'supervisor:id,first_name,middle_name,last_name,suffix',
+            'documents',
+        ]);
+
+        return Inertia::render('HR/Employees/Print', [
+            'employee' => (new EmployeeResource($employee))->masked(! $full),
+            'company' => [
+                'name' => Setting::get('company.name'),
+                'tagline' => Setting::get('company.tagline'),
+                'address' => Setting::get('company.address'),
+                'phone' => Setting::get('company.phone'),
+                'email' => Setting::get('company.email'),
+            ],
+            'full' => $full,
+            'printedBy' => $request->user()->name,
+            'printedAt' => now()->toIso8601String(),
+            'can' => ['showFull' => $mayShowFull],
+        ]);
+    }
+
     public function show(Request $request, Employee $employee, bool $isMyProfile = false): Response
     {
         Gate::authorize('view', $employee);
@@ -290,25 +337,12 @@ class EmployeeController extends Controller
             'position:id,title,department_id',
             'supervisor:id,first_name,middle_name,last_name,suffix',
             'documents.uploader:id,name',
-            'educations',
-            'trainings',
-            'skills',
         ]);
 
         return Inertia::render('HR/Employees/Show', [
             'employee' => (new EmployeeResource($employee))->masked(),
             'isMyProfile' => $isMyProfile || $employee->user_id === $request->user()?->id,
 
-            /*
-             * The education ladder and the proficiency grades, sent as the
-             * config states them rather than restated in the component. The
-             * order of the levels is what makes "highest attainment" mean
-             * anything, and a second copy in JavaScript would eventually
-             * disagree with the one the server ranks by.
-             */
-            'educationLevels' => config('qualifications.education_levels'),
-            'levelsWithCourse' => array_values(config('qualifications.levels_with_course')),
-            'proficiencyLevels' => config('qualifications.proficiency_levels'),
             // Which document types the upload form should offer an expiry date
             // for. Read from config rather than hard-coded in the component so
             // the form and CredentialExpiryScanner cannot disagree about which
@@ -900,7 +934,6 @@ class EmployeeController extends Controller
             'employmentStatuses' => Employee::EMPLOYMENT_STATUSES,
             'statuses' => Employee::STATUSES,
             'documentTypes' => EmployeeDocument::TYPES,
-
             'categories' => Employee::CATEGORIES,
             'clients' => Client::where('is_active', true)
                 ->orderBy('name')

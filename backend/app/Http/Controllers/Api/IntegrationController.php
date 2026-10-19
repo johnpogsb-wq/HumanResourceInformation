@@ -30,7 +30,7 @@ use Illuminate\Support\Facades\Gate;
  * uniquely able to give, computed by the service that already gives it to our
  * own screens. Nothing is re-derived for the API — `DeploymentReadinessChecker`,
  * `LicenseVerifier`, and `PayrollRun::scopeReportable()` are the same objects
- * behind `/hr/deployment`, the employee screen, and Compliance. If a consumer
+ * behind the dashboard, the employee screen, and Compliance. If a consumer
  * and one of our screens ever disagreed about the same driver, one of them
  * would be running its own copy of the rules, and that is the thing this
  * controller exists to prevent.
@@ -94,8 +94,7 @@ class IntegrationController extends Controller
      *
      * Can this person be sent to a client tomorrow? No single module answers
      * it: it needs credentials, 201-file completeness, and employment standing
-     * at once, which is exactly what `DeploymentReadinessChecker` composes for
-     * `/hr/deployment`.
+     * at once, which is exactly what `DeploymentReadinessChecker` composes.
      *
      * `blocked` is not a louder warning. A driver whose licence has lapsed may
      * not lawfully drive, so it is the one status here that means "this would

@@ -13,6 +13,7 @@ use App\Models\Separation;
 use App\Models\User;
 use App\Services\SeparationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -75,7 +76,10 @@ class SeparationTest extends TestCase
 
     public function test_opening_a_separation_computes_the_settlement(): void
     {
-        $employee = Employee::factory()->create(['basic_salary' => self::SALARY]);
+        // Leave is accrued to the last day, so the date is pinned: hired
+        // 1 January, leaving 1 May — four whole months × 1.25 = 5 days.
+        $this->travelTo(Carbon::parse('2026-05-01'));
+        $employee = Employee::factory()->create(['basic_salary' => self::SALARY, 'date_hired' => '2026-01-01']);
         $this->payslip($employee, basic: 13050);
         $this->convertibleCredits($employee, days: 5);
         $this->loan($employee, balance: 4000);
@@ -95,6 +99,21 @@ class SeparationTest extends TestCase
         $this->assertSame('4000.00', $separation->loan_deduction);
         $this->assertSame('6687.50', $separation->net_final_pay);
         $this->assertSame(Separation::STATUS_DRAFT, $separation->status);
+    }
+
+    /**
+     * The balance row is a cache, and a stale one overpays: a row still
+     * holding a full-year grant said 15 days in September for somebody who
+     * had earned 10. Leave is accrued to the last day instead.
+     */
+    public function test_leave_is_paid_as_earned_to_the_last_day_not_as_the_balance_row_says(): void
+    {
+        $this->travelTo(Carbon::parse('2026-09-18'));
+        $employee = Employee::factory()->create(['basic_salary' => self::SALARY, 'date_hired' => '2023-08-16']);
+        $this->convertibleCredits($employee, days: 15);
+
+        // January to August: 8 whole months × 1.25 = 10 days × 1,200.
+        $this->assertSame('12000.00', $this->open($employee)->leave_conversion);
     }
 
     /** Only leave types the company converts to cash are paid out. */
@@ -349,7 +368,11 @@ class SeparationTest extends TestCase
 
     private function convertibleCredits(Employee $employee, float $days, bool $convertible = true): LeaveBalance
     {
-        $type = LeaveType::factory()->create(['is_convertible_to_cash' => $convertible]);
+        $type = LeaveType::factory()->create([
+            'is_convertible_to_cash' => $convertible,
+            'is_active' => true,
+            'default_credits' => 15,
+        ]);
 
         return LeaveBalance::create([
             'employee_id' => $employee->id,

@@ -24,6 +24,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class LeaveController extends Controller
 {
+    /** The tabs this one screen holds, in the order a leave is handled. */
+    public const TABS = ['requests', 'calendar', 'balances', 'types'];
+
     /** Medical certificates and the like are never web-served directly. */
     private const ATTACHMENT_DISK = 'local';
 
@@ -32,9 +35,15 @@ class LeaveController extends Controller
         private readonly EmployeeService $employees,
     ) {}
 
-    public function index(Request $request): Response
+    /**
+     * The Leave Requests tab's props.
+     *
+     * Public and split out from the action so the merged module screen can
+     * build the same tab without a second copy of this query. The action below
+     * is now only a redirect; this is where the work lives.
+     */
+    public function requestsProps(Request $request): array
     {
-        Gate::authorize('viewAny', LeaveRequest::class);
 
         // `awaiting` and `filed_from` are set by summary tiles rather than by
         // any control on this screen — the first matches the two statuses the
@@ -54,7 +63,7 @@ class LeaveController extends Controller
             ->paginate(15)
             ->withQueryString();
 
-        return Inertia::render('HR/Leave/Index', [
+        return [
             'requests' => LeaveRequestResource::collection($requests),
             'summary' => $this->leave->summary($query),
             'filters' => $filters,
@@ -71,6 +80,58 @@ class LeaveController extends Controller
                 'decide' => $request->user()->isHrAdmin(),
             ],
             'ownEmployeeId' => $request->user()->employee?->id,
+        ];
+    }
+
+    /**
+     * Module 3 as **one screen**, not four.
+     *
+     * Filing, the calendar, the credits and the types used to be four separate
+     * pages reached from a sidebar dropdown, so moving between them was a
+     * navigation and the reader lost their place each time. They are four tabs
+     * of one screen now: this action builds all four sets of props, the page
+     * keeps the active tab in React state, and **switching a tab costs no
+     * request at all**.
+     *
+     * **The props are still built by the controller that owns each one** —
+     * `calendarProps()`, `balancesProps()`, `typesProps()` — resolved as method
+     * arguments rather than copied here. A fifth copy of "what the credits
+     * screen shows" is exactly the drift this codebase keeps refusing
+     * elsewhere: the day one of them changed, the tab and the old screen would
+     * disagree and nothing would say which was right.
+     *
+     * **One gate for the whole module.** All four screens asked
+     * `viewAny` on `LeaveRequest` and nothing else, so asking it once here is
+     * the same rule rather than a relaxation of it. Anything narrower is on the
+     * tab's own `can` flags, which each builder still sets — `adjust` on the
+     * credits, `manage` on the types.
+     *
+     * The cost, stated: a visit builds all four tabs even though one is drawn.
+     * That is four small queries on a roster of this size, and it is what buys
+     * the instant tab switch. If a module ever outgrows it, the answer is
+     * Inertia's deferred props for the tabs below the first — not a return to
+     * four pages.
+     */
+    public function index(
+        Request $request,
+        LeaveCalendarController $calendar,
+        LeaveBalanceController $balances,
+        LeaveTypeController $types,
+    ): Response {
+        Gate::authorize('viewAny', LeaveRequest::class);
+
+        return Inertia::render('HR/Leave/Hub', [
+            // Which tab opens. A sidebar child or an old bookmarked link
+            // arrives with `?tab=`; anything else opens on filing, which is
+            // what most of the workforce comes here to do.
+            'tab' => in_array($request->query('tab'), self::TABS, true)
+                ? $request->query('tab')
+                : 'requests',
+
+            'requestsTab' => $this->requestsProps($request),
+            'calendarTab' => $calendar->calendarProps($request),
+            'balancesTab' => $balances->balancesProps($request),
+            'typesTab' => $types->typesProps($request),
         ]);
     }
 

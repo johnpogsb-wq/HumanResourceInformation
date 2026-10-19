@@ -8,19 +8,17 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
-use Inertia\Inertia;
-use Inertia\Response;
 
 /**
- * Module 3 — leave type catalogue (SL, VL, ML, LWOP, …).
+ * Module 3 — leave type catalogue (SL, VL, ML, AWOL, …).
  */
 class LeaveTypeController extends Controller
 {
-    public function index(Request $request): Response
+    /** The Leave Types tab's props — see LeaveController::requestsProps(). */
+    public function typesProps(Request $request): array
     {
-        Gate::authorize('viewAny', LeaveRequest::class);
 
-        return Inertia::render('HR/Leave/Types', [
+        return [
             'types' => LeaveType::withCount('requests')
                 ->orderBy('code')
                 ->get()
@@ -39,6 +37,20 @@ class LeaveTypeController extends Controller
                     'requests_count' => $type->requests_count,
                 ]),
             'can' => ['manage' => $request->user()->can('manageTypes', LeaveRequest::class)],
+        ];
+    }
+
+    /**
+     * Kept so an old link, a bookmark or a typed URL still lands
+     * somewhere useful: this screen is a tab of the Leave module now,
+     * and the redirect carries the query string so a month, a year or a
+     * filter in the old URL survives the move.
+     */
+    public function index(Request $request): RedirectResponse
+    {
+        return redirect()->route('hr.leave', [
+            ...$request->query(),
+            'tab' => 'types',
         ]);
     }
 

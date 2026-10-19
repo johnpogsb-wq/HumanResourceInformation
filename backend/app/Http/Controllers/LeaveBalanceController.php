@@ -13,8 +13,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
-use Inertia\Inertia;
-use Inertia\Response;
 
 /**
  * Module 3 — leave credit balances, one row per employee per year.
@@ -26,9 +24,9 @@ class LeaveBalanceController extends Controller
         private readonly EmployeeService $employees,
     ) {}
 
-    public function index(Request $request): Response
+    /** The Leave Credits tab's props — see LeaveController::requestsProps(). */
+    public function balancesProps(Request $request): array
     {
-        Gate::authorize('viewAny', LeaveRequest::class);
 
         $year = (int) $request->query('year', now()->year);
         $types = LeaveType::where('is_active', true)->orderBy('code')->get();
@@ -42,7 +40,7 @@ class LeaveBalanceController extends Controller
             ->get()
             ->groupBy('employee_id');
 
-        return Inertia::render('HR/Leave/Balances', [
+        return [
             'year' => $year,
             'years' => range(now()->year - 3, now()->year + 1),
             'types' => $types->map(fn (LeaveType $type) => [
@@ -71,6 +69,20 @@ class LeaveBalanceController extends Controller
                 ];
             })->values(),
             'can' => ['adjust' => $request->user()->can('adjustBalances', LeaveRequest::class)],
+        ];
+    }
+
+    /**
+     * Kept so an old link, a bookmark or a typed URL still lands
+     * somewhere useful: this screen is a tab of the Leave module now,
+     * and the redirect carries the query string so a month, a year or a
+     * filter in the old URL survives the move.
+     */
+    public function index(Request $request): RedirectResponse
+    {
+        return redirect()->route('hr.leave', [
+            ...$request->query(),
+            'tab' => 'balances',
         ]);
     }
 

@@ -20,6 +20,10 @@ const titleCase = (value) =>
         .replace(/[_-]/g, ' ')
         .replace(/\b\w/g, (character) => character.toUpperCase());
 
+/** "Endo" is what everybody calls it, so the label says so. */
+const reasonLabel = (reason) =>
+    reason === 'end_of_contract' ? 'End of Contract (Endo)' : titleCase(reason);
+
 const formatDateTime = (value) => formatDate(value, { hour: '2-digit', minute: '2-digit' });
 
 const STATUS_VARIANT = {
@@ -61,18 +65,18 @@ export default function Separation({ separation, can }) {
 
     return (
         <AppLayout
-            title={`Final Pay — ${separation.employee.full_name}`}
+            title={`Back Pay — ${separation.employee.full_name}`}
             breadcrumbs={[
                 { label: 'Human Resource' },
                 { label: 'Payroll', href: '/hr/payroll' },
-                { label: 'Separations', href: '/hr/payroll/separations' },
+                { label: 'Back Pay', href: '/hr/payroll/separations' },
                 { label: separation.employee.full_name },
             ]}
             actions={
                 can.release && (
                     <Button size="sm" onClick={() => setReleasing(true)}>
                         <ShieldCheck className="h-4 w-4" />
-                        <span className="hidden sm:inline">Release Final Pay</span>
+                        <span className="hidden sm:inline">Release Back Pay</span>
                     </Button>
                 )
             }
@@ -81,7 +85,7 @@ export default function Separation({ separation, can }) {
                 <div className="space-y-5 lg:col-span-2">
                     <Card>
                         <CardHeader
-                            title="Final pay computation"
+                            title="Back pay computation"
                             action={
                                 <Badge variant={STATUS_VARIANT[separation.status] ?? 'default'}>
                                     {titleCase(separation.status)}
@@ -118,7 +122,7 @@ export default function Separation({ separation, can }) {
 
                         <CardFooter className="flex items-center justify-between">
                             <span className="text-sm font-medium text-foreground">
-                                Net final pay
+                                Net back pay
                             </span>
                             <span className="text-lg font-semibold tabular-nums text-foreground">
                                 {formatCurrency(separation.net_final_pay)}
@@ -136,6 +140,7 @@ export default function Separation({ separation, can }) {
                                 >
                                     <Field
                                         label="Unpaid days worked"
+                                        hint="Leave blank to count them from the Daily Time Records."
                                         error={form.errors.days_unpaid}
                                         className="flex-1"
                                     >
@@ -187,7 +192,7 @@ export default function Separation({ separation, can }) {
                                 value={separation.employee.employee_number}
                             />
                             <Detail label="Last day" value={formatDate(separation.last_day)} />
-                            <Detail label="Reason" value={titleCase(separation.reason)} />
+                            <Detail label="Reason" value={reasonLabel(separation.reason)} />
                             <Detail
                                 label="Processed by"
                                 value={separation.processed_by ?? '—'}
@@ -256,7 +261,7 @@ export default function Separation({ separation, can }) {
             <Modal
                 show={releasing}
                 onClose={() => setReleasing(false)}
-                title="Release this final pay?"
+                title="Release this back pay?"
                 description="The figures are frozen, the outstanding loans are settled against the deduction, and the employee is marked separated and inactive. This cannot be undone."
                 footer={
                     <>

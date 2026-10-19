@@ -5,15 +5,12 @@ use App\Http\Controllers\ArchiveController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CompensationController;
 use App\Http\Controllers\ComplianceController;
-use App\Http\Controllers\CredentialController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DepartmentController;
-use App\Http\Controllers\DeploymentController;
 use App\Http\Controllers\DirectoryController;
 use App\Http\Controllers\DocumentBatchController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\EmployeeImportController;
-use App\Http\Controllers\EmployeeQualificationController;
 use App\Http\Controllers\EndorsementController;
 use App\Http\Controllers\KpiController;
 use App\Http\Controllers\LeaveBalanceController;
@@ -21,7 +18,6 @@ use App\Http\Controllers\LeaveCalendarController;
 use App\Http\Controllers\LeaveController;
 use App\Http\Controllers\LeaveTypeController;
 use App\Http\Controllers\NotificationController;
-use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\PerformanceController;
@@ -42,11 +38,14 @@ use App\Http\Controllers\Settings\SessionController;
 use App\Http\Controllers\Settings\SettingsController;
 use App\Http\Controllers\Settings\UserAccessController;
 use App\Http\Controllers\ThirteenthMonthController;
+use App\Http\Controllers\Timekeeping\AttendanceCalendarController;
 use App\Http\Controllers\Timekeeping\ClientTimesheetController;
 use App\Http\Controllers\Timekeeping\CutoffController;
+use App\Http\Controllers\Timekeeping\FaceEnrollmentController;
 use App\Http\Controllers\Timekeeping\HolidayController;
 use App\Http\Controllers\Timekeeping\OvertimeController;
 use App\Http\Controllers\Timekeeping\ShiftController;
+use App\Http\Controllers\Timekeeping\TimeClockController;
 use App\Http\Controllers\Timekeeping\TimeCorrectionController;
 use App\Http\Controllers\Timekeeping\TimeRecordController;
 use Illuminate\Support\Facades\Route;
@@ -119,6 +118,11 @@ Route::middleware('auth')->group(function () {
             ->middleware('throttle:30,1')
             ->name('employees.reveal');
 
+        // The 201 file laid out for paper, under the company's letterhead.
+        Route::get('employees/{employee}/print', [EmployeeController::class, 'printSheet'])
+            ->middleware('throttle:30,1')
+            ->name('employees.print');
+
         /*
          * Moving somebody between job titles, reached from the Positions
          * screen. Addressed as the *employee* rather than as the position,
@@ -137,33 +141,6 @@ Route::middleware('auth')->group(function () {
          */
         Route::patch('employees/{employee}/deployment', [EmployeeController::class, 'updateDeployment'])
             ->name('employees.deployment');
-
-        /*
-         * Educational & qualification records — schooling, completed
-         * trainings, and skills. Named `education`/`training`/`skill` so the
-         * form request can tell which of the three it is validating from the
-         * route name alone.
-         */
-        Route::post('employees/{employee}/education', [EmployeeQualificationController::class, 'storeEducation'])
-            ->name('employees.education.store');
-        Route::put('employees/{employee}/education/{education}', [EmployeeQualificationController::class, 'updateEducation'])
-            ->name('employees.education.update');
-        Route::delete('employees/{employee}/education/{education}', [EmployeeQualificationController::class, 'destroyEducation'])
-            ->name('employees.education.destroy');
-
-        Route::post('employees/{employee}/training', [EmployeeQualificationController::class, 'storeTraining'])
-            ->name('employees.training.store');
-        Route::put('employees/{employee}/training/{training}', [EmployeeQualificationController::class, 'updateTraining'])
-            ->name('employees.training.update');
-        Route::delete('employees/{employee}/training/{training}', [EmployeeQualificationController::class, 'destroyTraining'])
-            ->name('employees.training.destroy');
-
-        Route::post('employees/{employee}/skill', [EmployeeQualificationController::class, 'storeSkill'])
-            ->name('employees.skill.store');
-        Route::put('employees/{employee}/skill/{skill}', [EmployeeQualificationController::class, 'updateSkill'])
-            ->name('employees.skill.update');
-        Route::delete('employees/{employee}/skill/{skill}', [EmployeeQualificationController::class, 'destroySkill'])
-            ->name('employees.skill.destroy');
 
         Route::get('my-profile', [EmployeeController::class, 'myProfile'])->name('my-profile');
 
@@ -197,9 +174,6 @@ Route::middleware('auth')->group(function () {
         Route::post('endorsements/{endorsement}/reject', [EndorsementController::class, 'reject'])
             ->name('endorsements.reject');
 
-        // 201-file documents inside their renewal window, or already lapsed.
-        Route::get('credentials', [CredentialController::class, 'index'])->name('credentials');
-
         /*
          * AI & Analytics — Workforce demographics,
          * multi-file AI scanner, and OCR performance benchmarking.
@@ -225,14 +199,6 @@ Route::middleware('auth')->group(function () {
          */
         Route::get('record-checks', [RecordIntegrityController::class, 'index'])
             ->name('recordChecks');
-
-        // Which 201 files are still missing a requirement.
-        Route::get('onboarding', [OnboardingController::class, 'index'])->name('onboarding');
-
-        // Who can be sent to a client today. Reads credentials, 201-file
-        // completeness, and employment standing together — no single one of
-        // them answers it.
-        Route::get('deployment', [DeploymentController::class, 'index'])->name('deployment');
 
         // The master list of everything deleted, and the way back. Sits with
         // Employee Information because that is where most of it is deleted from.
@@ -293,6 +259,32 @@ Route::middleware('auth')->group(function () {
             Route::post('records/import', [TimeRecordController::class, 'import'])->name('records.import');
             Route::put('records/{record}', [TimeRecordController::class, 'update'])->name('records.update');
             Route::delete('records/{record}', [TimeRecordController::class, 'destroy'])->name('records.destroy');
+
+            // One employee's month, and the button that emails it to them.
+            // Throttled: every send goes out through the company Gmail, which
+            // has a daily sending cap of its own.
+            Route::get('calendar', [AttendanceCalendarController::class, 'index'])->name('calendar');
+            Route::post('calendar/email', [AttendanceCalendarController::class, 'email'])
+                ->middleware('throttle:20,1')->name('calendar.email');
+            Route::post('calendar/email-all', [AttendanceCalendarController::class, 'emailAll'])
+                ->middleware('throttle:3,1')->name('calendar.email-all');
+
+            /*
+             * The face-verified time clock. Every employee punches their own
+             * day here; the face is read on their device and matched on the
+             * server. Throttled because each press runs a comparison and
+             * stores a picture.
+             */
+            Route::get('clock', [TimeClockController::class, 'index'])->name('clock');
+            Route::post('clock/punch', [TimeClockController::class, 'punch'])
+                ->middleware('throttle:12,1')->name('clock.punch');
+            Route::get('punches/{punch}/photo', [TimeClockController::class, 'photo'])->name('punches.photo');
+
+            Route::get('faces', [FaceEnrollmentController::class, 'index'])->name('faces');
+            Route::post('faces/{employee}', [FaceEnrollmentController::class, 'store'])
+                ->middleware('throttle:20,1')->name('faces.store');
+            Route::delete('faces/{employee}', [FaceEnrollmentController::class, 'destroy'])->name('faces.destroy');
+            Route::get('faces/{employee}/photo', [FaceEnrollmentController::class, 'photo'])->name('faces.photo');
 
             Route::get('shifts', [ShiftController::class, 'index'])->name('shifts');
             Route::post('shifts', [ShiftController::class, 'store'])->name('shifts.store');

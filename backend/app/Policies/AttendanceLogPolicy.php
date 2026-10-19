@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Models\AttendanceLog;
+use App\Models\AttendancePunch;
 use App\Models\User;
 
 /**
@@ -39,6 +40,53 @@ class AttendanceLogPolicy
     public function manage(User $user): bool
     {
         return $user->isHrAdmin();
+    }
+
+    /**
+     * Punching one's own day on the face-verified time clock — the one write
+     * to a DTR its owner makes. Safe because the server picks the time and
+     * the face has to match; editing a day afterwards is still a correction.
+     */
+    public function punch(User $user): bool
+    {
+        return $user->employee !== null && $user->employee->status !== 'inactive';
+    }
+
+    /**
+     * Running the Time Clock as a shared kiosk, where the face identifies the
+     * employee. HR's: it is a device HR sets up at the door, and it sees every
+     * punch of the day.
+     */
+    public function kiosk(User $user): bool
+    {
+        return $user->isHrAdmin();
+    }
+
+    /** Taking, replacing and removing anybody's face template. HR's. */
+    public function enrollFaces(User $user): bool
+    {
+        return $user->isHrAdmin();
+    }
+
+    /**
+     * Enrolling one's own face, in any role, the first time only — replacing
+     * it is HR's (`TimeClockService::enroll()` says why).
+     */
+    public function enrollOwnFace(User $user): bool
+    {
+        return $user->employee !== null && $user->employee->status !== 'inactive';
+    }
+
+    /** A punch and its snapshot follow the same reach as the day it belongs to. */
+    public function viewPunch(User $user, AttendancePunch $punch): bool
+    {
+        if ($user->isHrAdmin() || $punch->employee?->user_id === $user->id) {
+            return true;
+        }
+
+        return $user->isSupervisor()
+            && $punch->employee?->supervisor_id !== null
+            && $punch->employee->supervisor_id === $user->employee?->id;
     }
 
     public function closeCutoff(User $user): bool

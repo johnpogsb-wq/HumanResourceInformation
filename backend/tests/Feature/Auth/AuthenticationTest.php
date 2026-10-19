@@ -17,6 +17,19 @@ class AuthenticationTest extends TestCase
         $response->assertStatus(200);
     }
 
+    /**
+     * The login form fetches this right before it posts, so a page left open
+     * past the session's lifetime still signs in on the first try instead of
+     * answering 419 and wiping what was typed. Removing the route brings that
+     * bug back with nothing else failing.
+     */
+    public function test_a_guest_can_fetch_a_fresh_csrf_cookie_before_signing_in(): void
+    {
+        $this->get('/sanctum/csrf-cookie')
+            ->assertNoContent()
+            ->assertCookie('XSRF-TOKEN');
+    }
+
     public function test_users_can_authenticate_using_the_login_screen(): void
     {
         $user = User::factory()->create();

@@ -79,7 +79,12 @@ function activeFilters(filters, { departments = [], clients = [] }) {
     if (filters.client_id) {
         chips.push({
             key: 'client_id',
-            label: named(clients, filters.client_id) ?? 'One client',
+            // `none` is the bench, set by the dashboard's "On Bench" tile —
+            // no dropdown offers it, so the chip is the only place it shows.
+            label:
+                filters.client_id === 'none'
+                    ? 'No client (on bench)'
+                    : (named(clients, filters.client_id) ?? 'One client'),
         });
     }
 

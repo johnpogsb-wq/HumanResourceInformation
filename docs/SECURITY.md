@@ -105,7 +105,7 @@ Configured centrally in [`app/Http/Middleware/SecurityHeaders.php`](file:///c:/U
 | **Content-Security-Policy** | `frame-ancestors 'none'; object-src 'none'; base-uri 'self'` | Embedding attacks, malicious browser plugins, and `<base>` tag hijacking. |
 | **X-Content-Type-Options** | `nosniff` | MIME-type confusion / sniffing; stops browsers from executing uploaded 201 images or text as JavaScript. |
 | **Referrer-Policy** | `strict-origin-when-cross-origin` | URL leakage; prevents employee IDs or query parameters from being sent to external sites in referrer headers. |
-| **Permissions-Policy** | `camera=(), microphone=(), geolocation=(), payment=()` | Disables unneeded hardware features across the entire domain. |
+| **Permissions-Policy** | `camera=(self), microphone=(), geolocation=(), payment=()` | Allows the camera only to this site's own pages (the face-verified Time Clock) and disables the rest across the entire domain. |
 | **Strict-Transport-Security (HSTS)** | `max-age=31536000; includeSubDomains` | Man-in-the-middle (MITM) attacks; forces browsers to connect exclusively via HTTPS for a full year in production. |
 
 ---

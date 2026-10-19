@@ -131,6 +131,57 @@ class AttendanceCalculatorTest extends TestCase
         $this->assertSame(960, $this->calculator->nightDifferentialMinutes($start, $end));
     }
 
+    /** The worked example: 7:55 to 6:00 on an 8-to-5 with an hour's lunch. */
+    public function test_an_early_arrival_and_late_departure_with_no_break_punched(): void
+    {
+        $result = $this->compute('07:55', '18:00');
+
+        $this->assertSame(545, $result['minutes_worked']); // 9h 05m
+        $this->assertSame(0, $result['late_minutes']);
+        $this->assertSame(60, $result['overtime_minutes']);
+    }
+
+    public function test_a_punched_break_longer_than_scheduled_comes_off_in_full(): void
+    {
+        $result = $this->computeWithBreak('08:00', '17:00', '12:00', '13:30');
+
+        // Ninety minutes taken against sixty scheduled: the extra half hour
+        // is time not worked.
+        $this->assertSame(450, $result['minutes_worked']);
+    }
+
+    public function test_a_short_break_does_not_earn_time(): void
+    {
+        $result = $this->computeWithBreak('08:00', '17:00', '12:00', '12:20');
+
+        $this->assertSame(480, $result['minutes_worked']);
+    }
+
+    public function test_a_break_on_a_short_day_comes_off_as_taken(): void
+    {
+        // Four hours is inside the meal period, so nothing is scheduled to
+        // come off — but a break somebody actually took still does.
+        $result = $this->computeWithBreak('08:00', '12:00', '10:00', '10:15');
+
+        $this->assertSame(225, $result['minutes_worked']);
+    }
+
+    public function test_a_break_started_and_never_ended_falls_back_to_the_schedule(): void
+    {
+        $result = $this->calculator->compute(
+            $this->date,
+            $this->dayShift(),
+            $this->date->copy()->setTimeFromTimeString('08:00'),
+            $this->date->copy()->setTimeFromTimeString('17:00'),
+            false,
+            false,
+            $this->date->copy()->setTimeFromTimeString('12:00'),
+            null,
+        );
+
+        $this->assertSame(480, $result['minutes_worked']);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -147,6 +198,23 @@ class AttendanceCalculatorTest extends TestCase
             $this->dayShift(),
             $this->date->copy()->setTimeFromTimeString($in),
             $out ? $this->date->copy()->setTimeFromTimeString($out) : null,
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private function computeWithBreak(string $in, string $out, string $breakStart, string $breakEnd): array
+    {
+        $at = fn (string $time) => $this->date->copy()->setTimeFromTimeString($time);
+
+        return $this->calculator->compute(
+            $this->date,
+            $this->dayShift(),
+            $at($in),
+            $at($out),
+            false,
+            false,
+            $at($breakStart),
+            $at($breakEnd),
         );
     }
 

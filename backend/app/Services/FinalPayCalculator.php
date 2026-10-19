@@ -106,7 +106,10 @@ class FinalPayCalculator
             [
                 'label' => 'Unpaid salary',
                 'amount' => $unpaidSalary,
-                'note' => "{$days} day(s) at ₱{$rate}/day",
+                // Where the day count came from — the DTR or a typed figure —
+                // because the two are checked in different places.
+                'note' => "{$days} day(s) at ₱{$rate}/day"
+                    .(filled($input['days_unpaid_note'] ?? null) ? " — {$input['days_unpaid_note']}" : ''),
             ],
             [
                 'label' => 'Pro-rated 13th-month pay',

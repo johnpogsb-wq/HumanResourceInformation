@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Client;
 use App\Models\Employee;
 use App\Models\LeaveRequest;
 use App\Models\PayrollPeriod;
@@ -92,55 +93,46 @@ class DashboardTest extends TestCase
         $this->assertStringNotContainsString('765,676.04', $response->getContent());
     }
 
-    // --- The trend series --------------------------------------------------
-
-    public function test_the_headcount_trend_covers_twelve_months(): void
+    /** The Headcount Trend card was removed for every role on the owner's instruction. */
+    public function test_no_headcount_trend_is_sent(): void
     {
-        Employee::factory()->count(3)->create(['date_hired' => now()->subYears(2)]);
+        $this->actingAs(User::factory()->create())
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->missing('headcountTrend'));
+    }
 
+    // --- The client deployment card (removed) ----------------------------------
+
+    /** Removed on the owner's instruction, with the query behind it. */
+    public function test_no_client_card_is_sent(): void
+    {
         $this->actingAs(User::factory()->hrStaff()->create())
             ->get('/dashboard')
             ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page->has('headcountTrend', 12));
+            ->assertInertia(fn (Assert $page) => $page->missing('clientOverview'));
     }
 
     /**
-     * A hire inside the window has to move the line, or the chart is drawing
-     * a constant and calling it a trend.
+     * The card is gone; the Employees list filter it linked to is not.
+     * Floating status — active, external, no client — is still one query.
      */
-    public function test_a_recent_hire_lifts_the_end_of_the_trend(): void
+    public function test_the_employees_list_still_filters_the_bench(): void
     {
-        Employee::factory()->count(4)->create(['date_hired' => now()->subMonths(11)]);
-        Employee::factory()->create(['date_hired' => now()->subDays(3)]);
+        $client = Client::create(['code' => 'MFL', 'name' => 'Metro Fleet', 'is_active' => true]);
 
-        $this->actingAs(User::factory()->hrStaff()->create())
-            ->get('/dashboard')
-            ->assertOk()
-            ->assertInertia(function (Assert $page) {
-                $trend = $page->toArray()['props']['headcountTrend'];
-
-                $this->assertSame(4, $trend[0]['value'], 'Eleven months ago: four on the books.');
-                $this->assertSame(5, $trend[11]['value'], 'This month: the new hire counts.');
-            });
-    }
-
-    public function test_a_separation_lowers_the_trend(): void
-    {
-        Employee::factory()->count(3)->create(['date_hired' => now()->subYear()]);
-        Employee::factory()->create([
-            'date_hired' => now()->subYear(),
-            'date_separated' => now()->subDays(5),
+        Employee::factory()->count(2)->create([
+            'status' => 'active',
+            'employment_category' => 'external',
+            'client_id' => null,
         ]);
+        Employee::factory()->create(['status' => 'active', 'employment_category' => 'external', 'client_id' => $client->id]);
+        Employee::factory()->create(['status' => 'active', 'employment_category' => 'internal', 'client_id' => null]);
 
         $this->actingAs(User::factory()->hrStaff()->create())
-            ->get('/dashboard')
+            ->get('/hr/employees?employment_category=external&client_id=none&status=active')
             ->assertOk()
-            ->assertInertia(function (Assert $page) {
-                $trend = $page->toArray()['props']['headcountTrend'];
-
-                $this->assertSame(4, $trend[0]['value']);
-                $this->assertSame(3, $trend[11]['value'], 'The leaver is off the books.');
-            });
+            ->assertInertia(fn (Assert $page) => $page->where('employees.meta.total', 2));
     }
 
     // --- The summary tiles -------------------------------------------------
@@ -188,19 +180,15 @@ class DashboardTest extends TestCase
             );
     }
 
-    /** Scoped, unlike the two above — an employee sees their own file only. */
-    public function test_the_onboarding_summary_is_scoped_to_what_the_viewer_may_see(): void
+    /** The 201 File Health and Needs Action cards were removed on the owner's instruction. */
+    public function test_the_removed_cards_send_no_figures(): void
     {
-        Employee::factory()->count(5)->create(['date_hired' => now()->subDays(3)]);
-
-        $user = User::factory()->create();
-        Employee::factory()->create(['user_id' => $user->id, 'date_hired' => now()->subDays(3)]);
-
-        $this->actingAs($user)
+        $this->actingAs(User::factory()->hrStaff()->create())
             ->get('/dashboard')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('onboardingSummary.new_hires', 1),
+                ->missing('onboardingSummary')
+                ->missing('needsAction'),
             );
     }
 

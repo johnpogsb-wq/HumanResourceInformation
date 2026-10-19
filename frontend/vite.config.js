@@ -2,6 +2,35 @@ import { defineConfig } from 'vite';
 import laravel from 'laravel-vite-plugin';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
+import fs from 'node:fs';
+
+/*
+ * The three face models the time clock runs, copied out of the package into
+ * the build rather than committed: the Dockerfile only ships `public/build`
+ * from the frontend stage, so anything outside it would be missing on the
+ * deployment. Copied after the bundle is written, because `emptyOutDir`
+ * clears the folder first.
+ */
+const FACE_MODELS = ['tiny_face_detector_model', 'face_landmark_68_model', 'face_recognition_model'];
+
+function copyFaceModels() {
+    return {
+        name: 'copy-face-models',
+        apply: 'build',
+        closeBundle() {
+            const from = path.resolve(__dirname, 'node_modules/@vladmandic/face-api/model');
+            const to = path.resolve(__dirname, '../backend/public/build/face-models');
+
+            fs.mkdirSync(to, { recursive: true });
+
+            for (const model of FACE_MODELS) {
+                for (const file of [`${model}-weights_manifest.json`, `${model}.bin`]) {
+                    fs.copyFileSync(path.join(from, file), path.join(to, file));
+                }
+            }
+        },
+    };
+}
 
 /*
  * The frontend builds here and writes its output into the backend.
@@ -51,6 +80,7 @@ export default defineConfig({
             ],
         }),
         react(),
+        copyFaceModels(),
     ],
 
     /*

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Employee extends Model
@@ -168,21 +169,14 @@ class Employee extends Model
         return $this->hasMany(LeaveRequest::class);
     }
 
-    // --- Educational & qualification records -----------------------------
-
-    public function educations(): HasMany
+    public function attendanceLogs(): HasMany
     {
-        return $this->hasMany(EmployeeEducation::class);
+        return $this->hasMany(AttendanceLog::class);
     }
 
-    public function trainings(): HasMany
+    public function faceEnrollment(): HasOne
     {
-        return $this->hasMany(EmployeeTraining::class);
-    }
-
-    public function skills(): HasMany
-    {
-        return $this->hasMany(EmployeeSkill::class);
+        return $this->hasOne(FaceEnrollment::class);
     }
 
     /**
@@ -195,23 +189,6 @@ class Employee extends Model
     public function disciplinaryActions(): HasMany
     {
         return $this->hasMany(DisciplinaryAction::class);
-    }
-
-    /**
-     * The furthest this employee got, derived rather than stored.
-     *
-     * A stored "highest attainment" is a second answer to a question the rows
-     * already answer, and it goes stale the first time somebody adds a degree
-     * and forgets to move the flag. The ladder's order lives in
-     * `config/qualifications.php`, so this reads it rather than hard-coding
-     * one — and an unknown level ranks last, so a level dropped from config
-     * cannot outrank a real one.
-     */
-    public function highestEducation(): ?EmployeeEducation
-    {
-        return $this->educations
-            ->sortByDesc(fn (EmployeeEducation $education) => $education->rank())
-            ->first();
     }
 
     public function separations(): HasMany
@@ -307,7 +284,16 @@ class Employee extends Model
             )
             ->when(
                 $filters['client_id'] ?? null,
-                fn (Builder $q, $value) => $q->where('client_id', $value),
+                /*
+                 * `none` is the bench — external staff with no client, which is
+                 * floating status under Article 301. It exists so the
+                 * dashboard's "On Bench" tile can open exactly the people it
+                 * counted; without it the nearest filter was every external
+                 * employee, deployed or not, which is a different number.
+                 */
+                fn (Builder $q, $value) => $value === 'none'
+                    ? $q->whereNull('client_id')
+                    : $q->where('client_id', $value),
             );
     }
 

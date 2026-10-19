@@ -6,6 +6,7 @@ use App\Models\Concerns\Auditable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** One employee's day: the punches, and what they came to. */
 class AttendanceLog extends Model
@@ -43,6 +44,9 @@ class AttendanceLog extends Model
 
     public const SOURCE_CORRECTION = 'correction';
 
+    /** Punched by the employee on the face-verified time clock. */
+    public const SOURCE_FACE_CLOCK = 'face_clock';
+
     protected $guarded = ['id'];
 
     public function employee(): BelongsTo
@@ -53,6 +57,11 @@ class AttendanceLog extends Model
     public function shift(): BelongsTo
     {
         return $this->belongsTo(Shift::class);
+    }
+
+    public function punches(): HasMany
+    {
+        return $this->hasMany(AttendancePunch::class)->orderBy('punched_at');
     }
 
     public function recorder(): BelongsTo
@@ -70,6 +79,8 @@ class AttendanceLog extends Model
         return [
             'work_date' => 'date',
             'time_in' => 'datetime',
+            'break_start' => 'datetime',
+            'break_end' => 'datetime',
             'time_out' => 'datetime',
         ];
     }

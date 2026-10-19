@@ -14,6 +14,7 @@ import {
     Loader2,
     MinusCircle,
     Pencil,
+    Printer,
     Plus,
     ScanLine,
     Trash2,
@@ -41,7 +42,6 @@ import {
     THead,
     TR,
 } from '@/Components/ui';
-import Qualifications from './Partials/Qualifications';
 import { cn, formatCurrency, formatDate, initials } from '@/lib/utils';
 
 const titleCase = (value) =>
@@ -58,7 +58,6 @@ const SECTIONS = [
     { id: 'records', label: 'My Records' },
     { id: 'overview', label: 'Overview' },
     { id: 'employment', label: 'Employment' },
-    { id: 'qualifications', label: 'Qualifications' },
     { id: 'documents', label: 'Documents' },
 ];
 
@@ -281,12 +280,6 @@ export default function Show({
     subordinates,
     expiringTypes = [],
     documentTypes = [],
-    // The ladder and the grades as config states them. Sent rather than
-    // restated here, because the *order* of the levels is what makes "highest
-    // attainment" mean anything and a second copy would drift from it.
-    educationLevels = {},
-    levelsWithCourse = [],
-    proficiencyLevels = {},
     licence,
     can,
     isMyProfile = false,
@@ -616,6 +609,14 @@ export default function Show({
             }
             actions={
                 <div className="flex items-center gap-1.5">
+                    <Button
+                        href={`/hr/employees/${record.id}/print`}
+                        size="sm"
+                        variant="outline"
+                    >
+                        <Printer className="h-4 w-4" />
+                        <span className="hidden sm:inline">Print</span>
+                    </Button>
                     {can.update && (
                         <Button
                             href={`/hr/employees/${record.id}/edit`}
@@ -1042,21 +1043,6 @@ export default function Show({
                         </CardBody>
                     </Card>
                 </div>
-            </section>
-
-            {/* Between Employment and Documents on purpose: what somebody is
-                qualified for is read with what they are employed as, and the
-                diplomas and certificates that back it up sit directly below. */}
-            <section id="qualifications" className="mb-8 scroll-mt-6">
-                <SectionHeading id="qualifications-heading" title="Qualifications" />
-
-                <Qualifications
-                    employee={record}
-                    educationLevels={educationLevels}
-                    levelsWithCourse={levelsWithCourse}
-                    proficiencyLevels={proficiencyLevels}
-                    canManage={can.update}
-                />
             </section>
 
             {/* These two carry their own CardHeader, so the card title is the

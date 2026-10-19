@@ -18,6 +18,9 @@ use Illuminate\Support\Carbon;
  *    overtime — whether it is *paid* is an approved overtime request's call.
  *  - Night differential is every minute worked between 22:00 and 06:00.
  *  - A shift ending at or before it starts (22:00–06:00) ends the next day.
+ *  - A punched break comes off as taken or as scheduled, whichever is longer:
+ *    an overbreak is time not worked, and a short break does not earn time.
+ *    With no break punched, the shift's break comes off as before.
  */
 class AttendanceCalculator
 {
@@ -38,6 +41,8 @@ class AttendanceCalculator
         ?Carbon $timeOut,
         bool $isRestDay = false,
         bool $isHoliday = false,
+        ?Carbon $breakStart = null,
+        ?Carbon $breakEnd = null,
     ): array {
         $blank = [
             'minutes_worked' => 0,
@@ -66,11 +71,14 @@ class AttendanceCalculator
             $timeOut = $timeOut->copy()->addDay();
         }
 
-        $breakMinutes = (int) ($shift?->break_minutes ?? 0);
         $spanMinutes = (int) $timeIn->diffInMinutes($timeOut);
-        // The break only comes off a day long enough to have had one: the
-        // Labor Code puts the meal period within the first five hours.
-        $worked = $spanMinutes > self::MEAL_PERIOD_AFTER_MINUTES ? $spanMinutes - $breakMinutes : $spanMinutes;
+        // The scheduled break only comes off a day long enough to have had one:
+        // the Labor Code puts the meal period within the first five hours.
+        $scheduledBreak = $spanMinutes > self::MEAL_PERIOD_AFTER_MINUTES ? (int) ($shift?->break_minutes ?? 0) : 0;
+        $takenBreak = $breakStart && $breakEnd && $breakEnd->greaterThan($breakStart)
+            ? (int) $breakStart->diffInMinutes($breakEnd)
+            : 0;
+        $worked = $spanMinutes - max($scheduledBreak, $takenBreak);
 
         $late = 0;
         $undertime = 0;

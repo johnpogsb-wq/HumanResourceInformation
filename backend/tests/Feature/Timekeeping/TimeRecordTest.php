@@ -72,14 +72,75 @@ class TimeRecordTest extends TimekeepingTestCase
         $this->record($mine, '2026-09-01', '08:00', '17:00');
         $this->record($theirs, '2026-09-01', '08:00', '17:00');
 
+        // With nobody else to choose, the screen opens straight on their DTR.
         $this->actingAs($mine->user)
             ->get('/hr/timekeeping')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('HR/Timekeeping/Records')
-                ->has('logs.data', 1)
-                ->where('logs.data.0.employee.id', $mine->id)
+                ->where('view', 'employee')
+                ->where('sheet.employee.id', $mine->id)
                 ->where('can.manage', false));
+
+        // Asking for somebody else's is not a way round the scope.
+        $this->actingAs($mine->user)
+            ->get("/hr/timekeeping?employee={$theirs->id}")
+            ->assertInertia(fn (Assert $page) => $page->where('sheet', null));
+    }
+
+    public function test_hr_opens_on_the_roster_with_each_employees_totals(): void
+    {
+        $employee = $this->worker();
+        $this->record($employee, '2026-09-01', '08:20', '17:00');
+        $this->record($employee, '2026-09-02', '08:00', '17:00');
+        $this->record($employee, '2026-09-03', null, null);
+
+        $this->actingAs($this->hr())
+            ->get('/hr/timekeeping?from=2026-09-01&to=2026-09-15')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('view', 'roster')
+                ->has('roster.data', 1)
+                ->where('roster.data.0.id', $employee->id)
+                ->where('roster.data.0.worked', 2)
+                ->where('roster.data.0.late', 1)
+                ->where('roster.data.0.absent', 1)
+                ->where('roster.data.0.late_minutes', 20));
+    }
+
+    public function test_an_employees_dtr_lists_every_date_including_the_unrecorded_ones(): void
+    {
+        $employee = $this->worker();
+        $this->record($employee, '2026-09-01', '08:00', '17:00');
+
+        $this->actingAs($this->hr())
+            ->get("/hr/timekeeping?employee={$employee->id}&from=2026-09-01&to=2026-09-07")
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('view', 'employee')
+                ->has('sheet.days', 7)
+                ->where('sheet.days.0.date', '2026-09-01')
+                ->where('sheet.days.0.log.time_in', '08:00')
+                // The 2nd was a working day nobody recorded: a gap, not an absence.
+                ->where('sheet.days.1.log', null)
+                ->where('sheet.days.1.rest_day', false)
+                // The 5th is a Saturday.
+                ->where('sheet.days.4.rest_day', true)
+                ->where('sheet.totals.worked', 1));
+    }
+
+    public function test_a_status_tile_still_opens_the_days_it_counted_across_everyone(): void
+    {
+        $one = $this->worker();
+        $two = $this->worker();
+        $this->record($one, '2026-09-01', '08:00', null);
+        $this->record($two, '2026-09-02', '08:00', null);
+        $this->record($two, '2026-09-03', '08:00', '17:00');
+
+        $this->actingAs($this->hr())
+            ->get('/hr/timekeeping?status=incomplete&from=2026-09-01&to=2026-09-15')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('view', 'days')
+                ->where('summary.incomplete', 2)
+                ->has('logs.data', 2));
     }
 
     public function test_a_closed_cutoff_refuses_changes_to_its_days(): void

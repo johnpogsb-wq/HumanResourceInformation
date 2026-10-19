@@ -26,9 +26,12 @@ class LeaveTest extends TestCase
             ->get('/hr/leave')
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->component('HR/Leave/Index')
-                ->has('requests.data', 3)
-                ->where('summary.total', 3),
+                // One screen for the whole module now; the four old pages are
+                // its tabs. The filing tab's props arrive under `requestsTab`.
+                ->component('HR/Leave/Hub')
+                ->where('tab', 'requests')
+                ->has('requestsTab.requests.data', 3)
+                ->where('requestsTab.summary.total', 3),
             );
     }
 
@@ -323,7 +326,7 @@ class LeaveTest extends TestCase
 
         $this->actingAs($user)
             ->get('/hr/leave')
-            ->assertInertia(fn (Assert $page) => $page->has('requests.data', 1));
+            ->assertInertia(fn (Assert $page) => $page->has('requestsTab.requests.data', 1));
     }
 
     public function test_the_pending_badge_counts_only_what_this_user_must_act_on(): void

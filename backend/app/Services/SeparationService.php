@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\AttendanceLog;
 use App\Models\Employee;
 use App\Models\EmployeeLoan;
+use App\Models\Holiday;
 use App\Models\LeaveBalance;
+use App\Models\LeaveType;
 use App\Models\Payslip;
 use App\Models\Separation;
 use App\Models\User;
@@ -28,6 +31,9 @@ class SeparationService
     public function __construct(
         private readonly FinalPayCalculator $calculator,
         private readonly SalaryAdjustmentService $salaries,
+        private readonly LeaveService $leave,
+        private readonly WorkCalendar $calendar,
+        private readonly LeaveAccrualCalculator $accrual,
     ) {}
 
     /** Opens a separation and computes the settlement from live figures. */
@@ -134,7 +140,7 @@ class SeparationService
     /**
      * What the other modules know about this employee.
      *
-     * @return array<string, float>
+     * @return array<string, float|string>
      */
     public function gatherInputs(Employee $employee, Carbon $lastDay, array $data = []): array
     {
@@ -143,11 +149,105 @@ class SeparationService
             // the rate on file today — a scheduled raise they never worked to
             // see must not inflate the settlement.
             'monthly_salary' => $this->salaries->rateAsOf($employee, $lastDay),
-            'days_unpaid' => (float) ($data['days_unpaid'] ?? 0),
+            ...$this->unpaidDays($employee, $lastDay, $data['days_unpaid'] ?? null),
             'basic_earned_this_year' => $this->basicEarnedThisYear($employee, $lastDay),
-            'convertible_leave_days' => $this->convertibleLeaveDays($employee, $lastDay->year),
+            'convertible_leave_days' => $this->convertibleLeaveDays($employee, $lastDay),
             'loan_balance' => $this->loanBalance($employee),
             'other_deductions' => (float) ($data['other_deductions'] ?? 0),
+        ];
+    }
+
+    /**
+     * Days owed since the last payroll that paid this employee — read off the
+     * Daily Time Records unless HR types a figure.
+     *
+     * It was always typed by hand, because Module 2 did not exist when this
+     * was written; a hand count of "days since the last cutoff" is exactly the
+     * number somebody gets wrong on the way out of the door. What counts is
+     * what a monthly-paid employee's salary covers: days worked, approved
+     * paid leave, and regular holidays on a working day. Absences and special
+     * non-working days are not paid — no work, no pay.
+     *
+     * A typed figure still wins, because the DTR can be incomplete for the
+     * last week of somebody who has already stopped coming in, and the
+     * breakdown says which of the two the number came from.
+     *
+     * @return array{days_unpaid: float, days_unpaid_note: string}
+     */
+    public function unpaidDays(Employee $employee, Carbon $lastDay, mixed $typed = null): array
+    {
+        if ($typed !== null && $typed !== '') {
+            return ['days_unpaid' => (float) $typed, 'days_unpaid_note' => 'entered by HR'];
+        }
+
+        $lastPaid = Payslip::where('employee_id', $employee->id)
+            ->whereHas('run', fn ($query) => $query->reportable())
+            ->with('run.period:id,end_date')
+            ->get()
+            ->map(fn (Payslip $slip) => $slip->run?->period?->end_date)
+            ->filter()
+            ->max();
+
+        // Never paid here: count from the first day this system holds a time
+        // record for them, not from the hire date. Somebody hired in 2023 and
+        // brought onto this system in August has three years this system knows
+        // nothing about — reaching back over them paid every regular holiday
+        // since January on the first real database this was run against.
+        $firstRecord = $lastPaid ? null : AttendanceLog::where('employee_id', $employee->id)->min('work_date');
+
+        if (! $lastPaid && $firstRecord === null) {
+            return [
+                'days_unpaid' => 0.0,
+                'days_unpaid_note' => 'no payroll or time record to count from — enter the days by hand',
+            ];
+        }
+
+        $from = $lastPaid
+            ? $lastPaid->copy()->addDay()->startOfDay()
+            : Carbon::parse($firstRecord)->startOfDay()->max($employee->date_hired?->copy()->startOfDay() ?? Carbon::parse($firstRecord));
+        $to = $lastDay->copy()->startOfDay();
+
+        if ($from->gt($to)) {
+            return [
+                'days_unpaid' => 0.0,
+                'days_unpaid_note' => 'every day up to the last day was already paid in a payroll run',
+            ];
+        }
+
+        $worked = AttendanceLog::query()
+            ->where('employee_id', $employee->id)
+            ->between($from->toDateString(), $to->toDateString())
+            ->whereIn('status', AttendanceLog::WORKED_STATUSES)
+            ->get()
+            ->mapWithKeys(fn (AttendanceLog $log) => [$log->work_date->toDateString() => true]);
+
+        // Paid leave on a working day the employee did not also work. The
+        // expansion covers every calendar day, so rest days are filtered here.
+        $leave = $this->leave->approvedLeaveDates([$employee->id], $from, $to)
+            ->filter(fn (array $day, string $key) => $day['is_paid']
+                && ! $worked->has(substr($key, -10))
+                && $this->calendar->isWorkingDay($employee, Carbon::parse(substr($key, -10))))
+            ->sum(fn (array $day) => $day['is_half_day'] ? 0.5 : 1.0);
+
+        $holidays = Holiday::query()
+            ->where('type', Holiday::TYPE_REGULAR)
+            ->whereDate('date', '>=', $from->toDateString())
+            ->whereDate('date', '<=', $to->toDateString())
+            ->get()
+            ->unique(fn (Holiday $holiday) => $holiday->date->toDateString())
+            ->filter(fn (Holiday $holiday) => ! $worked->has($holiday->date->toDateString())
+                && ! $this->calendar->isRestDay($employee, $holiday->date))
+            ->count();
+
+        $parts = array_filter([
+            $worked->count().' day(s) worked',
+            $leave > 0 ? "{$leave} paid leave" : null,
+            $holidays > 0 ? "{$holidays} regular holiday(s)" : null,
+        ]);
+
+        return [
+            'days_unpaid' => (float) ($worked->count() + $leave + $holidays),
+            'days_unpaid_note' => implode(', ', $parts).', '.$from->format($from->year === $to->year ? 'M j' : 'M j, Y').' – '.$to->format('M j, Y').', from the Daily Time Records',
         ];
     }
 
@@ -177,17 +277,37 @@ class SeparationService
         return round(max((float) $earned, 0), 2);
     }
 
-    /** Unused credits on leave types the company converts to cash. */
-    private function convertibleLeaveDays(Employee $employee, int $year): float
+    /**
+     * Unused credits on leave types the company converts to cash, **earned up
+     * to the last day** — not read off the balance row.
+     *
+     * The row is a cache that `LeaveAccrualService::accrue()` recomputes, and
+     * it can be stale in the expensive direction: a row created with the full
+     * year's entitlement and never re-accrued said 15 days of VL in September
+     * for somebody who had earned 10 by then, and the back pay would have paid
+     * all 15. So the accrual rule is applied here as of the last day, with the
+     * same floor `accrue()` holds — never below what was already used.
+     */
+    private function convertibleLeaveDays(Employee $employee, Carbon $lastDay): float
     {
-        $days = LeaveBalance::where('employee_id', $employee->id)
-            ->where('year', $year)
-            ->whereHas('leaveType', fn ($query) => $query->where('is_convertible_to_cash', true))
+        $balances = LeaveBalance::where('employee_id', $employee->id)
+            ->where('year', $lastDay->year)
             ->get()
-            ->sum(fn (LeaveBalance $balance) => (float) $balance->credits_earned
-                + (float) $balance->credits_carried_over
-                - (float) $balance->credits_used,
-            );
+            ->keyBy('leave_type_id');
+
+        $days = LeaveType::where('is_convertible_to_cash', true)
+            ->where('is_active', true)
+            ->get()
+            ->sum(function (LeaveType $type) use ($employee, $lastDay, $balances) {
+                $balance = $balances->get($type->id);
+                $used = (float) ($balance?->credits_used ?? 0);
+                $earned = max(
+                    $this->accrual->earned((float) $type->default_credits, $employee->date_hired, $lastDay->year, $lastDay),
+                    $used,
+                );
+
+                return $earned + (float) ($balance?->credits_carried_over ?? 0) - $used;
+            });
 
         return round(max((float) $days, 0), 2);
     }

@@ -3,7 +3,9 @@ import { cn } from '@/lib/utils';
 
 export function Table({ className, children, ...props }) {
     return (
-        <div className="scrollbar-thin w-full overflow-x-auto">
+        // Bottom padding so the last row's lifted shadow is not clipped by
+        // the scroller it floats inside.
+        <div className="scrollbar-thin w-full overflow-x-auto pb-1">
             <table className={cn('w-full caption-bottom text-sm', className)} {...props}>
                 {children}
             </table>
@@ -21,7 +23,7 @@ export function THead({ className, children, ...props }) {
 
 export function TBody({ className, children, ...props }) {
     return (
-        <tbody className={cn('divide-y divide-border', className)} {...props}>
+        <tbody className={cn('table-float divide-y divide-border', className)} {...props}>
             {children}
         </tbody>
     );
@@ -105,7 +107,7 @@ export function TableEmpty({
     description,
 }) {
     return (
-        <tr>
+        <tr data-empty>
             <td colSpan={colSpan} className="px-4 py-14">
                 <div className="flex flex-col items-center gap-2 text-center">
                     <span className="grid h-11 w-11 place-items-center rounded-full bg-secondary text-muted-foreground">
